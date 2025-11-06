@@ -1,23 +1,27 @@
 import { useState } from 'react'
 import { useKV } from '@github/spark/hooks'
-import { Lead, Pipeline, Stage, PipelineType } from '@/lib/types'
+import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Plus, DotsThree } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
+import { AddStageDialog } from './AddStageDialog'
+import { AddLeadDialog } from './AddLeadDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 export function PipelineView() {
   const [leads, setLeads] = useKV<Lead[]>('leads', [])
-  const [pipelines] = useKV<Pipeline[]>('pipelines', [])
+  const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
+  const [teamMembers] = useKV<TeamMember[]>('team-members', [])
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
   const pipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
+  const teamMemberNames = (teamMembers || []).map(m => m.name)
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -28,15 +32,51 @@ export function PipelineView() {
     }
   }
 
+  const handleAddStage = (stage: Stage) => {
+    setPipelines((current) => {
+      const pipelines = current || []
+      const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
+      
+      if (pipelineIndex === -1) return pipelines
+      
+      const updatedPipelines = [...pipelines]
+      updatedPipelines[pipelineIndex] = {
+        ...updatedPipelines[pipelineIndex],
+        stages: [...updatedPipelines[pipelineIndex].stages, stage]
+      }
+      
+      return updatedPipelines
+    })
+  }
+
+  const handleAddLead = (lead: Lead) => {
+    setLeads((current) => [...(current || []), lead])
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-6 border-b border-border">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-3xl font-bold">Pipeline</h1>
-          <Button>
-            <Plus className="mr-2" size={20} />
-            New Lead
-          </Button>
+          <div className="flex gap-2">
+            <AddStageDialog
+              pipelineType={activePipeline}
+              currentStagesCount={currentPipeline?.stages.length || 0}
+              onAdd={handleAddStage}
+              trigger={
+                <Button variant="outline">
+                  <Plus className="mr-2" size={20} />
+                  Add Stage
+                </Button>
+              }
+            />
+            <AddLeadDialog
+              pipelineType={activePipeline}
+              stages={currentPipeline?.stages || []}
+              teamMembers={teamMemberNames}
+              onAdd={handleAddLead}
+            />
+          </div>
         </div>
 
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
@@ -61,9 +101,11 @@ export function PipelineView() {
                     <h3 className="font-semibold">{stage.name}</h3>
                     <Badge variant="secondary">{stageLeads.length}</Badge>
                   </div>
-                  <Button variant="ghost" size="sm">
-                    <Plus size={16} />
-                  </Button>
+                  <AddStageDialog
+                    pipelineType={activePipeline}
+                    currentStagesCount={currentPipeline?.stages.length || 0}
+                    onAdd={handleAddStage}
+                  />
                 </div>
 
                 <div className="flex-1 space-y-3 overflow-y-auto">
@@ -137,6 +179,25 @@ export function PipelineView() {
               </div>
             )
           })}
+
+          {(currentPipeline?.stages || []).length === 0 && (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <p className="mb-4">No stages in this pipeline yet</p>
+                <AddStageDialog
+                  pipelineType={activePipeline}
+                  currentStagesCount={0}
+                  onAdd={handleAddStage}
+                  trigger={
+                    <Button>
+                      <Plus className="mr-2" size={20} />
+                      Add First Stage
+                    </Button>
+                  }
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

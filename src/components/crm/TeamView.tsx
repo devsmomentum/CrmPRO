@@ -2,16 +2,19 @@ import { useKV } from '@github/spark/hooks'
 import { TeamMember, Task } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Button } from '@/components/ui/button'
-import { Plus } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
+import { AddTeamMemberDialog } from './AddTeamMemberDialog'
 
 export function TeamView() {
-  const [teamMembers] = useKV<TeamMember[]>('team-members', [])
+  const [teamMembers, setTeamMembers] = useKV<TeamMember[]>('team-members', [])
   const [tasks] = useKV<Task[]>('tasks', [])
 
   const getTaskCount = (memberName: string) => {
     return (tasks || []).filter(t => t.assignedTo === memberName && !t.completed).length
+  }
+
+  const handleAddMember = (member: TeamMember) => {
+    setTeamMembers((current) => [...(current || []), member])
   }
 
   return (
@@ -21,10 +24,7 @@ export function TeamView() {
           <h1 className="text-3xl font-bold">Team</h1>
           <p className="text-muted-foreground mt-1">Manage team members and assignments</p>
         </div>
-        <Button>
-          <Plus className="mr-2" size={20} />
-          Add Member
-        </Button>
+        <AddTeamMemberDialog onAdd={handleAddMember} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -46,7 +46,7 @@ export function TeamView() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Email</span>
-                  <span className="font-medium">{member.email}</span>
+                  <span className="font-medium truncate ml-2">{member.email}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Active Tasks</span>

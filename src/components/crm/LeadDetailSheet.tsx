@@ -241,21 +241,24 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
             <div>
               <h3 className="font-semibold mb-3">Recent Activity</h3>
               <div className="space-y-2">
-                {leadMessages.slice(-3).map(msg => (
-                  <div key={msg.id} className="text-sm p-2 bg-muted rounded">
-                    <div className="flex items-center gap-2 mb-1">
-                      {channelIcons[msg.channel] && 
-                        <span className="text-muted-foreground">
-                          {channelIcons[msg.channel]({ size: 14 })}
+                {leadMessages.slice(-3).map(msg => {
+                  const Icon = channelIcons[msg.channel]
+                  return (
+                    <div key={msg.id} className="text-sm p-2 bg-muted rounded">
+                      <div className="flex items-center gap-2 mb-1">
+                        {Icon && 
+                          <span className="text-muted-foreground">
+                            <Icon size={14} />
+                          </span>
+                        }
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
                         </span>
-                      }
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
-                      </span>
+                      </div>
+                      <p>{msg.content}</p>
                     </div>
-                    <p>{msg.content}</p>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           </TabsContent>
