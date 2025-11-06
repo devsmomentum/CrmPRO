@@ -7,11 +7,13 @@ import { Calendar } from '@/components/ui/calendar'
 import { format, isSameDay } from 'date-fns'
 import { Plus, Clock } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
+import { AddAppointmentDialog } from './AddAppointmentDialog'
 
 export function CalendarView() {
-  const [appointments] = useKV<Appointment[]>('appointments', [])
+  const [appointments, setAppointments] = useKV<Appointment[]>('appointments', [])
   const [leads] = useKV<Lead[]>('leads', [])
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [showAddDialog, setShowAddDialog] = useState(false)
 
   const dayAppointments = (appointments || []).filter(appt => 
     isSameDay(new Date(appt.startTime), selectedDate)
@@ -19,6 +21,10 @@ export function CalendarView() {
 
   const getLeadName = (leadId: string) => {
     return (leads || []).find(l => l.id === leadId)?.name || 'Unknown'
+  }
+  
+  const handleAddAppointment = (appointment: Appointment) => {
+    setAppointments((current) => [...(current || []), appointment])
   }
 
   return (
@@ -28,7 +34,7 @@ export function CalendarView() {
           <h1 className="text-3xl font-bold">Calendar</h1>
           <p className="text-muted-foreground mt-1">Manage appointments and meetings</p>
         </div>
-        <Button>
+        <Button onClick={() => setShowAddDialog(true)}>
           <Plus className="mr-2" size={20} />
           New Appointment
         </Button>
@@ -112,6 +118,12 @@ export function CalendarView() {
           </div>
         </CardContent>
       </Card>
+      
+      <AddAppointmentDialog
+        open={showAddDialog}
+        onClose={() => setShowAddDialog(false)}
+        onAdd={handleAddAppointment}
+      />
     </div>
   )
 }

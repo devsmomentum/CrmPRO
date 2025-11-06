@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useKV } from '@github/spark/hooks'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,15 +9,21 @@ import { Plus, Trash } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AddPipelineDialog } from './AddPipelineDialog'
 
 export function SettingsView() {
   const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
   const [automations, setAutomations] = useKV<AutomationRule[]>('automations', [])
+  const [showPipelineDialog, setShowPipelineDialog] = useState(false)
 
   const toggleAutomation = (id: string) => {
     setAutomations((current) =>
       (current || []).map(a => a.id === id ? { ...a, enabled: !a.enabled } : a)
     )
+  }
+  
+  const handleAddPipeline = (pipeline: Pipeline) => {
+    setPipelines((current) => [...(current || []), pipeline])
   }
 
   return (
@@ -36,7 +43,7 @@ export function SettingsView() {
         <TabsContent value="pipelines" className="space-y-4 mt-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Pipeline Configuration</h2>
-            <Button>
+            <Button onClick={() => setShowPipelineDialog(true)}>
               <Plus className="mr-2" size={20} />
               New Pipeline
             </Button>
@@ -179,6 +186,12 @@ export function SettingsView() {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      <AddPipelineDialog
+        open={showPipelineDialog}
+        onClose={() => setShowPipelineDialog(false)}
+        onAdd={handleAddPipeline}
+      />
     </div>
   )
 }

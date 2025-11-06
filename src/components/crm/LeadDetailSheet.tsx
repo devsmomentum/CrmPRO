@@ -20,7 +20,8 @@ import {
   EnvelopeSimple,
   Phone,
   X,
-  Plus
+  Plus,
+  PencilSimple
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -31,6 +32,7 @@ import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { AddBudgetDialog } from './AddBudgetDialog'
 import { AddMeetingDialog } from './AddMeetingDialog'
+import { EditBudgetDialog } from './EditBudgetDialog'
 import { useTranslation } from '@/lib/i18n'
 
 interface LeadDetailSheetProps {
@@ -55,6 +57,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [showBudgetDialog, setShowBudgetDialog] = useState(false)
   const [showMeetingDialog, setShowMeetingDialog] = useState(false)
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
 
@@ -172,6 +175,13 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
   
   const handleAddMeeting = (meeting: Meeting) => {
     setMeetings((current) => [...(current || []), meeting])
+  }
+  
+  const handleUpdateBudget = (updatedBudget: Budget) => {
+    setBudgets((current) => 
+      (current || []).map(b => b.id === updatedBudget.id ? updatedBudget : b)
+    )
+    setEditingBudget(null)
   }
   
   const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
@@ -405,7 +415,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                         {format(new Date(budget.createdAt), 'MMM d, yyyy')}
                       </p>
                     </div>
-                    <Badge>{budget.status}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge>{budget.status}</Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditingBudget(budget)}
+                      >
+                        <PencilSimple size={16} />
+                      </Button>
+                    </div>
                   </div>
                   <div className="text-right mt-4">
                     <p className="text-2xl font-bold text-primary">${budget.total.toLocaleString()}</p>
@@ -499,6 +518,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
         onClose={() => setShowMeetingDialog(false)}
         onAdd={handleAddMeeting}
       />
+      
+      {editingBudget && (
+        <EditBudgetDialog
+          budget={editingBudget}
+          open={true}
+          onClose={() => setEditingBudget(null)}
+          onUpdate={handleUpdateBudget}
+        />
+      )}
     </Sheet>
   )
 }
