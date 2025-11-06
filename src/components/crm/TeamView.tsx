@@ -1,5 +1,5 @@
 import { useKV } from '@github/spark/hooks'
-import { TeamMember, Task } from '@/lib/types'
+import { TeamMember, Task, Role } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -8,9 +8,15 @@ import { AddTeamMemberDialog } from './AddTeamMemberDialog'
 export function TeamView() {
   const [teamMembers, setTeamMembers] = useKV<TeamMember[]>('team-members', [])
   const [tasks] = useKV<Task[]>('tasks', [])
+  const [roles] = useKV<Role[]>('roles', [])
 
   const getTaskCount = (memberName: string) => {
     return (tasks || []).filter(t => t.assignedTo === memberName && !t.completed).length
+  }
+  
+  const getRoleInfo = (roleId?: string) => {
+    if (!roleId) return null
+    return (roles || []).find(r => r.id === roleId)
   }
 
   const handleAddMember = (member: TeamMember) => {
@@ -28,34 +34,55 @@ export function TeamView() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {(teamMembers || []).map(member => (
-          <Card key={member.id}>
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src={member.avatar} />
-                  <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <CardTitle className="text-base">{member.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground">{member.role}</p>
+        {(teamMembers || []).map(member => {
+          const roleInfo = getRoleInfo(member.roleId)
+          return (
+            <Card key={member.id}>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-12 w-12">
+                    <AvatarImage src={member.avatar} />
+                    <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <CardTitle className="text-base">{member.name}</CardTitle>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-sm text-muted-foreground">{member.role}</p>
+                      {roleInfo && (
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs"
+                          style={{ borderColor: roleInfo.color, color: roleInfo.color }}
+                        >
+                          {roleInfo.name}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Email</span>
-                  <span className="font-medium truncate ml-2">{member.email}</span>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Email</span>
+                    <span className="font-medium truncate ml-2">{member.email}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Active Tasks</span>
+                    <Badge variant="secondary">{getTaskCount(member.name)}</Badge>
+                  </div>
+                  {roleInfo && roleInfo.permissions.length > 0 && (
+                    <div className="pt-2 border-t border-border">
+                      <span className="text-xs text-muted-foreground">
+                        {roleInfo.permissions.length} permisos
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">Active Tasks</span>
-                  <Badge variant="secondary">{getTaskCount(member.name)}</Badge>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          )
+        })}
 
         {(teamMembers || []).length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">

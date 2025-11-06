@@ -5,8 +5,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from '@phosphor-icons/react'
-import { TeamMember } from '@/lib/types'
+import { TeamMember, Role } from '@/lib/types'
+import { useKV } from '@github/spark/hooks'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 
 interface AddTeamMemberDialogProps {
   onAdd: (member: TeamMember) => void
@@ -17,8 +19,10 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('Sales Rep')
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('')
+  const [roles] = useKV<Role[]>('roles', [])
 
-  const roles = [
+  const jobRoles = [
     'Sales Rep',
     'Sales Manager',
     'Support Agent',
@@ -40,6 +44,7 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
       name: name.trim(),
       email: email.trim(),
       role,
+      roleId: selectedRoleId || undefined,
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
     }
 
@@ -47,6 +52,7 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
     setName('')
     setEmail('')
     setRole('Sales Rep')
+    setSelectedRoleId('')
     setOpen(false)
     toast.success('Team member added!')
   }
@@ -84,17 +90,42 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
             />
           </div>
           <div>
-            <Label htmlFor="role">Role</Label>
+            <Label htmlFor="role">Job Title</Label>
             <Select value={role} onValueChange={setRole}>
               <SelectTrigger id="role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {roles.map(r => (
+                {jobRoles.map(r => (
                   <SelectItem key={r} value={r}>{r}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <Label htmlFor="permission-role">Permission Role (Opcional)</Label>
+            <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+              <SelectTrigger id="permission-role">
+                <SelectValue placeholder="Sin rol de permisos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Sin rol de permisos</SelectItem>
+                {(roles || []).map(r => (
+                  <SelectItem key={r.id} value={r.id}>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-2 h-2 rounded-full" 
+                        style={{ backgroundColor: r.color }}
+                      />
+                      {r.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Define los permisos de acceso para este miembro
+            </p>
           </div>
           <Button onClick={handleSubmit} className="w-full">Add Team Member</Button>
         </div>

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AddPipelineDialog } from './AddPipelineDialog'
+import { RolesManagement } from './RolesManagement'
 
 export function SettingsView() {
   const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
@@ -36,6 +37,7 @@ export function SettingsView() {
       <Tabs defaultValue="pipelines">
         <TabsList>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
+          <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="automations">Automations</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
@@ -84,6 +86,10 @@ export function SettingsView() {
           {(pipelines || []).length === 0 && (
             <p className="text-center text-muted-foreground py-12">No pipelines configured</p>
           )}
+        </TabsContent>
+
+        <TabsContent value="roles" className="space-y-4 mt-6">
+          <RolesManagement />
         </TabsContent>
 
         <TabsContent value="automations" className="space-y-4 mt-6">

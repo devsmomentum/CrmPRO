@@ -4,11 +4,12 @@ import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, DotsThree } from '@phosphor-icons/react'
+import { Plus, DotsThree, Funnel } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/lib/i18n'
@@ -22,9 +23,13 @@ export function PipelineView() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
+  const [filterByMember, setFilterByMember] = useState<string>('all')
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
-  const pipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
+  const allPipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
+  const pipelineLeads = filterByMember === 'all' 
+    ? allPipelineLeads 
+    : allPipelineLeads.filter(l => l.assignedTo === filterByMember)
   const teamMemberNames = (teamMembers || []).map(m => m.name)
 
   const getPriorityColor = (priority: string) => {
@@ -123,6 +128,26 @@ export function PipelineView() {
             <TabsTrigger value="administrative" className="text-xs md:text-sm">{t.pipeline.administrative}</TabsTrigger>
           </TabsList>
         </Tabs>
+
+        <div className="flex items-center gap-2 mt-4">
+          <Funnel size={20} className="text-muted-foreground" />
+          <Select value={filterByMember} onValueChange={setFilterByMember}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Filtrar por miembro" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los miembros</SelectItem>
+              {teamMemberNames.map(name => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {filterByMember !== 'all' && (
+            <Badge variant="secondary">
+              Mostrando: {pipelineLeads.length} de {allPipelineLeads.length} leads
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-x-auto p-4 md:p-6">
@@ -150,17 +175,17 @@ export function PipelineView() {
                   />
                 </div>
 
-                <div className="flex-1 space-y-3 overflow-y-auto min-h-[200px] bg-muted/30 rounded-lg p-2">
+                <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/30 rounded-lg p-2">
                   {stageLeads.map(lead => (
                     <Card 
                       key={lead.id} 
                       draggable
                       onDragStart={(e) => handleDragStart(e, lead)}
-                      className="p-3 md:p-4 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
+                      className="p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
                       style={{ borderLeftColor: stage.color }}
                       onClick={() => setSelectedLead(lead)}
                     >
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-start justify-between mb-1">
                         <div className="flex-1 min-w-0">
                           <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
                           <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
@@ -168,7 +193,7 @@ export function PipelineView() {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
-                              <DotsThree size={16} />
+                              <DotsThree size={14} />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
@@ -179,36 +204,36 @@ export function PipelineView() {
                         </DropdownMenu>
                       </div>
 
-                      <div className="flex items-center gap-1 mb-2">
+                      <div className="flex items-center gap-1 mb-1">
                         <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
                         <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
                       </div>
 
                       {lead.budget > 0 && (
-                        <p className="text-sm font-medium text-primary mb-2">
+                        <p className="text-sm font-medium text-primary mb-1">
                           ${lead.budget.toLocaleString()}
                         </p>
                       )}
 
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap gap-1 mb-1">
                         {lead.tags.slice(0, 2).map(tag => (
                           <Badge 
                             key={tag.id} 
                             variant="outline" 
-                            className="text-xs"
+                            className="text-xs h-4 px-1"
                             style={{ borderColor: tag.color, color: tag.color }}
                           >
                             {tag.name}
                           </Badge>
                         ))}
                         {lead.tags.length > 2 && (
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-xs h-4 px-1">
                             +{lead.tags.length - 2}
                           </Badge>
                         )}
                       </div>
 
-                      <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground truncate">
+                      <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
                         {t.lead.assignedTo}: {lead.assignedTo}
                       </div>
                     </Card>

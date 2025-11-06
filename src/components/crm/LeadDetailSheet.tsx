@@ -33,6 +33,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AddBudgetDialog } from './AddBudgetDialog'
 import { AddMeetingDialog } from './AddMeetingDialog'
 import { EditBudgetDialog } from './EditBudgetDialog'
+import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
 
 interface LeadDetailSheetProps {
@@ -169,6 +170,11 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
     toast.success(t.messages.priorityUpdated)
   }
   
+  const updateField = (field: keyof Lead, value: string | number) => {
+    onUpdate({ ...lead, [field]: value })
+    toast.success('Campo actualizado correctamente')
+  }
+  
   const handleAddBudget = (budget: Budget) => {
     setBudgets((current) => [...(current || []), budget])
   }
@@ -191,12 +197,34 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
       <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col">
         <SheetHeader className="p-6 border-b border-border">
           <div className="flex items-start justify-between">
-            <div>
-              <SheetTitle className="text-2xl">{lead.name}</SheetTitle>
-              <p className="text-sm text-muted-foreground mt-1">{lead.company}</p>
-              <div className="flex items-center gap-2 mt-2">
-                <Badge variant="outline">{lead.email}</Badge>
-                <Badge variant="outline">{lead.phone}</Badge>
+            <div className="flex-1">
+              <div className="mb-2">
+                <InlineEdit
+                  value={lead.name}
+                  onSave={(value) => updateField('name', value)}
+                  displayClassName="text-2xl font-bold"
+                />
+              </div>
+              <div className="mb-2">
+                <InlineEdit
+                  value={lead.company}
+                  onSave={(value) => updateField('company', value)}
+                  displayClassName="text-sm text-muted-foreground"
+                />
+              </div>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <InlineEdit
+                  value={lead.email}
+                  onSave={(value) => updateField('email', value)}
+                  type="email"
+                  displayClassName="text-xs"
+                />
+                <InlineEdit
+                  value={lead.phone}
+                  onSave={(value) => updateField('phone', value)}
+                  type="tel"
+                  displayClassName="text-xs"
+                />
               </div>
             </div>
             <div className="flex flex-col gap-2">
@@ -300,7 +328,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.budget}</Label>
-                <p className="font-medium mt-1 text-primary">${lead.budget.toLocaleString()}</p>
+                <div className="mt-1">
+                  <InlineEdit
+                    value={lead.budget}
+                    onSave={(value) => updateField('budget', value)}
+                    type="number"
+                    prefix="$"
+                    displayClassName="font-medium text-primary"
+                  />
+                </div>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.createdAt}</Label>

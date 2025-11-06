@@ -95,12 +95,32 @@ export interface Pipeline {
   stages: Stage[]
 }
 
+export type RolePermission = 
+  | 'view_dashboard'
+  | 'view_pipeline'
+  | 'edit_leads'
+  | 'delete_leads'
+  | 'view_analytics'
+  | 'view_calendar'
+  | 'manage_team'
+  | 'manage_settings'
+  | 'view_budgets'
+  | 'edit_budgets'
+
+export interface Role {
+  id: string
+  name: string
+  permissions: RolePermission[]
+  color: string
+}
+
 export interface TeamMember {
   id: string
   name: string
   email: string
   avatar: string
   role: string
+  roleId?: string
 }
 
 export interface Appointment {

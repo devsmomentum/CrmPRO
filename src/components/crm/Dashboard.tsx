@@ -129,16 +129,16 @@ export function Dashboard({ onShowNotifications }: DashboardProps) {
               <p className="text-sm text-muted-foreground text-center py-8">No tasks due today</p>
             ) : (
               todayTasks.slice(0, 5).map(task => (
-                <div key={task.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
-                  <CheckCircle size={20} className="mt-0.5 text-muted-foreground" />
+                <div key={task.id} className="flex items-start gap-2 p-2 rounded-lg border border-border hover:bg-muted/50 transition-colors">
+                  <CheckCircle size={16} className="mt-0.5 text-muted-foreground flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm">{task.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{task.description}</p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline" className={cn('text-xs', getPriorityColor(task.priority))}>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{task.description}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className={cn('text-xs h-5', getPriorityColor(task.priority))}>
                         {task.priority}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">Assigned to: {task.assignedTo}</span>
+                      <span className="text-xs text-muted-foreground truncate">Assigned to: {task.assignedTo}</span>
                     </div>
                   </div>
                 </div>
