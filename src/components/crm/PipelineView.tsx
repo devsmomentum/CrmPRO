@@ -11,13 +11,17 @@ import { AddLeadDialog } from './AddLeadDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useTranslation } from '@/lib/i18n'
+import { toast } from 'sonner'
 
 export function PipelineView() {
+  const t = useTranslation('es')
   const [leads, setLeads] = useKV<Lead[]>('leads', [])
   const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
   const [teamMembers] = useKV<TeamMember[]>('team-members', [])
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
+  const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
   const pipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
@@ -52,21 +56,54 @@ export function PipelineView() {
   const handleAddLead = (lead: Lead) => {
     setLeads((current) => [...(current || []), lead])
   }
+  
+  const handleDragStart = (e: React.DragEvent, lead: Lead) => {
+    setDraggedLead(lead)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+  
+  const handleDrop = (e: React.DragEvent, targetStageId: string) => {
+    e.preventDefault()
+    
+    if (!draggedLead) return
+    
+    if (draggedLead.stage === targetStageId) {
+      setDraggedLead(null)
+      return
+    }
+    
+    const updatedLead = {
+      ...draggedLead,
+      stage: targetStageId
+    }
+    
+    setLeads((current) => 
+      (current || []).map(l => l.id === draggedLead.id ? updatedLead : l)
+    )
+    
+    setDraggedLead(null)
+    toast.success('Lead movido a nueva etapa')
+  }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-6 border-b border-border">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold">Pipeline</h1>
+    <div className="h-full flex flex-col pb-16 md:pb-0">
+      <div className="p-4 md:p-6 border-b border-border">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
           <div className="flex gap-2">
             <AddStageDialog
               pipelineType={activePipeline}
               currentStagesCount={currentPipeline?.stages.length || 0}
               onAdd={handleAddStage}
               trigger={
-                <Button variant="outline">
+                <Button variant="outline" size="sm">
                   <Plus className="mr-2" size={20} />
-                  Add Stage
+                  <span className="hidden sm:inline">{t.pipeline.addStage}</span>
                 </Button>
               }
             />
@@ -80,26 +117,31 @@ export function PipelineView() {
         </div>
 
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
-          <TabsList>
-            <TabsTrigger value="sales">Sales</TabsTrigger>
-            <TabsTrigger value="support">Support</TabsTrigger>
-            <TabsTrigger value="administrative">Administrative</TabsTrigger>
+          <TabsList className="w-full md:w-auto">
+            <TabsTrigger value="sales" className="text-xs md:text-sm">{t.pipeline.sales}</TabsTrigger>
+            <TabsTrigger value="support" className="text-xs md:text-sm">{t.pipeline.support}</TabsTrigger>
+            <TabsTrigger value="administrative" className="text-xs md:text-sm">{t.pipeline.administrative}</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
 
-      <div className="flex-1 overflow-x-auto p-6">
-        <div className="flex gap-4 h-full min-w-max">
+      <div className="flex-1 overflow-x-auto p-4 md:p-6">
+        <div className="flex gap-3 md:gap-4 h-full min-w-max">
           {(currentPipeline?.stages || []).map(stage => {
             const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
             
             return (
-              <div key={stage.id} className="w-80 flex flex-col">
+              <div 
+                key={stage.id} 
+                className="w-72 md:w-80 flex flex-col"
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDrop(e, stage.id)}
+              >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <div className={cn('w-3 h-3 rounded-full')} style={{ backgroundColor: stage.color }} />
-                    <h3 className="font-semibold">{stage.name}</h3>
-                    <Badge variant="secondary">{stageLeads.length}</Badge>
+                    <h3 className="font-semibold text-sm md:text-base">{stage.name}</h3>
+                    <Badge variant="secondary" className="text-xs">{stageLeads.length}</Badge>
                   </div>
                   <AddStageDialog
                     pipelineType={activePipeline}
@@ -108,36 +150,38 @@ export function PipelineView() {
                   />
                 </div>
 
-                <div className="flex-1 space-y-3 overflow-y-auto">
+                <div className="flex-1 space-y-3 overflow-y-auto min-h-[200px] bg-muted/30 rounded-lg p-2">
                   {stageLeads.map(lead => (
                     <Card 
                       key={lead.id} 
-                      className="p-4 cursor-pointer hover:shadow-md transition-all border-l-4"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, lead)}
+                      className="p-3 md:p-4 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
                       style={{ borderLeftColor: stage.color }}
                       onClick={() => setSelectedLead(lead)}
                     >
                       <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <h4 className="font-semibold text-sm">{lead.name}</h4>
-                          <p className="text-xs text-muted-foreground">{lead.company}</p>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
+                          <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
                         </div>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
                               <DotsThree size={16} />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>Edit</DropdownMenuItem>
-                            <DropdownMenuItem>Move to Stage</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                            <DropdownMenuItem>{t.buttons.edit}</DropdownMenuItem>
+                            <DropdownMenuItem>Mover a Etapa</DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive">{t.buttons.delete}</DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
 
                       <div className="flex items-center gap-1 mb-2">
                         <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
-                        <span className="text-xs text-muted-foreground capitalize">{lead.priority} priority</span>
+                        <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
                       </div>
 
                       {lead.budget > 0 && (
@@ -147,7 +191,7 @@ export function PipelineView() {
                       )}
 
                       <div className="flex flex-wrap gap-1">
-                        {lead.tags.slice(0, 3).map(tag => (
+                        {lead.tags.slice(0, 2).map(tag => (
                           <Badge 
                             key={tag.id} 
                             variant="outline" 
@@ -157,22 +201,22 @@ export function PipelineView() {
                             {tag.name}
                           </Badge>
                         ))}
-                        {lead.tags.length > 3 && (
+                        {lead.tags.length > 2 && (
                           <Badge variant="outline" className="text-xs">
-                            +{lead.tags.length - 3}
+                            +{lead.tags.length - 2}
                           </Badge>
                         )}
                       </div>
 
-                      <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground">
-                        Assigned to: {lead.assignedTo}
+                      <div className="mt-2 pt-2 border-t border-border text-xs text-muted-foreground truncate">
+                        {t.lead.assignedTo}: {lead.assignedTo}
                       </div>
                     </Card>
                   ))}
 
                   {stageLeads.length === 0 && (
                     <div className="text-center py-8 text-muted-foreground text-sm">
-                      No leads in this stage
+                      {t.pipeline.noLeads}
                     </div>
                   )}
                 </div>
@@ -183,7 +227,7 @@ export function PipelineView() {
           {(currentPipeline?.stages || []).length === 0 && (
             <div className="flex-1 flex items-center justify-center text-muted-foreground">
               <div className="text-center">
-                <p className="mb-4">No stages in this pipeline yet</p>
+                <p className="mb-4">{t.pipeline.noStages}</p>
                 <AddStageDialog
                   pipelineType={activePipeline}
                   currentStagesCount={0}
@@ -191,7 +235,7 @@ export function PipelineView() {
                   trigger={
                     <Button>
                       <Plus className="mr-2" size={20} />
-                      Add First Stage
+                      {t.pipeline.addFirstStage}
                     </Button>
                   }
                 />

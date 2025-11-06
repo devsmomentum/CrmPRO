@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Plus } from '@phosphor-icons/react'
 import { Stage, PipelineType } from '@/lib/types'
+import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
 interface AddStageDialogProps {
@@ -15,6 +16,7 @@ interface AddStageDialogProps {
 }
 
 export function AddStageDialog({ pipelineType, currentStagesCount, onAdd, trigger }: AddStageDialogProps) {
+  const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [color, setColor] = useState('#3b82f6')
@@ -26,7 +28,7 @@ export function AddStageDialog({ pipelineType, currentStagesCount, onAdd, trigge
 
   const handleSubmit = () => {
     if (!name.trim()) {
-      toast.error('Please enter a stage name')
+      toast.error(t.messages.enterStageName)
       return
     }
 
@@ -42,7 +44,7 @@ export function AddStageDialog({ pipelineType, currentStagesCount, onAdd, trigge
     setName('')
     setColor('#3b82f6')
     setOpen(false)
-    toast.success('Stage added!')
+    toast.success(t.messages.stageAdded)
   }
 
   return (
@@ -56,20 +58,20 @@ export function AddStageDialog({ pipelineType, currentStagesCount, onAdd, trigge
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add New Stage</DialogTitle>
+          <DialogTitle>{t.stage.addStage}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label htmlFor="stage-name">Stage Name *</Label>
+            <Label htmlFor="stage-name">{t.stage.stageName} *</Label>
             <Input
               id="stage-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Qualified, Negotiation"
+              placeholder="ej: Calificado, Negociación"
             />
           </div>
           <div>
-            <Label>Stage Color</Label>
+            <Label>{t.stage.color}</Label>
             <div className="flex gap-2 mt-2">
               {predefinedColors.map(c => (
                 <button
@@ -89,7 +91,7 @@ export function AddStageDialog({ pipelineType, currentStagesCount, onAdd, trigge
               />
             </div>
           </div>
-          <Button onClick={handleSubmit} className="w-full">Add Stage</Button>
+          <Button onClick={handleSubmit} className="w-full">{t.buttons.add}</Button>
         </div>
       </DialogContent>
     </Dialog>

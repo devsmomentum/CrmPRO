@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from '@phosphor-icons/react'
 import { Lead, PipelineType, Stage } from '@/lib/types'
+import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
 interface AddLeadDialogProps {
@@ -17,6 +18,7 @@ interface AddLeadDialogProps {
 }
 
 export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigger }: AddLeadDialogProps) {
+  const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -24,11 +26,11 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
   const [company, setCompany] = useState('')
   const [budget, setBudget] = useState('')
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
-  const [assignedTo, setAssignedTo] = useState(teamMembers[0] || 'Unassigned')
+  const [assignedTo, setAssignedTo] = useState(teamMembers[0] || 'Sin asignar')
 
   const handleSubmit = () => {
     if (!name.trim() || !email.trim() || !phone.trim()) {
-      toast.error('Please fill in all required fields')
+      toast.error(t.messages.fillRequired)
       return
     }
 
@@ -51,7 +53,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
     onAdd(newLead)
     resetForm()
     setOpen(false)
-    toast.success('Lead added!')
+    toast.success(t.messages.leadAdded)
   }
 
   const resetForm = () => {
@@ -61,7 +63,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
     setCompany('')
     setBudget('')
     setPriority('medium')
-    setAssignedTo(teamMembers[0] || 'Unassigned')
+    setAssignedTo(teamMembers[0] || 'Sin asignar')
   }
 
   return (
@@ -70,36 +72,36 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
         {trigger || (
           <Button>
             <Plus className="mr-2" size={20} />
-            New Lead
+            {t.pipeline.addLead}
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Lead</DialogTitle>
+          <DialogTitle>{t.pipeline.addLead}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label htmlFor="lead-name">Full Name *</Label>
+            <Label htmlFor="lead-name">{t.lead.name} *</Label>
             <Input
               id="lead-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="John Smith"
+              placeholder="Juan Pérez"
             />
           </div>
           <div>
-            <Label htmlFor="lead-email">Email *</Label>
+            <Label htmlFor="lead-email">{t.lead.email} *</Label>
             <Input
               id="lead-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="john@company.com"
+              placeholder="juan@empresa.com"
             />
           </div>
           <div>
-            <Label htmlFor="lead-phone">Phone *</Label>
+            <Label htmlFor="lead-phone">{t.lead.phone} *</Label>
             <Input
               id="lead-phone"
               value={phone}
@@ -108,7 +110,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             />
           </div>
           <div>
-            <Label htmlFor="lead-company">Company</Label>
+            <Label htmlFor="lead-company">{t.lead.company}</Label>
             <Input
               id="lead-company"
               value={company}
@@ -117,7 +119,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             />
           </div>
           <div>
-            <Label htmlFor="lead-budget">Budget</Label>
+            <Label htmlFor="lead-budget">{t.lead.budget}</Label>
             <Input
               id="lead-budget"
               type="number"
@@ -127,27 +129,27 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             />
           </div>
           <div>
-            <Label htmlFor="lead-priority">Priority</Label>
+            <Label htmlFor="lead-priority">{t.lead.priority}</Label>
             <Select value={priority} onValueChange={(v) => setPriority(v as any)}>
               <SelectTrigger id="lead-priority">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="low">{t.lead.lowPriority}</SelectItem>
+                <SelectItem value="medium">{t.lead.mediumPriority}</SelectItem>
+                <SelectItem value="high">{t.lead.highPriority}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div>
-            <Label htmlFor="lead-assigned">Assign To</Label>
+            <Label htmlFor="lead-assigned">{t.lead.assignTo}</Label>
             <Select value={assignedTo} onValueChange={setAssignedTo}>
               <SelectTrigger id="lead-assigned">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {teamMembers.length === 0 ? (
-                  <SelectItem value="Unassigned">Unassigned</SelectItem>
+                  <SelectItem value="Sin asignar">Sin asignar</SelectItem>
                 ) : (
                   teamMembers.map(member => (
                     <SelectItem key={member} value={member}>{member}</SelectItem>
@@ -156,7 +158,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
               </SelectContent>
             </Select>
           </div>
-          <Button onClick={handleSubmit} className="w-full">Add Lead</Button>
+          <Button onClick={handleSubmit} className="w-full">{t.buttons.add}</Button>
         </div>
       </DialogContent>
     </Dialog>

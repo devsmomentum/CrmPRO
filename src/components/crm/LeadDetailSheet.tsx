@@ -29,6 +29,9 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { AddBudgetDialog } from './AddBudgetDialog'
+import { AddMeetingDialog } from './AddMeetingDialog'
+import { useTranslation } from '@/lib/i18n'
 
 interface LeadDetailSheetProps {
   lead: Lead
@@ -38,17 +41,20 @@ interface LeadDetailSheetProps {
 }
 
 export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailSheetProps) {
+  const t = useTranslation('es')
   const [messages, setMessages] = useKV<Message[]>('messages', [])
   const [notes, setNotes] = useKV<Note[]>('notes', [])
   const [budgets, setBudgets] = useKV<Budget[]>('budgets', [])
   const [meetings, setMeetings] = useKV<Meeting[]>('meetings', [])
-  const [allTags] = useKV<Tag[]>('all-tags', [])
+  const [allTags, setAllTags] = useKV<Tag[]>('all-tags', [])
   
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<Channel>('whatsapp')
   const [noteInput, setNoteInput] = useState('')
   const [showTagDialog, setShowTagDialog] = useState(false)
+  const [showBudgetDialog, setShowBudgetDialog] = useState(false)
+  const [showMeetingDialog, setShowMeetingDialog] = useState(false)
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
 
@@ -57,12 +63,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
   const leadBudgets = (budgets || []).filter(b => b.leadId === lead.id)
   const leadMeetings = (meetings || []).filter(m => m.leadId === lead.id)
 
-  const channelIcons: Record<Channel, any> = {
+  const channelIcons = {
     whatsapp: WhatsappLogo,
     instagram: InstagramLogo,
     facebook: FacebookLogo,
     email: EnvelopeSimple,
     phone: Phone
+  } as const
+  
+  const getChannelIcon = (channel: Channel) => {
+    return channelIcons[channel] || EnvelopeSimple
   }
 
   const sendMessage = () => {
@@ -80,7 +90,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
 
     setMessages((current) => [...(current || []), newMessage])
     setMessageInput('')
-    toast.success('Message sent!')
+    toast.success(t.messages.messageSent)
   }
 
   const addNote = () => {
@@ -96,10 +106,10 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
 
     setNotes((current) => [...(current || []), newNote])
     setNoteInput('')
-    toast.success('Note added!')
+    toast.success(t.messages.noteAdded)
   }
 
-  const addTag = () => {
+  const addNewTag = () => {
     if (!newTagName.trim()) return
 
     const newTag: Tag = {
@@ -107,6 +117,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
       name: newTagName,
       color: newTagColor
     }
+
+    setAllTags((current) => {
+      const tags = current || []
+      const existing = tags.find(t => t.name.toLowerCase() === newTag.name.toLowerCase())
+      if (existing) {
+        return tags
+      }
+      return [...tags, newTag]
+    })
 
     const updatedLead = {
       ...lead,
@@ -116,7 +135,22 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
     onUpdate(updatedLead)
     setNewTagName('')
     setShowTagDialog(false)
-    toast.success('Tag added!')
+    toast.success(t.messages.tagAdded)
+  }
+  
+  const addExistingTag = (tag: Tag) => {
+    if (lead.tags.find(t => t.id === tag.id)) {
+      toast.error('Esta etiqueta ya está agregada')
+      return
+    }
+    
+    const updatedLead = {
+      ...lead,
+      tags: [...lead.tags, tag]
+    }
+    
+    onUpdate(updatedLead)
+    toast.success(t.messages.tagAdded)
   }
 
   const removeTag = (tagId: string) => {
@@ -129,8 +163,18 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
 
   const updatePriority = (priority: string) => {
     onUpdate({ ...lead, priority: priority as Lead['priority'] })
-    toast.success('Priority updated!')
+    toast.success(t.messages.priorityUpdated)
   }
+  
+  const handleAddBudget = (budget: Budget) => {
+    setBudgets((current) => [...(current || []), budget])
+  }
+  
+  const handleAddMeeting = (meeting: Meeting) => {
+    setMeetings((current) => [...(current || []), meeting])
+  }
+  
+  const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
 
   return (
     <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
@@ -176,20 +220,42 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Plus size={14} className="mr-1" />
-                  Add Tag
+                  {t.lead.addTag}
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>Add New Tag</DialogTitle>
+                  <DialogTitle>{t.lead.addTag}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
+                  {availableTags.length > 0 && (
+                    <div>
+                      <Label>Etiquetas Existentes</Label>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {availableTags.map(tag => (
+                          <Badge
+                            key={tag.id}
+                            className="cursor-pointer"
+                            style={{ backgroundColor: tag.color, color: 'white' }}
+                            onClick={() => {
+                              addExistingTag(tag)
+                              setShowTagDialog(false)
+                            }}
+                          >
+                            {tag.name}
+                          </Badge>
+                        ))}
+                      </div>
+                      <Separator className="my-4" />
+                    </div>
+                  )}
                   <div>
-                    <Label>Tag Name</Label>
+                    <Label>Nueva Etiqueta</Label>
                     <Input 
                       value={newTagName}
                       onChange={(e) => setNewTagName(e.target.value)}
-                      placeholder="Enter tag name"
+                      placeholder="Nombre de etiqueta"
+                      className="mt-2"
                     />
                   </div>
                   <div>
@@ -200,7 +266,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                       onChange={(e) => setNewTagColor(e.target.value)}
                     />
                   </div>
-                  <Button onClick={addTag} className="w-full">Add Tag</Button>
+                  <Button onClick={addNewTag} className="w-full">{t.buttons.add}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -209,29 +275,29 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
           <TabsList className="mx-6 mt-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
-            <TabsTrigger value="budget">Budget</TabsTrigger>
-            <TabsTrigger value="meetings">Meetings</TabsTrigger>
-            <TabsTrigger value="notes">Notes</TabsTrigger>
+            <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
+            <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger>
+            <TabsTrigger value="budget">{t.tabs.budget}</TabsTrigger>
+            <TabsTrigger value="meetings">{t.tabs.meetings}</TabsTrigger>
+            <TabsTrigger value="notes">{t.tabs.notes}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="flex-1 p-6 space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label className="text-xs text-muted-foreground">Assigned To</Label>
+                <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
                 <p className="font-medium mt-1">{lead.assignedTo}</p>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Budget</Label>
+                <Label className="text-xs text-muted-foreground">{t.lead.budget}</Label>
                 <p className="font-medium mt-1 text-primary">${lead.budget.toLocaleString()}</p>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Created</Label>
+                <Label className="text-xs text-muted-foreground">{t.lead.createdAt}</Label>
                 <p className="font-medium mt-1">{format(new Date(lead.createdAt), 'MMM d, yyyy')}</p>
               </div>
               <div>
-                <Label className="text-xs text-muted-foreground">Last Contact</Label>
+                <Label className="text-xs text-muted-foreground">{t.lead.lastContact}</Label>
                 <p className="font-medium mt-1">{format(new Date(lead.lastContact), 'MMM d, yyyy')}</p>
               </div>
             </div>
@@ -239,18 +305,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
             <Separator />
 
             <div>
-              <h3 className="font-semibold mb-3">Recent Activity</h3>
+              <h3 className="font-semibold mb-3">Actividad Reciente</h3>
               <div className="space-y-2">
                 {leadMessages.slice(-3).map(msg => {
-                  const Icon = channelIcons[msg.channel]
+                  const Icon = getChannelIcon(msg.channel)
                   return (
                     <div key={msg.id} className="text-sm p-2 bg-muted rounded">
                       <div className="flex items-center gap-2 mb-1">
-                        {Icon && 
-                          <span className="text-muted-foreground">
-                            <Icon size={14} />
-                          </span>
-                        }
+                        <span className="text-muted-foreground">
+                          <Icon size={14} />
+                        </span>
                         <span className="text-xs text-muted-foreground">
                           {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
                         </span>
@@ -264,9 +328,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
           </TabsContent>
 
           <TabsContent value="chat" className="flex-1 flex flex-col p-6">
-            <div className="flex gap-2 mb-4">
+            <div className="flex gap-2 mb-4 flex-wrap">
               {(Object.keys(channelIcons) as Channel[]).map(channel => {
-                const Icon = channelIcons[channel]
+                const Icon = getChannelIcon(channel)
                 return (
                   <Button
                     key={channel}
@@ -303,7 +367,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                   ))}
                 {leadMessages.filter(m => m.channel === selectedChannel).length === 0 && (
                   <p className="text-center text-muted-foreground text-sm py-8">
-                    No messages on this channel yet
+                    {t.chat.noMessages}
                   </p>
                 )}
               </div>
@@ -313,7 +377,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
               <Input
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
-                placeholder="Type a message..."
+                placeholder={t.chat.typeMessage}
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
               />
               <Button onClick={sendMessage}>
@@ -325,10 +389,10 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
           <TabsContent value="budget" className="flex-1 p-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Budgets & Proposals</h3>
-                <Button size="sm">
+                <h3 className="font-semibold">{t.budget.title}</h3>
+                <Button size="sm" onClick={() => setShowBudgetDialog(true)}>
                   <Plus size={16} className="mr-2" />
-                  New Budget
+                  {t.budget.newBudget}
                 </Button>
               </div>
 
@@ -350,7 +414,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
               ))}
 
               {leadBudgets.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">No budgets created yet</p>
+                <p className="text-center text-muted-foreground py-8">{t.budget.noBudgets}</p>
               )}
             </div>
           </TabsContent>
@@ -358,10 +422,10 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
           <TabsContent value="meetings" className="flex-1 p-6">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Meeting Minutes</h3>
-                <Button size="sm">
+                <h3 className="font-semibold">{t.meeting.title}</h3>
+                <Button size="sm" onClick={() => setShowMeetingDialog(true)}>
                   <Plus size={16} className="mr-2" />
-                  Add Meeting
+                  {t.meeting.addMeeting}
                 </Button>
               </div>
 
@@ -377,13 +441,13 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                   </div>
                   <p className="text-sm mt-2">{meeting.notes}</p>
                   <div className="mt-2 text-xs text-muted-foreground">
-                    Participants: {meeting.participants.join(', ')}
+                    {t.meeting.participants}: {meeting.participants.join(', ')}
                   </div>
                 </div>
               ))}
 
               {leadMeetings.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">No meetings recorded yet</p>
+                <p className="text-center text-muted-foreground py-8">{t.meeting.noMeetings}</p>
               )}
             </div>
           </TabsContent>
@@ -393,12 +457,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
               <Textarea
                 value={noteInput}
                 onChange={(e) => setNoteInput(e.target.value)}
-                placeholder="Add a note..."
+                placeholder={t.notes.placeholder}
                 className="mb-2"
               />
               <Button onClick={addNote} size="sm">
                 <NoteIcon size={16} className="mr-2" />
-                Add Note
+                {t.notes.addNote}
               </Button>
             </div>
 
@@ -414,13 +478,27 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                   </div>
                 ))}
                 {leadNotes.length === 0 && (
-                  <p className="text-center text-muted-foreground py-8">No notes yet</p>
+                  <p className="text-center text-muted-foreground py-8">{t.notes.noNotes}</p>
                 )}
               </div>
             </ScrollArea>
           </TabsContent>
         </Tabs>
       </SheetContent>
+      
+      <AddBudgetDialog
+        leadId={lead.id}
+        open={showBudgetDialog}
+        onClose={() => setShowBudgetDialog(false)}
+        onAdd={handleAddBudget}
+      />
+      
+      <AddMeetingDialog
+        leadId={lead.id}
+        open={showMeetingDialog}
+        onClose={() => setShowMeetingDialog(false)}
+        onAdd={handleAddMeeting}
+      />
     </Sheet>
   )
 }
