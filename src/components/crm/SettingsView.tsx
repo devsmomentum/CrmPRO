@@ -11,8 +11,16 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AddPipelineDialog } from './AddPipelineDialog'
 import { RolesManagement } from './RolesManagement'
+import { CompanyManagement } from './CompanyManagement'
+import { CatalogManagement } from './CatalogManagement'
 
-export function SettingsView() {
+interface SettingsViewProps {
+  currentUserId?: string
+  currentCompanyId?: string
+  onCompanyChange?: (companyId: string) => void
+}
+
+export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange }: SettingsViewProps = {}) {
   const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
   const [automations, setAutomations] = useKV<AutomationRule[]>('automations', [])
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
@@ -34,13 +42,33 @@ export function SettingsView() {
         <p className="text-muted-foreground mt-1">Configure pipelines and automations</p>
       </div>
 
-      <Tabs defaultValue="pipelines">
+      <Tabs defaultValue="companies">
         <TabsList>
+          <TabsTrigger value="companies">Empresas</TabsTrigger>
+          <TabsTrigger value="catalog">Catálogo</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
           <TabsTrigger value="roles">Roles</TabsTrigger>
           <TabsTrigger value="automations">Automations</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="companies" className="space-y-4 mt-6">
+          {currentUserId && currentCompanyId && onCompanyChange ? (
+            <CompanyManagement
+              currentUserId={currentUserId}
+              currentCompanyId={currentCompanyId}
+              onCompanyChange={onCompanyChange}
+            />
+          ) : (
+            <p className="text-center text-muted-foreground py-12">
+              Inicia sesión para gestionar tus empresas
+            </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="catalog" className="space-y-4 mt-6">
+          <CatalogManagement />
+        </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4 mt-6">
           <div className="flex items-center justify-between">

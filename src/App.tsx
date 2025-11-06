@@ -13,6 +13,7 @@ import { RegisterView } from '@/components/crm/RegisterView'
 import { useKV } from '@github/spark/hooks'
 import { toast } from 'sonner'
 import { Pipeline, PipelineType } from '@/lib/types'
+import { Company } from '@/components/crm/CompanyManagement'
 
 type View = 'dashboard' | 'pipeline' | 'analytics' | 'calendar' | 'team' | 'settings'
 type AuthView = 'login' | 'register'
@@ -23,19 +24,13 @@ interface User {
   businessName: string
 }
 
-interface Business {
-  id: string
-  name: string
-  ownerId: string
-}
-
 function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard')
   const [showNotifications, setShowNotifications] = useState(false)
   const [authView, setAuthView] = useState<AuthView>('login')
   const [user, setUser] = useKV<User | null>('current-user', null)
-  const [businesses, setBusinesses] = useKV<Business[]>('businesses', [])
-  const [currentBusinessId, setCurrentBusinessId] = useKV<string>('current-business-id', '')
+  const [companies, setCompanies] = useKV<Company[]>('companies', [])
+  const [currentCompanyId, setCurrentCompanyId] = useKV<string>('current-company-id', '')
   const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
   
   useEffect(() => {
@@ -86,15 +81,16 @@ function App() {
       businessName: 'Mi Empresa'
     }
     
-    const newBusiness: Business = {
+    const newCompany: Company = {
       id: Date.now().toString(),
       name: 'Mi Empresa',
-      ownerId: newUser.id
+      ownerId: newUser.id,
+      createdAt: new Date()
     }
     
     setUser(newUser)
-    setBusinesses([newBusiness])
-    setCurrentBusinessId(newBusiness.id)
+    setCompanies([newCompany])
+    setCurrentCompanyId(newCompany.id)
     toast.success('¡Sesión iniciada exitosamente!')
   }
 
@@ -105,21 +101,22 @@ function App() {
       businessName
     }
     
-    const newBusiness: Business = {
+    const newCompany: Company = {
       id: Date.now().toString(),
       name: businessName,
-      ownerId: newUser.id
+      ownerId: newUser.id,
+      createdAt: new Date()
     }
     
     setUser(newUser)
-    setBusinesses([newBusiness])
-    setCurrentBusinessId(newBusiness.id)
+    setCompanies([newCompany])
+    setCurrentCompanyId(newCompany.id)
     toast.success('¡Cuenta creada exitosamente!')
   }
 
   const handleLogout = () => {
     setUser(null)
-    setCurrentBusinessId('')
+    setCurrentCompanyId('')
     toast.success('¡Sesión cerrada!')
   }
 
@@ -157,7 +154,13 @@ function App() {
         {currentView === 'analytics' && <AnalyticsDashboard />}
         {currentView === 'calendar' && <CalendarView />}
         {currentView === 'team' && <TeamView />}
-        {currentView === 'settings' && <SettingsView />}
+        {currentView === 'settings' && (
+          <SettingsView 
+            currentUserId={user.id}
+            currentCompanyId={currentCompanyId}
+            onCompanyChange={setCurrentCompanyId}
+          />
+        )}
       </main>
 
       <NotificationPanel open={showNotifications} onClose={() => setShowNotifications(false)} />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useKV } from '@github/spark/hooks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,6 +9,7 @@ import { Budget, BudgetLineItem } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { Plus, Trash } from '@phosphor-icons/react'
+import { ItemSelector, Item } from './ItemSelector'
 
 interface AddBudgetDialogProps {
   leadId: string
@@ -18,6 +20,7 @@ interface AddBudgetDialogProps {
 
 export function AddBudgetDialog({ leadId, open, onClose, onAdd }: AddBudgetDialogProps) {
   const t = useTranslation('es')
+  const [catalogItems, setCatalogItems] = useKV<Item[]>('catalog-items', [])
   const [name, setName] = useState('')
   const [status, setStatus] = useState<'draft' | 'sent' | 'approved' | 'rejected'>('draft')
   const [items, setItems] = useState<BudgetLineItem[]>([
@@ -50,6 +53,18 @@ export function AddBudgetDialog({ leadId, open, onClose, onAdd }: AddBudgetDialo
       }
       return item
     }))
+  }
+
+  const handleSelectCatalogItem = (itemId: string, catalogItem: Item) => {
+    handleItemChange(itemId, 'description', catalogItem.name)
+    if (catalogItem.unitPrice) {
+      handleItemChange(itemId, 'unitPrice', catalogItem.unitPrice)
+    }
+  }
+
+  const handleCreateCatalogItem = (newItem: Item) => {
+    setCatalogItems((current) => [...(current || []), newItem])
+    toast.success('Artículo creado y guardado en el catálogo')
   }
 
   const subtotal = items.reduce((sum, item) => sum + item.total, 0)
@@ -129,52 +144,57 @@ export function AddBudgetDialog({ leadId, open, onClose, onAdd }: AddBudgetDialo
             </div>
 
             {items.map((item, index) => (
-              <div key={item.id} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-5">
-                  <Label className="text-xs">{t.budget.description}</Label>
-                  <Input
-                    value={item.description}
-                    onChange={(e) => handleItemChange(item.id, 'description', e.target.value)}
-                    placeholder="Descripción del item"
-                    className="text-sm"
-                  />
+              <div key={item.id} className="space-y-2 pb-3 border-b last:border-b-0">
+                <div className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-11">
+                    <ItemSelector
+                      items={catalogItems || []}
+                      value={catalogItems?.find(ci => ci.name === item.description)}
+                      onSelect={(catalogItem) => handleSelectCatalogItem(item.id, catalogItem)}
+                      onCreate={handleCreateCatalogItem}
+                      label={index === 0 ? t.budget.description : undefined}
+                      placeholder="Seleccionar o crear artículo..."
+                    />
+                  </div>
+                  <div className="col-span-1">
+                    <Button
+                      onClick={() => handleRemoveItem(item.id)}
+                      size="sm"
+                      variant="ghost"
+                      className="h-10 w-10 p-0 text-destructive"
+                      disabled={items.length === 1}
+                    >
+                      <Trash size={16} />
+                    </Button>
+                  </div>
                 </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">{t.budget.quantity}</Label>
-                  <Input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) => handleItemChange(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                    className="text-sm"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">{t.budget.unitPrice}</Label>
-                  <Input
-                    type="number"
-                    value={item.unitPrice}
-                    onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                    className="text-sm"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <Label className="text-xs">{t.budget.total}</Label>
-                  <Input
-                    value={`$${item.total.toFixed(2)}`}
-                    disabled
-                    className="text-sm font-medium"
-                  />
-                </div>
-                <div className="col-span-1">
-                  <Button
-                    onClick={() => handleRemoveItem(item.id)}
-                    size="sm"
-                    variant="ghost"
-                    className="h-9 w-9 p-0 text-destructive"
-                    disabled={items.length === 1}
-                  >
-                    <Trash size={16} />
-                  </Button>
+                <div className="grid grid-cols-12 gap-2">
+                  <div className="col-span-4">
+                    <Label className="text-xs">{t.budget.quantity}</Label>
+                    <Input
+                      type="number"
+                      value={item.quantity}
+                      onChange={(e) => handleItemChange(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                      className="text-sm h-9"
+                    />
+                  </div>
+                  <div className="col-span-4">
+                    <Label className="text-xs">{t.budget.unitPrice}</Label>
+                    <Input
+                      type="number"
+                      value={item.unitPrice}
+                      onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
+                      className="text-sm h-9"
+                    />
+                  </div>
+                  <div className="col-span-4">
+                    <Label className="text-xs">{t.budget.total}</Label>
+                    <Input
+                      value={`$${item.total.toFixed(2)}`}
+                      disabled
+                      className="text-sm font-medium h-9"
+                    />
+                  </div>
                 </div>
               </div>
             ))}

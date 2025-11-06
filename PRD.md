@@ -90,11 +90,25 @@ A comprehensive CRM platform that enables businesses to manage leads through cus
 - **Success criteria**: Charts load quickly, data is accurate, filters work smoothly
 
 ### Budget & Proposal Builder
-- **Functionality**: Pre-built budget templates with line items, tax calculations, and approval workflows
-- **Purpose**: Standardize pricing presentation and accelerate quote delivery
+- **Functionality**: Pre-built budget templates with line items, tax calculations, approval workflows, and intelligent item selector with catalog management
+- **Purpose**: Standardize pricing presentation, accelerate quote delivery, and maintain consistent product/service catalog
 - **Trigger**: Click "Create Budget" in lead detail
-- **Progression**: Select Template → Customize Line Items → Calculate Total → Preview → Send to Lead → Track Views
-- **Success criteria**: Templates are editable, calculations are accurate, leads can view without login
+- **Progression**: Select Template → Choose Items from Catalog (or create new) → Customize Line Items → Calculate Total → Preview → Send to Lead → Track Views
+- **Success criteria**: Templates are editable, calculations are accurate, leads can view without login, catalog items can be created on-the-fly or pre-managed in settings
+
+### Company & Multi-Business Management
+- **Functionality**: Users can create and manage multiple companies/businesses with separate logos, switch between them, and maintain isolated data
+- **Purpose**: Enable agencies or multi-business owners to manage different entities within one account
+- **Trigger**: Navigate to Settings → Companies tab, or click company switcher
+- **Progression**: Settings → Companies → Create New Company → Upload Logo → Enter Details → Switch Active Company → Data Context Updates
+- **Success criteria**: Logo uploads work (max 2MB, image formats), company switching updates all views, each company has isolated pipelines/leads/data
+
+### Product/Service Catalog Management
+- **Functionality**: Centralized catalog of items/services with names, descriptions, and prices that can be reused across budgets
+- **Purpose**: Maintain consistency in pricing, speed up budget creation, and manage service/product offerings
+- **Trigger**: Settings → Catalog tab, or during budget creation when selecting items
+- **Progression**: Navigate to Catalog → Create Item → Enter Name/Description/Price → Save → Use in Budget Creation
+- **Success criteria**: Items are searchable, can be created inline during budget creation, prices auto-populate when selected, catalog is editable from settings
 
 ### Lead-to-Client Conversion Flow
 - **Functionality**: Automated transition from sales to administrative/support pipeline when marked as "Won"
