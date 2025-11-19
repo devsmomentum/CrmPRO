@@ -16,15 +16,56 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
-export function PipelineView() {
+export function PipelineView({ companyId }: { companyId?: string }) {
   const t = useTranslation('es')
-  const [leads, setLeads] = usePersistentState<Lead[]>('leads', [])
-  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>('pipelines', [])
-  const [teamMembers] = usePersistentState<TeamMember[]>('team-members', [])
+  const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
+  const [teamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
+
+  useEffect(() => {
+    if ((pipelines || []).length === 0) {
+      const defaultPipelines: Pipeline[] = [
+        {
+          id: 'sales-pipeline',
+          name: 'Sales Pipeline',
+          type: 'sales',
+          stages: [
+            { id: 'lead', name: 'Lead', order: 0, color: '#3b82f6', pipelineType: 'sales' },
+            { id: 'qualified', name: 'Qualified', order: 1, color: '#8b5cf6', pipelineType: 'sales' },
+            { id: 'proposal', name: 'Proposal', order: 2, color: '#ec4899', pipelineType: 'sales' },
+            { id: 'negotiation', name: 'Negotiation', order: 3, color: '#f59e0b', pipelineType: 'sales' },
+            { id: 'won', name: 'Won', order: 4, color: '#10b981', pipelineType: 'sales' }
+          ]
+        },
+        {
+          id: 'support-pipeline',
+          name: 'Support Pipeline',
+          type: 'support',
+          stages: [
+            { id: 'new', name: 'New', order: 0, color: '#3b82f6', pipelineType: 'support' },
+            { id: 'in-progress', name: 'In Progress', order: 1, color: '#f59e0b', pipelineType: 'support' },
+            { id: 'resolved', name: 'Resolved', order: 2, color: '#10b981', pipelineType: 'support' }
+          ]
+        },
+        {
+          id: 'administrative-pipeline',
+          name: 'Administrative Pipeline',
+          type: 'administrative',
+          stages: [
+            { id: 'pending', name: 'Pending', order: 0, color: '#3b82f6', pipelineType: 'administrative' },
+            { id: 'review', name: 'Review', order: 1, color: '#8b5cf6', pipelineType: 'administrative' },
+            { id: 'completed', name: 'Completed', order: 2, color: '#10b981', pipelineType: 'administrative' }
+          ]
+        }
+      ]
+      
+      setPipelines(defaultPipelines)
+    }
+  }, [pipelines, setPipelines])
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
   const allPipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)

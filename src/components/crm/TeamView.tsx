@@ -9,10 +9,10 @@ import { Button } from '@/components/ui/button'
 import { Trash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 
-export function TeamView() {
-  const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>('team-members', [])
-  const [tasks] = usePersistentState<Task[]>('tasks', [])
-  const [roles] = usePersistentState<Role[]>('roles', [])
+export function TeamView({ companyId }: { companyId?: string }) {
+  const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
+  const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
+  const [roles] = usePersistentState<Role[]>(`roles-${companyId}`, [])
   
 
   const getTaskCount = (memberName: string) => {

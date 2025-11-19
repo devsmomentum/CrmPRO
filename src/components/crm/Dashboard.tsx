@@ -1,4 +1,4 @@
-import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Task, Lead, Appointment, Notification as NotificationType } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -11,14 +11,15 @@ import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface DashboardProps {
+  companyId?: string
   onShowNotifications: () => void
 }
 
-export function Dashboard({ onShowNotifications }: DashboardProps) {
-  const [tasks] = useKV<Task[]>('tasks', [])
-  const [leads] = useKV<Lead[]>('leads', [])
-  const [appointments] = useKV<Appointment[]>('appointments', [])
-  const [notifications] = useKV<NotificationType[]>('notifications', [])
+export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
+  const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
+  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
+  const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
 
   const today = new Date()

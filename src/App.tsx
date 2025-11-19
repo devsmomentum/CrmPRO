@@ -32,49 +32,7 @@ function App() {
   const [user, setUser] = usePersistentState<User | null>('current-user', null)
   const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
   const [currentCompanyId, setCurrentCompanyId] = usePersistentState<string>('current-company-id', '')
-  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>('pipelines', [])
   
-  useEffect(() => {
-    if ((pipelines || []).length === 0) {
-      const defaultPipelines: Pipeline[] = [
-        {
-          id: 'sales-pipeline',
-          name: 'Sales Pipeline',
-          type: 'sales',
-          stages: [
-            { id: 'lead', name: 'Lead', order: 0, color: '#3b82f6', pipelineType: 'sales' },
-            { id: 'qualified', name: 'Qualified', order: 1, color: '#8b5cf6', pipelineType: 'sales' },
-            { id: 'proposal', name: 'Proposal', order: 2, color: '#ec4899', pipelineType: 'sales' },
-            { id: 'negotiation', name: 'Negotiation', order: 3, color: '#f59e0b', pipelineType: 'sales' },
-            { id: 'won', name: 'Won', order: 4, color: '#10b981', pipelineType: 'sales' }
-          ]
-        },
-        {
-          id: 'support-pipeline',
-          name: 'Support Pipeline',
-          type: 'support',
-          stages: [
-            { id: 'new', name: 'New', order: 0, color: '#3b82f6', pipelineType: 'support' },
-            { id: 'in-progress', name: 'In Progress', order: 1, color: '#f59e0b', pipelineType: 'support' },
-            { id: 'resolved', name: 'Resolved', order: 2, color: '#10b981', pipelineType: 'support' }
-          ]
-        },
-        {
-          id: 'administrative-pipeline',
-          name: 'Administrative Pipeline',
-          type: 'administrative',
-          stages: [
-            { id: 'pending', name: 'Pending', order: 0, color: '#3b82f6', pipelineType: 'administrative' },
-            { id: 'review', name: 'Review', order: 1, color: '#8b5cf6', pipelineType: 'administrative' },
-            { id: 'completed', name: 'Completed', order: 2, color: '#10b981', pipelineType: 'administrative' }
-          ]
-        }
-      ]
-      
-      setPipelines(defaultPipelines)
-    }
-  }, [])
-
   const handleLogin = (email: string, password: string) => {
     const newUser: User = {
       id: Date.now().toString(),
@@ -152,13 +110,14 @@ function App() {
       />
       
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {currentView === 'dashboard' && <Dashboard onShowNotifications={() => setShowNotifications(true)} />}
-        {currentView === 'pipeline' && <PipelineView />}
-        {currentView === 'analytics' && <AnalyticsDashboard />}
-        {currentView === 'calendar' && <CalendarView />}
-        {currentView === 'team' && <TeamView />}
+        {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
+        {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} />}
+        {currentView === 'analytics' && <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />}
+        {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
+        {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'settings' && (
           <SettingsView 
+            key={currentCompanyId}
             currentUserId={user.id}
             currentCompanyId={currentCompanyId}
             onCompanyChange={setCurrentCompanyId}

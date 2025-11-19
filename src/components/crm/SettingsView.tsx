@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useKV } from '@github/spark/hooks'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,8 +22,8 @@ interface SettingsViewProps {
 }
 
 export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange }: SettingsViewProps = {}) {
-  const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
-  const [automations, setAutomations] = useKV<AutomationRule[]>('automations', [])
+  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${currentCompanyId}`, [])
+  const [automations, setAutomations] = usePersistentState<AutomationRule[]>(`automations-${currentCompanyId}`, [])
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
 
   const toggleAutomation = (id: string) => {
