@@ -36,7 +36,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1">Configure pipelines and automations</p>

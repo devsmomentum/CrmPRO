@@ -110,7 +110,7 @@ export function PipelineView() {
   }
 
   return (
-    <div className="h-full flex flex-col pb-16 md:pb-0">
+    <div className="flex-1 flex flex-col overflow-hidden">
       <div className="p-4 md:p-6 border-b border-border">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
@@ -164,163 +164,182 @@ export function PipelineView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto p-4 md:p-6">
-        <div className="flex gap-3 md:gap-4 h-full min-w-max">
-          {(currentPipeline?.stages || []).map(stage => {
-            const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
-            
-            return (
-              <div 
-                key={stage.id} 
-                className="w-72 md:w-80 flex flex-col flex-shrink-0"
-                onDragOver={handleDragOver}
-                onDrop={(e) => handleDrop(e, stage.id)}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className={cn('w-3 h-3 rounded-full')} style={{ backgroundColor: stage.color }} />
-                    <h3 className="font-semibold text-sm md:text-base">{stage.name}</h3>
-                    <Badge variant="secondary" className="text-xs">{stageLeads.length}</Badge>
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full overflow-x-auto px-4 md:px-6 py-4 md:py-6">
+          <div className="flex gap-3 md:gap-4 h-full min-h-0 min-w-max">
+            {(currentPipeline?.stages || []).map(stage => {
+              const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
+
+              return (
+                <div
+                  key={stage.id}
+                  className="w-72 md:w-80 flex flex-col flex-shrink-0 min-h-0"
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, stage.id)}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={cn('w-3 h-3 rounded-full flex-shrink-0')} style={{ backgroundColor: stage.color }} />
+                      <h3 className="font-semibold text-sm md:text-base truncate">{stage.name}</h3>
+                      <Badge variant="secondary" className="text-xs flex-shrink-0">{stageLeads.length}</Badge>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <AddLeadDialog
+                        pipelineType={activePipeline}
+                        stages={currentPipeline?.stages || []}
+                        teamMembers={teamMemberNames}
+                        onAdd={handleAddLead}
+                        defaultStageId={stage.id}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            type="button"
+                            title={t.pipeline.addLead}
+                          >
+                            <Plus size={16} />
+                            <span className="sr-only">{t.pipeline.addLead}</span>
+                          </Button>
+                        }
+                      />
+                      <AddStageDialog
+                        pipelineType={activePipeline}
+                        currentStagesCount={currentPipeline?.stages.length || 0}
+                        onAdd={handleAddStage}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            type="button"
+                            title={t.pipeline.addStage}
+                          >
+                            <Plus size={16} />
+                            <span className="sr-only">{t.pipeline.addStage}</span>
+                          </Button>
+                        }
+                      />
+                    </div>
                   </div>
-                  <AddLeadDialog
-                    pipelineType={activePipeline}
-                    stages={currentPipeline?.stages || []}
-                    teamMembers={teamMemberNames}
-                    onAdd={handleAddLead}
-                    defaultStageId={stage.id}
-                    trigger={
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground"
-                        type="button"
+
+                  <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/30 rounded-lg p-2">
+                    {stageLeads.map(lead => (
+                      <Card
+                        key={lead.id}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, lead)}
+                        className="p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
+                        style={{ borderLeftColor: stage.color }}
+                        onClick={() => setSelectedLead(lead)}
                       >
-                        <Plus size={16} />
-                        <span className="sr-only">{t.pipeline.addLead}</span>
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
+                            <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
+                                <DotsThree size={14} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem>{t.buttons.edit}</DropdownMenuItem>
+                              <DropdownMenuItem>Mover a Etapa</DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive"
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  handleDeleteLead(lead.id)
+                                }}
+                              >
+                                {t.buttons.delete}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+
+                        <div className="flex items-center gap-1 mb-1">
+                          <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
+                          <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
+                        </div>
+
+                        {lead.budget > 0 && (
+                          <p className="text-sm font-medium text-primary mb-1">
+                            ${lead.budget.toLocaleString()}
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap gap-1 mb-1">
+                          {lead.tags.slice(0, 2).map(tag => (
+                            <Badge
+                              key={tag.id}
+                              variant="outline"
+                              className="text-xs h-4 px-1"
+                              style={{ borderColor: tag.color, color: tag.color }}
+                            >
+                              {tag.name}
+                            </Badge>
+                          ))}
+                          {lead.tags.length > 2 && (
+                            <Badge variant="outline" className="text-xs h-4 px-1">
+                              +{lead.tags.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+
+                        <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
+                          {t.lead.assignedTo}: {lead.assignedTo}
+                        </div>
+                      </Card>
+                    ))}
+
+                    {stageLeads.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        {t.pipeline.noLeads}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+
+            {(currentPipeline?.stages || []).length === 0 && (
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <p className="mb-4">{t.pipeline.noStages}</p>
+                  <AddStageDialog
+                    pipelineType={activePipeline}
+                    currentStagesCount={0}
+                    onAdd={handleAddStage}
+                    trigger={
+                      <Button>
+                        <Plus className="mr-2" size={20} />
+                        {t.pipeline.addFirstStage}
                       </Button>
                     }
                   />
                 </div>
-
-                <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/30 rounded-lg p-2">
-                  {stageLeads.map(lead => (
-                    <Card 
-                      key={lead.id} 
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, lead)}
-                      className="p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
-                      style={{ borderLeftColor: stage.color }}
-                      onClick={() => setSelectedLead(lead)}
-                    >
-                      <div className="flex items-start justify-between mb-1">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
-                          <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
-                        </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
-                              <DotsThree size={14} />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem>{t.buttons.edit}</DropdownMenuItem>
-                            <DropdownMenuItem>Mover a Etapa</DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                handleDeleteLead(lead.id)
-                              }}
-                            >
-                              {t.buttons.delete}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-
-                      <div className="flex items-center gap-1 mb-1">
-                        <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
-                        <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
-                      </div>
-
-                      {lead.budget > 0 && (
-                        <p className="text-sm font-medium text-primary mb-1">
-                          ${lead.budget.toLocaleString()}
-                        </p>
-                      )}
-
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        {lead.tags.slice(0, 2).map(tag => (
-                          <Badge 
-                            key={tag.id} 
-                            variant="outline" 
-                            className="text-xs h-4 px-1"
-                            style={{ borderColor: tag.color, color: tag.color }}
-                          >
-                            {tag.name}
-                          </Badge>
-                        ))}
-                        {lead.tags.length > 2 && (
-                          <Badge variant="outline" className="text-xs h-4 px-1">
-                            +{lead.tags.length - 2}
-                          </Badge>
-                        )}
-                      </div>
-
-                      <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
-                        {t.lead.assignedTo}: {lead.assignedTo}
-                      </div>
-                    </Card>
-                  ))}
-
-                  {stageLeads.length === 0 && (
-                    <div className="text-center py-8 text-muted-foreground text-sm">
-                      {t.pipeline.noLeads}
-                    </div>
-                  )}
-                </div>
               </div>
-            )
-          })}
+            )}
 
-          {(currentPipeline?.stages || []).length === 0 && (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground">
-              <div className="text-center">
-                <p className="mb-4">{t.pipeline.noStages}</p>
+            {(currentPipeline?.stages || []).length > 0 && (
+              <div className="w-72 md:w-80 flex flex-col flex-shrink-0 min-h-0">
                 <AddStageDialog
                   pipelineType={activePipeline}
-                  currentStagesCount={0}
+                  currentStagesCount={currentPipeline?.stages.length || 0}
                   onAdd={handleAddStage}
                   trigger={
-                    <Button>
-                      <Plus className="mr-2" size={20} />
-                      {t.pipeline.addFirstStage}
-                    </Button>
+                    <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/20 rounded-lg p-2 border-2 border-dashed border-border hover:border-primary transition-colors cursor-pointer flex flex-col items-center justify-center" title={t.pipeline.addStage}>
+                      <Plus size={22} className="text-muted-foreground mb-1" />
+                      <span className="text-xs font-medium text-muted-foreground">{t.pipeline.addStage}</span>
+                    </div>
                   }
                 />
               </div>
-            </div>
-          )}
-
-          {(currentPipeline?.stages || []).length > 0 && (
-            <div className="w-72 md:w-80 flex flex-col flex-shrink-0">
-              <AddStageDialog
-                pipelineType={activePipeline}
-                currentStagesCount={currentPipeline?.stages.length || 0}
-                onAdd={handleAddStage}
-                trigger={
-                  <button
-                    type="button"
-                    className="w-full min-h-[240px] rounded-lg border-2 border-dashed border-border bg-muted/30 text-muted-foreground flex flex-col items-center justify-center gap-2 text-sm font-medium transition-colors hover:border-primary"
-                  >
-                    <Plus size={20} />
-                    {t.pipeline.addStage}
-                  </button>
-                }
-              />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

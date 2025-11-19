@@ -151,7 +151,7 @@ function App() {
         onCompanyChange={setCurrentCompanyId}
       />
       
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         {currentView === 'dashboard' && <Dashboard onShowNotifications={() => setShowNotifications(true)} />}
         {currentView === 'pipeline' && <PipelineView />}
         {currentView === 'analytics' && <AnalyticsDashboard />}
