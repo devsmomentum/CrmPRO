@@ -1,14 +1,19 @@
-import { useKV } from '@github/spark/hooks'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { TeamMember, Task, Role } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { AddTeamMemberDialog } from './AddTeamMemberDialog'
+import { Button } from '@/components/ui/button'
+import { Trash } from '@phosphor-icons/react'
+import { toast } from 'sonner'
 
 export function TeamView() {
-  const [teamMembers, setTeamMembers] = useKV<TeamMember[]>('team-members', [])
-  const [tasks] = useKV<Task[]>('tasks', [])
-  const [roles] = useKV<Role[]>('roles', [])
+  const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>('team-members', [])
+  const [tasks] = usePersistentState<Task[]>('tasks', [])
+  const [roles] = usePersistentState<Role[]>('roles', [])
+  
 
   const getTaskCount = (memberName: string) => {
     return (tasks || []).filter(t => t.assignedTo === memberName && !t.completed).length
@@ -23,14 +28,22 @@ export function TeamView() {
     setTeamMembers((current) => [...(current || []), member])
   }
 
+  const handleDeleteMember = (memberId: string) => {
+    setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
+    toast.success('Miembro eliminado')
+  }
+
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold">Team</h1>
-          <p className="text-muted-foreground mt-1">Manage team members and assignments</p>
+          <p className="text-muted-foreground text-sm">Manage team members and assignments</p>
+          
         </div>
-        <AddTeamMemberDialog onAdd={handleAddMember} />
+        <div className="flex items-center gap-2">
+          <AddTeamMemberDialog onAdd={handleAddMember} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -59,6 +72,15 @@ export function TeamView() {
                       )}
                     </div>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeleteMember(member.id)}
+                    title="Eliminar miembro"
+                  >
+                    <Trash size={16} />
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -70,6 +92,21 @@ export function TeamView() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Active Tasks</span>
                     <Badge variant="secondary">{getTaskCount(member.name)}</Badge>
+                  </div>
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Pipelines</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {(member.pipelines || []).map(tp => (
+                        <Badge key={tp} variant="outline" className="text-xs capitalize">
+                          {tp === 'sales' && 'Ventas'}
+                          {tp === 'support' && 'Soporte'}
+                          {tp === 'administrative' && 'Administrativo'}
+                        </Badge>
+                      ))}
+                      {(member.pipelines || []).length === 0 && (
+                        <span className="text-xs text-muted-foreground">Sin asignar</span>
+                      )}
+                    </div>
                   </div>
                   {roleInfo && roleInfo.permissions.length > 0 && (
                     <div className="pt-2 border-t border-border">

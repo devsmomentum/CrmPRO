@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,9 +15,10 @@ interface AddLeadDialogProps {
   teamMembers: string[]
   onAdd: (lead: Lead) => void
   trigger?: React.ReactNode
+  defaultStageId?: string
 }
 
-export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigger }: AddLeadDialogProps) {
+export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigger, defaultStageId }: AddLeadDialogProps) {
   const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -27,10 +28,21 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
   const [budget, setBudget] = useState('')
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
   const [assignedTo, setAssignedTo] = useState(teamMembers[0] || 'Sin asignar')
+  const firstStageId = stages[0]?.id || ''
+  const [stageId, setStageId] = useState(defaultStageId || firstStageId)
+
+  useEffect(() => {
+    setStageId(defaultStageId || firstStageId)
+  }, [defaultStageId, firstStageId])
 
   const handleSubmit = () => {
     if (!name.trim() || !email.trim() || !phone.trim()) {
       toast.error(t.messages.fillRequired)
+      return
+    }
+
+    if (!stageId) {
+      toast.error(t.pipeline.noStages)
       return
     }
 
@@ -41,7 +53,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
       phone: phone.trim(),
       company: company.trim(),
       pipeline: pipelineType,
-      stage: stages[0]?.id || '',
+      stage: stageId,
       tags: [],
       priority,
       budget: budget ? parseFloat(budget) : 0,
@@ -64,6 +76,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
     setBudget('')
     setPriority('medium')
     setAssignedTo(teamMembers[0] || 'Sin asignar')
+    setStageId(defaultStageId || firstStageId)
   }
 
   return (
@@ -128,6 +141,21 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
               placeholder="10000"
             />
           </div>
+          {stages.length > 0 && (
+            <div>
+              <Label htmlFor="lead-stage">{t.stage.name}</Label>
+              <Select value={stageId} onValueChange={setStageId}>
+                <SelectTrigger id="lead-stage">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {stages.map(stage => (
+                    <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label htmlFor="lead-priority">{t.lead.priority}</Label>
             <Select value={priority} onValueChange={(v) => setPriority(v as any)}>

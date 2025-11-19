@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useKV } from '@github/spark/hooks'
+import { useEffect, useState } from 'react'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,9 +18,9 @@ import { toast } from 'sonner'
 
 export function PipelineView() {
   const t = useTranslation('es')
-  const [leads, setLeads] = useKV<Lead[]>('leads', [])
-  const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
-  const [teamMembers] = useKV<TeamMember[]>('team-members', [])
+  const [leads, setLeads] = usePersistentState<Lead[]>('leads', [])
+  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>('pipelines', [])
+  const [teamMembers] = usePersistentState<TeamMember[]>('team-members', [])
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
@@ -27,10 +28,17 @@ export function PipelineView() {
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
   const allPipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
+  const eligibleMembers = (teamMembers || []).filter(m => !m.pipelines || (m.pipelines || []).includes(activePipeline))
+  const teamMemberNames = eligibleMembers.map(m => m.name)
   const pipelineLeads = filterByMember === 'all' 
     ? allPipelineLeads 
     : allPipelineLeads.filter(l => l.assignedTo === filterByMember)
-  const teamMemberNames = (teamMembers || []).map(m => m.name)
+
+  useEffect(() => {
+    if (filterByMember !== 'all' && !teamMemberNames.includes(filterByMember)) {
+      setFilterByMember('all')
+    }
+  }, [activePipeline, teamMembers])
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -60,6 +68,12 @@ export function PipelineView() {
 
   const handleAddLead = (lead: Lead) => {
     setLeads((current) => [...(current || []), lead])
+  }
+
+  const handleDeleteLead = (leadId: string) => {
+    setLeads((current) => (current || []).filter(l => l.id !== leadId))
+    setSelectedLead((current) => current?.id === leadId ? null : current)
+    toast.success(t.messages.leadDeleted)
   }
   
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
@@ -158,7 +172,7 @@ export function PipelineView() {
             return (
               <div 
                 key={stage.id} 
-                className="w-72 md:w-80 flex flex-col"
+                className="w-72 md:w-80 flex flex-col flex-shrink-0"
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, stage.id)}
               >
@@ -168,10 +182,23 @@ export function PipelineView() {
                     <h3 className="font-semibold text-sm md:text-base">{stage.name}</h3>
                     <Badge variant="secondary" className="text-xs">{stageLeads.length}</Badge>
                   </div>
-                  <AddStageDialog
+                  <AddLeadDialog
                     pipelineType={activePipeline}
-                    currentStagesCount={currentPipeline?.stages.length || 0}
-                    onAdd={handleAddStage}
+                    stages={currentPipeline?.stages || []}
+                    teamMembers={teamMemberNames}
+                    onAdd={handleAddLead}
+                    defaultStageId={stage.id}
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground"
+                        type="button"
+                      >
+                        <Plus size={16} />
+                        <span className="sr-only">{t.pipeline.addLead}</span>
+                      </Button>
+                    }
                   />
                 </div>
 
@@ -199,7 +226,15 @@ export function PipelineView() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem>{t.buttons.edit}</DropdownMenuItem>
                             <DropdownMenuItem>Mover a Etapa</DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">{t.buttons.delete}</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                handleDeleteLead(lead.id)
+                              }}
+                            >
+                              {t.buttons.delete}
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -265,6 +300,25 @@ export function PipelineView() {
                   }
                 />
               </div>
+            </div>
+          )}
+
+          {(currentPipeline?.stages || []).length > 0 && (
+            <div className="w-72 md:w-80 flex flex-col flex-shrink-0">
+              <AddStageDialog
+                pipelineType={activePipeline}
+                currentStagesCount={currentPipeline?.stages.length || 0}
+                onAdd={handleAddStage}
+                trigger={
+                  <button
+                    type="button"
+                    className="w-full min-h-[240px] rounded-lg border-2 border-dashed border-border bg-muted/30 text-muted-foreground flex flex-col items-center justify-center gap-2 text-sm font-medium transition-colors hover:border-primary"
+                  >
+                    <Plus size={20} />
+                    {t.pipeline.addStage}
+                  </button>
+                }
+              />
             </div>
           )}
         </div>

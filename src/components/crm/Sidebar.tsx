@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone } from '@phosphor-icons/react'
+import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone, Buildings } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import { useKV } from '@github/spark/hooks'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Notification } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useTranslation } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Company } from './CompanyManagement'
 
 interface User {
   id: string
@@ -20,12 +23,15 @@ interface SidebarProps {
   onViewChange: (view: any) => void
   onLogout?: () => void
   user?: User
+  currentCompanyId?: string
+  onCompanyChange?: (companyId: string) => void
 }
 
-export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange }: SidebarProps) {
   const t = useTranslation('es')
-  const [notifications] = useKV<Notification[]>('notifications', [])
+  const [notifications] = usePersistentState<Notification[]>('notifications', [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [companies] = usePersistentState<Company[]>('companies', [])
   
   const unreadCount = (notifications || []).filter(n => !n.read).length
 
@@ -41,11 +47,32 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
   return (
     <>
       <div className="hidden md:flex md:w-64 bg-card border-r border-border flex-col">
-        <div className="p-6 border-b border-border">
-          <h1 className="text-2xl font-bold text-primary">{t.app.title}</h1>
-          <p className="text-xs text-muted-foreground mt-1">{t.app.subtitle}</p>
+        <div className="p-6 border-b border-border space-y-2">
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            {t.app.title}
+          </h1>
+          <p className="text-xs text-muted-foreground">{t.app.subtitle}</p>
           {user && (
-            <p className="text-xs text-muted-foreground mt-2 truncate">{user.businessName}</p>
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                <Buildings size={12} /> Empresa Activa
+              </label>
+              <Select
+                value={currentCompanyId || ''}
+                onValueChange={(val) => onCompanyChange && onCompanyChange(val)}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Seleccionar empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(companies || []).map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
 

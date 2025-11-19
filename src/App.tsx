@@ -10,7 +10,8 @@ import { SettingsView } from '@/components/crm/SettingsView'
 import { NotificationPanel } from '@/components/crm/NotificationPanel'
 import { LoginView } from '@/components/crm/LoginView'
 import { RegisterView } from '@/components/crm/RegisterView'
-import { useKV } from '@github/spark/hooks'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { toast } from 'sonner'
 import { Pipeline, PipelineType } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
@@ -28,10 +29,10 @@ function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard')
   const [showNotifications, setShowNotifications] = useState(false)
   const [authView, setAuthView] = useState<AuthView>('login')
-  const [user, setUser] = useKV<User | null>('current-user', null)
-  const [companies, setCompanies] = useKV<Company[]>('companies', [])
-  const [currentCompanyId, setCurrentCompanyId] = useKV<string>('current-company-id', '')
-  const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
+  const [user, setUser] = usePersistentState<User | null>('current-user', null)
+  const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
+  const [currentCompanyId, setCurrentCompanyId] = usePersistentState<string>('current-company-id', '')
+  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>('pipelines', [])
   
   useEffect(() => {
     if ((pipelines || []).length === 0) {
@@ -146,6 +147,8 @@ function App() {
         onViewChange={setCurrentView}
         onLogout={handleLogout}
         user={user}
+        currentCompanyId={currentCompanyId}
+        onCompanyChange={setCurrentCompanyId}
       />
       
       <main className="flex-1 overflow-auto">

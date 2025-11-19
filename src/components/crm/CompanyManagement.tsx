@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
-import { useKV } from '@github/spark/hooks'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -25,7 +26,7 @@ interface CompanyManagementProps {
 }
 
 export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyChange }: CompanyManagementProps) {
-  const [companies, setCompanies] = useKV<Company[]>('companies', [])
+  const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newCompanyName, setNewCompanyName] = useState('')
   const [newCompanyLogo, setNewCompanyLogo] = useState<string>('')
