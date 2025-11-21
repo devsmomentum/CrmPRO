@@ -5,7 +5,7 @@ import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, DotsThree, Funnel } from '@phosphor-icons/react'
+import { Plus, DotsThree, Funnel, Trash } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
@@ -16,8 +16,25 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
+import { Building } from '@phosphor-icons/react'
+
 export function PipelineView({ companyId }: { companyId?: string }) {
   const t = useTranslation('es')
+  
+  if (!companyId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+        <div className="bg-muted/50 p-6 rounded-full mb-4">
+          <Building size={64} className="text-muted-foreground" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">No hay empresa seleccionada</h2>
+        <p className="text-muted-foreground max-w-md mb-6">
+          Debes crear o seleccionar una empresa para gestionar pipelines y leads.
+        </p>
+      </div>
+    )
+  }
+
   const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
   const [teamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
@@ -25,47 +42,6 @@ export function PipelineView({ companyId }: { companyId?: string }) {
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
-
-  useEffect(() => {
-    if ((pipelines || []).length === 0) {
-      const defaultPipelines: Pipeline[] = [
-        {
-          id: 'sales-pipeline',
-          name: 'Sales Pipeline',
-          type: 'sales',
-          stages: [
-            { id: 'lead', name: 'Lead', order: 0, color: '#3b82f6', pipelineType: 'sales' },
-            { id: 'qualified', name: 'Qualified', order: 1, color: '#8b5cf6', pipelineType: 'sales' },
-            { id: 'proposal', name: 'Proposal', order: 2, color: '#ec4899', pipelineType: 'sales' },
-            { id: 'negotiation', name: 'Negotiation', order: 3, color: '#f59e0b', pipelineType: 'sales' },
-            { id: 'won', name: 'Won', order: 4, color: '#10b981', pipelineType: 'sales' }
-          ]
-        },
-        {
-          id: 'support-pipeline',
-          name: 'Support Pipeline',
-          type: 'support',
-          stages: [
-            { id: 'new', name: 'New', order: 0, color: '#3b82f6', pipelineType: 'support' },
-            { id: 'in-progress', name: 'In Progress', order: 1, color: '#f59e0b', pipelineType: 'support' },
-            { id: 'resolved', name: 'Resolved', order: 2, color: '#10b981', pipelineType: 'support' }
-          ]
-        },
-        {
-          id: 'administrative-pipeline',
-          name: 'Administrative Pipeline',
-          type: 'administrative',
-          stages: [
-            { id: 'pending', name: 'Pending', order: 0, color: '#3b82f6', pipelineType: 'administrative' },
-            { id: 'review', name: 'Review', order: 1, color: '#8b5cf6', pipelineType: 'administrative' },
-            { id: 'completed', name: 'Completed', order: 2, color: '#10b981', pipelineType: 'administrative' }
-          ]
-        }
-      ]
-      
-      setPipelines(defaultPipelines)
-    }
-  }, [pipelines, setPipelines])
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
   const allPipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
@@ -95,7 +71,16 @@ export function PipelineView({ companyId }: { companyId?: string }) {
       const pipelines = current || []
       const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
       
-      if (pipelineIndex === -1) return pipelines
+      if (pipelineIndex === -1) {
+        const newPipeline: Pipeline = {
+          id: `${activePipeline}-pipeline`,
+          name: activePipeline === 'sales' ? 'Sales Pipeline' : 
+                activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline',
+          type: activePipeline,
+          stages: [stage]
+        }
+        return [...pipelines, newPipeline]
+      }
       
       const updatedPipelines = [...pipelines]
       updatedPipelines[pipelineIndex] = {
@@ -117,6 +102,24 @@ export function PipelineView({ companyId }: { companyId?: string }) {
     toast.success(t.messages.leadDeleted)
   }
   
+  const handleDeleteStage = (stageId: string) => {
+    setPipelines((current) => {
+      const pipelines = current || []
+      const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
+      
+      if (pipelineIndex === -1) return pipelines
+      
+      const updatedPipelines = [...pipelines]
+      updatedPipelines[pipelineIndex] = {
+        ...updatedPipelines[pipelineIndex],
+        stages: updatedPipelines[pipelineIndex].stages.filter(s => s.id !== stageId)
+      }
+      
+      return updatedPipelines
+    })
+    toast.success('Etapa eliminada')
+  }
+
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     setDraggedLead(lead)
     e.dataTransfer.effectAllowed = 'move'
@@ -214,17 +217,26 @@ export function PipelineView({ companyId }: { companyId?: string }) {
               return (
                 <div
                   key={stage.id}
-                  className="w-72 md:w-80 flex flex-col flex-shrink-0 min-h-0"
+                  className="w-72 md:w-80 flex flex-col shrink-0 min-h-0"
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      <div className={cn('w-3 h-3 rounded-full flex-shrink-0')} style={{ backgroundColor: stage.color }} />
+                      <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
                       <h3 className="font-semibold text-sm md:text-base truncate">{stage.name}</h3>
-                      <Badge variant="secondary" className="text-xs flex-shrink-0">{stageLeads.length}</Badge>
+                      <Badge variant="secondary" className="text-xs shrink-0">{stageLeads.length}</Badge>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteStage(stage.id)}
+                        title="Eliminar etapa"
+                      >
+                        <Trash size={16} />
+                      </Button>
                       <AddLeadDialog
                         pipelineType={activePipeline}
                         stages={currentPipeline?.stages || []}
@@ -281,7 +293,7 @@ export function PipelineView({ companyId }: { companyId?: string }) {
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0">
                                 <DotsThree size={14} />
                               </Button>
                             </DropdownMenuTrigger>
@@ -366,7 +378,7 @@ export function PipelineView({ companyId }: { companyId?: string }) {
             )}
 
             {(currentPipeline?.stages || []).length > 0 && (
-              <div className="w-72 md:w-80 flex flex-col flex-shrink-0 min-h-0">
+              <div className="w-72 md:w-80 flex flex-col shrink-0 min-h-0">
                 <AddStageDialog
                   pipelineType={activePipeline}
                   currentStagesCount={currentPipeline?.stages.length || 0}

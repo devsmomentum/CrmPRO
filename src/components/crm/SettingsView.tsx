@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Dispatch, SetStateAction } from 'react'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
@@ -12,16 +12,18 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AddPipelineDialog } from './AddPipelineDialog'
 import { RolesManagement } from './RolesManagement'
-import { CompanyManagement } from './CompanyManagement'
+import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 
 interface SettingsViewProps {
   currentUserId?: string
   currentCompanyId?: string
   onCompanyChange?: (companyId: string) => void
+  companies?: Company[]
+  setCompanies?: Dispatch<SetStateAction<Company[]>>
 }
 
-export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange }: SettingsViewProps = {}) {
+export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange, companies, setCompanies }: SettingsViewProps = {}) {
   const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${currentCompanyId}`, [])
   const [automations, setAutomations] = usePersistentState<AutomationRule[]>(`automations-${currentCompanyId}`, [])
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
@@ -54,11 +56,13 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
         </TabsList>
 
         <TabsContent value="companies" className="space-y-4 mt-6">
-          {currentUserId && currentCompanyId && onCompanyChange ? (
+          {currentUserId && onCompanyChange && companies && setCompanies ? (
             <CompanyManagement
               currentUserId={currentUserId}
-              currentCompanyId={currentCompanyId}
+              currentCompanyId={currentCompanyId || ''}
               onCompanyChange={onCompanyChange}
+              companies={companies}
+              setCompanies={setCompanies}
             />
           ) : (
             <p className="text-center text-muted-foreground py-12">

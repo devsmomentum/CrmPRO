@@ -1,22 +1,37 @@
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { TeamMember, Task, Role } from '@/lib/types'
+import { TeamMember, Task, Role, Lead } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { AddTeamMemberDialog } from './AddTeamMemberDialog'
 import { Button } from '@/components/ui/button'
-import { Trash } from '@phosphor-icons/react'
+import { Trash, Building, Info } from '@phosphor-icons/react'
 import { toast } from 'sonner'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 export function TeamView({ companyId }: { companyId?: string }) {
+  if (!companyId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+        <div className="bg-muted/50 p-6 rounded-full mb-4">
+          <Building size={64} className="text-muted-foreground" />
+        </div>
+        <h2 className="text-2xl font-bold mb-2">No hay empresa seleccionada</h2>
+        <p className="text-muted-foreground max-w-md mb-6">
+          Debes crear o seleccionar una empresa para gestionar tu equipo.
+        </p>
+      </div>
+    )
+  }
+
   const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
-  const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
+  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [roles] = usePersistentState<Role[]>(`roles-${companyId}`, [])
   
 
-  const getTaskCount = (memberName: string) => {
-    return (tasks || []).filter(t => t.assignedTo === memberName && !t.completed).length
+  const getAssignedLeadsCount = (memberName: string) => {
+    return (leads || []).filter(l => l.assignedTo === memberName).length
   }
   
   const getRoleInfo = (roleId?: string) => {
@@ -91,7 +106,34 @@ export function TeamView({ companyId }: { companyId?: string }) {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Active Tasks</span>
-                    <Badge variant="secondary">{getTaskCount(member.name)}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{getAssignedLeadsCount(member.name)}</Badge>
+                      {getAssignedLeadsCount(member.name) > 0 && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-muted">
+                              <Info size={14} className="text-muted-foreground" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-60" align="end">
+                            <div className="space-y-2">
+                              <h4 className="font-medium text-sm">Leads Asignados</h4>
+                              <div className="grid gap-1">
+                                {(leads || []).filter(l => l.assignedTo === member.name).map(lead => (
+                                  <div key={lead.id} className="text-sm flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full ${
+                                      lead.priority === 'high' ? 'bg-red-500' : 
+                                      lead.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
+                                    }`} />
+                                    <span className="truncate">{lead.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
                   </div>
                   <div className="text-sm">
                     <span className="text-muted-foreground">Pipelines</span>

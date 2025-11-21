@@ -37,19 +37,12 @@ function App() {
     const newUser: User = {
       id: Date.now().toString(),
       email,
-      businessName: 'Mi Empresa'
-    }
-    
-    const newCompany: Company = {
-      id: Date.now().toString(),
-      name: 'Mi Empresa',
-      ownerId: newUser.id,
-      createdAt: new Date()
+      businessName: ''
     }
     
     setUser(newUser)
-    setCompanies([newCompany])
-    setCurrentCompanyId(newCompany.id)
+    setCompanies([])
+    setCurrentCompanyId('')
     toast.success('¡Sesión iniciada exitosamente!')
   }
 
@@ -107,6 +100,7 @@ function App() {
         user={user}
         currentCompanyId={currentCompanyId}
         onCompanyChange={setCurrentCompanyId}
+        companies={companies}
       />
       
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
@@ -121,6 +115,8 @@ function App() {
             currentUserId={user.id}
             currentCompanyId={currentCompanyId}
             onCompanyChange={setCurrentCompanyId}
+            companies={companies}
+            setCompanies={setCompanies}
           />
         )}
       </main>

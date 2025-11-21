@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, Dispatch, SetStateAction } from 'react'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,10 +23,12 @@ interface CompanyManagementProps {
   currentUserId: string
   currentCompanyId: string
   onCompanyChange: (companyId: string) => void
+  companies: Company[]
+  setCompanies: Dispatch<SetStateAction<Company[]>>
 }
 
-export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyChange }: CompanyManagementProps) {
-  const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
+export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyChange, companies, setCompanies }: CompanyManagementProps) {
+  // const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newCompanyName, setNewCompanyName] = useState('')
   const [newCompanyLogo, setNewCompanyLogo] = useState<string>('')
@@ -88,17 +90,14 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
   }
 
   const handleDeleteCompany = (companyId: string) => {
-    if ((companies || []).length <= 1) {
-      toast.error('Debes tener al menos una empresa')
-      return
-    }
-
     setCompanies((current) => (current || []).filter(c => c.id !== companyId))
     
     if (currentCompanyId === companyId) {
       const remaining = (companies || []).filter(c => c.id !== companyId)
       if (remaining.length > 0) {
         onCompanyChange(remaining[0].id)
+      } else {
+        onCompanyChange('')
       }
     }
     
@@ -179,91 +178,94 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
       </div>
 
       <div className="grid gap-4">
-        {userCompanies.map((company) => (
-          <Card key={company.id} className={company.id === currentCompanyId ? 'ring-2 ring-primary' : ''}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <Avatar className="h-16 w-16">
-                    {company.logo ? (
-                      <AvatarImage src={company.logo} alt={company.name} />
-                    ) : (
-                      <AvatarFallback>
-                        <Building size={32} />
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleLogoUpload(e, company.id)}
-                    className="hidden"
-                    id={`logo-upload-${company.id}`}
-                  />
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0"
-                    onClick={() => document.getElementById(`logo-upload-${company.id}`)?.click()}
-                  >
-                    <Upload size={14} />
-                  </Button>
-                </div>
-
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{company.name}</h3>
-                    {company.id === currentCompanyId && (
-                      <Badge variant="default" className="h-5">
-                        <Check size={12} className="mr-1" />
-                        Activa
-                      </Badge>
-                    )}
+        {userCompanies.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg bg-muted/10 border-dashed">
+            <div className="bg-background p-4 rounded-full mb-4 shadow-sm">
+              <Building size={40} className="text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">No tienes empresas aún</h3>
+            <p className="text-muted-foreground max-w-sm mb-6">
+              Comienza creando tu primera empresa para gestionar tus proyectos y equipo.
+            </p>
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="mr-2" size={18} />
+              Crear mi primera empresa
+            </Button>
+          </div>
+        ) : (
+          userCompanies.map((company) => (
+            <Card key={company.id} className={company.id === currentCompanyId ? 'ring-2 ring-primary' : ''}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative">
+                    <Avatar className="h-16 w-16">
+                      {company.logo ? (
+                        <AvatarImage src={company.logo} alt={company.name} />
+                      ) : (
+                        <AvatarFallback>
+                          <Building size={32} />
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handleLogoUpload(e, company.id)}
+                      className="hidden"
+                      id={`logo-upload-${company.id}`}
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0"
+                      onClick={() => document.getElementById(`logo-upload-${company.id}`)?.click()}
+                    >
+                      <Upload size={14} />
+                    </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Creada el {new Date(company.createdAt).toLocaleDateString('es-ES')}
-                  </p>
-                </div>
 
-                <div className="flex gap-2">
-                  {company.id !== currentCompanyId && (
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold">{company.name}</h3>
+                      {company.id === currentCompanyId && (
+                        <Badge variant="default" className="h-5">
+                          <Check size={12} className="mr-1" />
+                          Activa
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Creada el {new Date(company.createdAt).toLocaleDateString('es-ES')}
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {company.id !== currentCompanyId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          onCompanyChange(company.id)
+                          toast.success(`Cambiado a ${company.name}`)
+                        }}
+                      >
+                        Activar
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => {
-                        onCompanyChange(company.id)
-                        toast.success(`Cambiado a ${company.name}`)
-                      }}
+                      onClick={() => handleDeleteCompany(company.id)}
                     >
-                      Activar
+                      <Trash size={16} />
                     </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleDeleteCompany(company.id)}
-                    disabled={userCompanies.length <= 1}
-                  >
-                    <Trash size={16} />
-                  </Button>
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
-
-      {userCompanies.length === 0 && (
-        <Card>
-          <CardContent className="py-12">
-            <div className="text-center space-y-2">
-              <Building size={48} className="mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground">No tienes empresas aún</p>
-              <p className="text-sm text-muted-foreground">Crea tu primera empresa para empezar</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   )
 }

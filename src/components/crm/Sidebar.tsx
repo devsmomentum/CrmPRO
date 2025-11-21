@@ -25,13 +25,14 @@ interface SidebarProps {
   user?: User
   currentCompanyId?: string
   onCompanyChange?: (companyId: string) => void
+  companies?: Company[]
 }
 
-export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [] }: SidebarProps) {
   const t = useTranslation('es')
   const [notifications] = usePersistentState<Notification[]>('notifications', [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
-  const [companies] = usePersistentState<Company[]>('companies', [])
+  // const [companies] = usePersistentState<Company[]>('companies', [])
   
   const unreadCount = (notifications || []).filter(n => !n.read).length
 
@@ -52,7 +53,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
             {t.app.title}
           </h1>
           <p className="text-xs text-muted-foreground">{t.app.subtitle}</p>
-          {user && (
+          {user && (companies || []).length > 0 && (
             <div className="space-y-1">
               <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
                 <Buildings size={12} /> Empresa Activa
