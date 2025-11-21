@@ -42,16 +42,48 @@ function App() {
       console.log('[LOGIN] iniciando login para', email)
       const authUser = await login(email, password)
       console.log('[LOGIN] authUser recibido', authUser)
-      const row = await getUsuarioById(authUser.id)
+      
+      // Intentar obtener usuario de la tabla usuarios
+      let row
+      try {
+        row = await getUsuarioById(authUser.id)
+      } catch (err: any) {
+        // Si no existe, crear el usuario en la tabla usuarios
+        console.log('[LOGIN] usuario no existe en tabla usuarios, creando...')
+        row = await createUsuario({ 
+          id: authUser.id, 
+          email: authUser.email || email,
+          nombre: authUser.email?.split('@')[0] || 'Usuario' 
+        })
+      }
+      
       console.log('[LOGIN] fila usuarios', row)
       const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
       setUser(newUser)
-      setCompanies([])
-      setCurrentCompanyId('')
+      
+      // Cargar empresas del usuario
+      const empresas = await getEmpresasByUsuario(authUser.id)
+      const uiCompanies = empresas.map(e => ({
+        id: e.id,
+        name: e.nombre_empresa,
+        ownerId: e.usuario_id,
+        createdAt: new Date(e.created_at)
+      }))
+      setCompanies(uiCompanies)
+      if (uiCompanies.length > 0) {
+        setCurrentCompanyId(uiCompanies[0].id)
+      }
+      
       toast.success('¡Sesión iniciada exitosamente!')
     } catch (e:any) {
       console.error('[LOGIN] error', e)
-      toast.error(e.message || 'Error iniciando sesión')
+      if (e.message?.toLowerCase().includes('email not confirmed')) {
+        toast.error('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
+          duration: 6000
+        })
+      } else {
+        toast.error(e.message || 'Error iniciando sesión')
+      }
     }
   }
 
@@ -60,24 +92,32 @@ function App() {
       console.log('[REGISTER] iniciando registro para', email)
       const authUser = await register(email, password)
       console.log('[REGISTER] authUser recibido', authUser)
-      // Asegurar sesión (si el proyecto requiere confirmación de email, no habrá token todavía)
+      
+      // Verificar si se requiere confirmación de email
       const { data: sessionData } = await supabase.auth.getSession()
+      
       if (!sessionData.session) {
-        console.log('[REGISTER] no hay sesión inmediata, intentando login para obtener token')
-        await login(email, password)
+        // No hay sesión inmediata - se requiere confirmación de email
+        console.log('[REGISTER] confirmación de email requerida')
+        toast.success('¡Registro exitoso! Por favor revisa tu email para confirmar tu cuenta.', {
+          duration: 6000
+        })
+        // Volver a la vista de login
+        setAuthView('login')
+        return
       }
-      const { data: sessionAfter } = await supabase.auth.getSession()
-      if (!sessionAfter.session) {
-        throw new Error('No se pudo obtener sesión tras registro. Verifica si la confirmación de email está habilitada.')
-      }
+      
+      // Si hay sesión, continuar con la creación del usuario y empresa
       const row = await createUsuario({ id: authUser.id, email, nombre: businessName })
       console.log('[REGISTER] fila insertada usuarios', row)
+      
       // Crear empresa inicial
       const empresa = await createEmpresa({ nombre_empresa: businessName, usuario_id: authUser.id })
       console.log('[REGISTER] empresa creada', empresa)
 
       const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
       setUser(newUser)
+      
       // Map a Company shape para UI
       const uiCompany = {
         id: empresa.id,
@@ -92,8 +132,10 @@ function App() {
       console.error('[REGISTER] error', e)
       if (e.message?.toLowerCase().includes('429')) {
         toast.error('Demasiados intentos. Espera unos segundos e intenta de nuevo.')
-      } else if (e.message?.toLowerCase().includes('401')) {
-        toast.error('No autorizado. Puede faltar sesión si la confirmación de email está activada.')
+      } else if (e.message?.toLowerCase().includes('email not confirmed')) {
+        toast.info('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
+          duration: 6000
+        })
       } else {
         toast.error(e.message || 'Error registrando usuario')
       }
