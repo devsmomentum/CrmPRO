@@ -1,5 +1,4 @@
 // import { useKV } from '@github/spark/hooks'
-import { usePersistentState } from '@/hooks/usePersistentState'
 import { TeamMember, Task, Role, Lead } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -11,6 +10,7 @@ import { toast } from 'sonner'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useEffect, useState } from 'react'
 import { createEquipo, deleteEquipo, getEquipos } from '@/supabase/services/equipos'
+import { getPersonas, createPersona, deletePersona } from '@/supabase/services/persona'
 import { Input } from '@/components/ui/input'
 
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
@@ -30,9 +30,10 @@ export function TeamView({ companyId }: { companyId?: string }) {
     )
   }
 
-  const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
-  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
-  const [roles] = usePersistentState<Role[]>(`roles-${companyId}`, [])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  // leads y roles ahora se inicializan como arrays vacíos, y deben obtenerse de la BD si se requiere
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [equipos, setEquipos] = useState<Equipo[]>([])
   const [newTeamName, setNewTeamName] = useState('')
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string | null>(null) // null = all, 'no-team' = unassigned, uuid = specific team
@@ -48,24 +49,81 @@ export function TeamView({ companyId }: { companyId?: string }) {
       }
     })()
   }, [companyId])
+
+  useEffect(() => {
+    if (!companyId) return
+    ;(async () => {
+      try {
+        // Si hay filtro de equipo, solo ese; si no, todos de la empresa
+        let personas: any[] = []
+        if (selectedTeamFilter && selectedTeamFilter !== 'no-team') {
+          personas = await getPersonas(selectedTeamFilter)
+        } else {
+          // Obtener todos los equipos y concatenar miembros
+          const equiposIds = equipos.map(e => e.id)
+          const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
+          personas = allPersonas.flat()
+        }
+        const mapped = personas.map(p => ({
+          id: p.id,
+            name: p.nombre,
+            email: p.email,
+            avatar: '',
+            role: p.titulo_trabajo || '',
+            teamId: p.equipo_id || undefined
+        }))
+        setTeamMembers(mapped)
+      } catch (e:any) {
+        console.error('[TeamView] error cargando personas', e)
+      }
+    })()
+  }, [companyId, equipos, selectedTeamFilter])
   
 
+  // Si necesitas cargar leads y roles desde la BD, agrega aquí los efectos y servicios
   const getAssignedLeadsCount = (memberName: string) => {
-    return (leads || []).filter(l => l.assignedTo === memberName).length
+    return leads.filter(l => l.assignedTo === memberName).length
   }
-  
+
   const getRoleInfo = (roleId?: string) => {
     if (!roleId) return null
-    return (roles || []).find(r => r.id === roleId)
+    return roles.find(r => r.id === roleId)
   }
 
-  const handleAddMember = (member: TeamMember) => {
-    setTeamMembers((current) => [...(current || []), member])
+  const handleAddMember = async (member: TeamMember) => {
+    try {
+      const inserted = await createPersona({
+        nombre: member.name,
+        email: member.email,
+        titulo_trabajo: member.role,
+        equipo_id: member.teamId || null,
+        permisos: []
+      })
+      const mapped: TeamMember = {
+        id: inserted.id,
+        name: inserted.nombre,
+        email: inserted.email,
+        avatar: '',
+        role: inserted.titulo_trabajo || '',
+        teamId: inserted.equipo_id || undefined
+      }
+      setTeamMembers((current) => [...(current || []), mapped])
+      toast.success('Miembro guardado')
+    } catch (e:any) {
+      console.error('[TeamView] error creando persona', e)
+      toast.error(e.message || 'No se pudo crear el miembro')
+    }
   }
 
-  const handleDeleteMember = (memberId: string) => {
-    setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
-    toast.success('Miembro eliminado')
+  const handleDeleteMember = async (memberId: string) => {
+    try {
+      await deletePersona(memberId)
+      setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
+      toast.success('Miembro eliminado de la base de datos')
+    } catch (e:any) {
+      console.error('[TeamView] error eliminando persona', e)
+      toast.error(e.message || 'No se pudo eliminar el miembro')
+    }
   }
 
   const handleCreateEquipo = async () => {

@@ -53,7 +53,7 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
     }
   }, [open, companyId])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim() || !email.trim()) {
       toast.error('Please fill in all required fields')
       return
@@ -76,17 +76,21 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
       pipelines: selectedPipelines
     }
 
-    // Guardar miembro
-    onAdd(newMember)
-    // Reset form including member pipelines
-    setName('')
-    setEmail('')
-    setRole('Sales Rep')
-    setSelectedRoleId('none')
-    setSelectedTeamId('none')
-    setMemberPipelines(new Set(['sales']))
-    setOpen(false)
-    toast.success('Team member added!')
+    try {
+      // Delegamos persistencia al padre (TeamView)
+      onAdd(newMember)
+      setName('')
+      setEmail('')
+      setRole('Sales Rep')
+      setSelectedRoleId('none')
+      setSelectedTeamId('none')
+      setMemberPipelines(new Set(['sales']))
+      setOpen(false)
+      toast.success('Miembro enviado para guardar')
+    } catch (e:any) {
+      console.error('[AddTeamMemberDialog] error preparando miembro', e)
+      toast.error(e.message || 'No se pudo preparar el miembro')
+    }
   }
 
   return (
