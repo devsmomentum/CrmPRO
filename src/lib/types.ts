@@ -122,6 +122,7 @@ export interface TeamMember {
   role: string
   roleId?: string
   pipelines?: PipelineType[]
+  teamId?: string
 }
 
 export interface Appointment {

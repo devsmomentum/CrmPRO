@@ -216,7 +216,7 @@ function App() {
           <span>ID: {user.id}</span>
         </div>
         {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
-        {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} />}
+        {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} />}
         {currentView === 'analytics' && <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} />}

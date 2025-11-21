@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,17 +11,21 @@ import { usePersistentState } from '@/hooks/usePersistentState'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { getEquipos } from '@/supabase/services/equipos'
 
 interface AddTeamMemberDialogProps {
   onAdd: (member: TeamMember) => void
+  companyId?: string
 }
 
-export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
+export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('Sales Rep')
   const [selectedRoleId, setSelectedRoleId] = useState<string>('none')
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('none')
+  const [teams, setTeams] = useState<{ id: string; nombre_equipo: string }[]>([])
   const [roles] = usePersistentState<Role[]>('roles', [])
   const [memberPipelines, setMemberPipelines] = useState<Set<PipelineType>>(new Set(['sales']))
   const pipelineOptions: { value: PipelineType; label: string }[] = [
@@ -41,6 +45,14 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
     'Administrator'
   ]
 
+  useEffect(() => {
+    if (open && companyId) {
+      getEquipos(companyId)
+        .then((data: any) => setTeams(data || []))
+        .catch(err => console.error('Error fetching teams:', err))
+    }
+  }, [open, companyId])
+
   const handleSubmit = () => {
     if (!name.trim() || !email.trim()) {
       toast.error('Please fill in all required fields')
@@ -59,6 +71,7 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
       email: email.trim(),
       role,
       roleId: selectedRoleId && selectedRoleId !== 'none' ? selectedRoleId : undefined,
+      teamId: selectedTeamId && selectedTeamId !== 'none' ? selectedTeamId : undefined,
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
       pipelines: selectedPipelines
     }
@@ -70,6 +83,7 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
     setEmail('')
     setRole('Sales Rep')
     setSelectedRoleId('none')
+    setSelectedTeamId('none')
     setMemberPipelines(new Set(['sales']))
     setOpen(false)
     toast.success('Team member added!')
@@ -143,6 +157,25 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
               Define los permisos de acceso para este miembro
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="team">Equipo (Opcional)</Label>
+            <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+              <SelectTrigger id="team">
+                <SelectValue placeholder="Sin equipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin equipo</SelectItem>
+                {teams.map(team => (
+                  <SelectItem key={team.id} value={team.id}>
+                    {team.nombre_equipo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Asigna un equipo a este miembro
             </p>
           </div>
           <div className="pt-2 border-t border-border">

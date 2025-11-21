@@ -17,8 +17,9 @@ import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
 import { Building } from '@phosphor-icons/react'
+import { Company } from './CompanyManagement'
 
-export function PipelineView({ companyId }: { companyId?: string }) {
+export function PipelineView({ companyId, companies = [] }: { companyId?: string; companies?: Company[] }) {
   const t = useTranslation('es')
   
   if (!companyId) {
@@ -175,6 +176,7 @@ export function PipelineView({ companyId }: { companyId?: string }) {
               stages={currentPipeline?.stages || []}
               teamMembers={teamMemberNames}
               onAdd={handleAddLead}
+              companies={companies}
             />
           </div>
         </div>

@@ -8,6 +8,7 @@ import { Plus } from '@phosphor-icons/react'
 import { Lead, PipelineType, Stage } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
+import { Company } from './CompanyManagement'
 
 interface AddLeadDialogProps {
   pipelineType: PipelineType
@@ -16,9 +17,10 @@ interface AddLeadDialogProps {
   onAdd: (lead: Lead) => void
   trigger?: React.ReactNode
   defaultStageId?: string
+  companies?: Company[]
 }
 
-export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigger, defaultStageId }: AddLeadDialogProps) {
+export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigger, defaultStageId, companies = [] }: AddLeadDialogProps) {
   const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -124,12 +126,27 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
           </div>
           <div>
             <Label htmlFor="lead-company">{t.lead.company}</Label>
-            <Input
-              id="lead-company"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-              placeholder="Acme Corp"
-            />
+            {companies.length > 0 ? (
+              <Select value={company} onValueChange={setCompany}>
+                <SelectTrigger id="lead-company">
+                  <SelectValue placeholder="Seleccionar empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {companies.map((c) => (
+                    <SelectItem key={c.id} value={c.name}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Input
+                id="lead-company"
+                value={company}
+                onChange={(e) => setCompany(e.target.value)}
+                placeholder="Acme Corp"
+              />
+            )}
           </div>
           <div>
             <Label htmlFor="lead-budget">{t.lead.budget}</Label>

@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { AddTeamMemberDialog } from './AddTeamMemberDialog'
 import { Button } from '@/components/ui/button'
-import { Trash, Building, Info } from '@phosphor-icons/react'
+import { Trash, Building, Info, Funnel, Users } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useEffect, useState } from 'react'
@@ -35,6 +35,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
   const [roles] = usePersistentState<Role[]>(`roles-${companyId}`, [])
   const [equipos, setEquipos] = useState<Equipo[]>([])
   const [newTeamName, setNewTeamName] = useState('')
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string | null>(null) // null = all, 'no-team' = unassigned, uuid = specific team
 
   useEffect(() => {
     if (!companyId) return
@@ -92,6 +93,12 @@ export function TeamView({ companyId }: { companyId?: string }) {
     }
   }
 
+  const filteredMembers = (teamMembers || []).filter(member => {
+    if (selectedTeamFilter === null) return true
+    if (selectedTeamFilter === 'no-team') return !member.teamId
+    return member.teamId === selectedTeamFilter
+  })
+
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -101,12 +108,31 @@ export function TeamView({ companyId }: { companyId?: string }) {
           
         </div>
         <div className="flex items-center gap-2">
-          <AddTeamMemberDialog onAdd={handleAddMember} />
+          <AddTeamMemberDialog onAdd={handleAddMember} companyId={companyId} />
         </div>
       </div>
 
       <div className="rounded-lg border p-4 space-y-3">
-        <h2 className="text-lg font-semibold">Equipos de la empresa</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Equipos de la empresa</h2>
+          <div className="flex gap-2">
+            <Button 
+              variant={selectedTeamFilter === null ? "secondary" : "ghost"} 
+              size="sm"
+              onClick={() => setSelectedTeamFilter(null)}
+            >
+              <Users className="mr-2" size={16} />
+              Todos
+            </Button>
+            <Button 
+              variant={selectedTeamFilter === 'no-team' ? "secondary" : "ghost"} 
+              size="sm"
+              onClick={() => setSelectedTeamFilter('no-team')}
+            >
+              Sin Equipo
+            </Button>
+          </div>
+        </div>
         <div className="flex gap-2">
           <Input placeholder="Nombre del equipo" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} className="max-w-xs" />
           <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
@@ -114,21 +140,32 @@ export function TeamView({ companyId }: { companyId?: string }) {
         <div className="grid gap-2">
           {(equipos || []).length === 0 && <p className="text-sm text-muted-foreground">Sin equipos aún</p>}
           {(equipos || []).map(eq => (
-            <div key={eq.id} className="flex items-center justify-between border rounded-md p-2">
+            <div key={eq.id} className={`flex items-center justify-between border rounded-md p-2 ${selectedTeamFilter === eq.id ? 'bg-muted/50 border-primary' : ''}`}>
               <div>
                 <div className="font-medium">{eq.nombre_equipo}</div>
                 <div className="text-xs text-muted-foreground">Creado: {new Date(eq.created_at).toLocaleString('es-ES')}</div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => handleDeleteEquipo(eq.id)}>
-                <Trash size={14} />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant={selectedTeamFilter === eq.id ? "default" : "outline"} 
+                  size="sm" 
+                  onClick={() => setSelectedTeamFilter(selectedTeamFilter === eq.id ? null : eq.id)}
+                  title={selectedTeamFilter === eq.id ? "Mostrar todos" : "Ver miembros de este equipo"}
+                >
+                  <Funnel size={14} className="mr-1" />
+                  {selectedTeamFilter === eq.id ? "Filtrando" : "Filtrar"}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => handleDeleteEquipo(eq.id)}>
+                  <Trash size={14} />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {(teamMembers || []).map(member => {
+        {filteredMembers.map(member => {
           const roleInfo = getRoleInfo(member.roleId)
           return (
             <Card key={member.id}>
@@ -170,6 +207,14 @@ export function TeamView({ companyId }: { companyId?: string }) {
                     <span className="text-muted-foreground">Email</span>
                     <span className="font-medium truncate ml-2">{member.email}</span>
                   </div>
+                  {member.teamId && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Equipo</span>
+                      <span className="font-medium truncate ml-2">
+                        {equipos.find(e => e.id === member.teamId)?.nombre_equipo || 'Desconocido'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Active Tasks</span>
                     <div className="flex items-center gap-2">
@@ -229,9 +274,11 @@ export function TeamView({ companyId }: { companyId?: string }) {
           )
         })}
 
-        {(teamMembers || []).length === 0 && (
+        {filteredMembers.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            No team members added yet
+            {selectedTeamFilter 
+              ? "No hay miembros en este equipo" 
+              : "No team members added yet"}
           </div>
         )}
       </div>
