@@ -11,14 +11,14 @@ interface LoginViewProps {
   onSwitchToRegister: () => void
 }
 
-export function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
+function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
   const t = useTranslation('es')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!email || !password) {
       toast.error(t.messages.fillRequired)
       return
@@ -34,6 +34,7 @@ export function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
           <CardTitle className="text-3xl font-bold text-primary">CRM Pro</CardTitle>
           <CardDescription className="text-lg mt-2">{t.auth.welcome}</CardDescription>
         </CardHeader>
+
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -46,6 +47,7 @@ export function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
                 placeholder="tu@empresa.com"
               />
             </div>
+
             <div>
               <Label htmlFor="login-password">{t.auth.password}</Label>
               <Input
@@ -56,9 +58,11 @@ export function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
                 placeholder="••••••••"
               />
             </div>
+
             <Button type="submit" className="w-full" size="lg">
               {t.auth.login}
             </Button>
+
             <div className="text-center mt-4">
               <button
                 type="button"
@@ -74,3 +78,5 @@ export function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
     </div>
   )
 }
+
+export default LoginView
