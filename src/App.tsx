@@ -14,6 +14,7 @@ import { register, login, logout } from '@/supabase/auth'
 import { createUsuario, getUsuarioById } from '@/supabase/services/usuarios'
 import { createEmpresa, getEmpresasByUsuario } from '@/supabase/services/empresa'
 import { supabase } from '@/supabase/client'
+import { verifyEmpresaTable, testInsertEmpresa, listEmpresasCurrentUser, testRLSViolation } from '@/supabase/diagnostics/empresaDebug'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { toast } from 'sonner'
@@ -36,6 +37,17 @@ function App() {
   const [user, setUser] = usePersistentState<User | null>('current-user', null)
   const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
   const [currentCompanyId, setCurrentCompanyId] = usePersistentState<string>('current-company-id', '')
+
+  // Exponer utilidades de diagnóstico en window para usar desde la consola
+  useEffect(() => {
+    ;(window as any).empDiag = {
+      verifyEmpresaTable,
+      testInsertEmpresa,
+      listEmpresasCurrentUser,
+      testRLSViolation
+    }
+    console.log('[EMPRESA:DIAG] Herramientas empDiag disponibles en window.empDiag')
+  }, [])
   
   const handleLogin = async (email: string, password: string) => {
     try {
@@ -72,6 +84,24 @@ function App() {
       setCompanies(uiCompanies)
       if (uiCompanies.length > 0) {
         setCurrentCompanyId(uiCompanies[0].id)
+      }
+      // Fallback: si el registro inicial no creó empresa (por confirmación email) crearla ahora
+      if (uiCompanies.length === 0) {
+        console.log('[LOGIN] No se encontraron empresas; creando empresa inicial')
+        try {
+          const empresaCreada = await createEmpresa({ nombre_empresa: row.nombre, usuario_id: authUser.id })
+          console.log('[LOGIN] Empresa inicial creada en login', empresaCreada)
+          const nuevaCompany = {
+            id: empresaCreada.id,
+            name: empresaCreada.nombre_empresa,
+            ownerId: empresaCreada.usuario_id,
+            createdAt: new Date(empresaCreada.created_at)
+          }
+          setCompanies([nuevaCompany])
+          setCurrentCompanyId(nuevaCompany.id)
+        } catch (err:any) {
+          console.error('[LOGIN] Error creando empresa inicial en login', err)
+        }
       }
       
       toast.success('¡Sesión iniciada exitosamente!')

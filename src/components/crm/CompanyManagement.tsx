@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Plus, Upload, Trash, Building, Check } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
+import { createEmpresa, deleteEmpresa } from '@/supabase/services/empresa'
 
 export interface Company {
   id: string
@@ -35,26 +36,30 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [editingLogoCompanyId, setEditingLogoCompanyId] = useState<string | null>(null)
 
-  const handleCreateCompany = () => {
+  const handleCreateCompany = async () => {
     if (!newCompanyName.trim()) {
       toast.error('El nombre de la empresa es requerido')
       return
     }
-
-    const newCompany: Company = {
-      id: Date.now().toString(),
-      name: newCompanyName.trim(),
-      logo: newCompanyLogo || undefined,
-      ownerId: currentUserId,
-      createdAt: new Date()
+    try {
+      const inserted = await createEmpresa({ nombre_empresa: newCompanyName.trim(), usuario_id: currentUserId })
+      const newCompany: Company = {
+        id: inserted.id,
+        name: inserted.nombre_empresa,
+        logo: newCompanyLogo || undefined,
+        ownerId: inserted.usuario_id,
+        createdAt: new Date(inserted.created_at)
+      }
+      setCompanies((current) => [...(current || []), newCompany])
+      onCompanyChange(newCompany.id)
+      setNewCompanyName('')
+      setNewCompanyLogo('')
+      setShowCreateDialog(false)
+      toast.success('¡Empresa creada y guardada en la base de datos!')
+    } catch (e:any) {
+      console.error('[CompanyManagement] Error creando empresa', e)
+      toast.error(e.message || 'No se pudo crear la empresa')
     }
-
-    setCompanies((current) => [...(current || []), newCompany])
-    onCompanyChange(newCompany.id)
-    setNewCompanyName('')
-    setNewCompanyLogo('')
-    setShowCreateDialog(false)
-    toast.success('¡Empresa creada exitosamente!')
   }
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, companyId?: string) => {
@@ -89,19 +94,23 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
     reader.readAsDataURL(file)
   }
 
-  const handleDeleteCompany = (companyId: string) => {
-    setCompanies((current) => (current || []).filter(c => c.id !== companyId))
-    
-    if (currentCompanyId === companyId) {
-      const remaining = (companies || []).filter(c => c.id !== companyId)
-      if (remaining.length > 0) {
-        onCompanyChange(remaining[0].id)
-      } else {
-        onCompanyChange('')
+  const handleDeleteCompany = async (companyId: string) => {
+    try {
+      await deleteEmpresa(companyId)
+      setCompanies((current) => (current || []).filter(c => c.id !== companyId))
+      if (currentCompanyId === companyId) {
+        const remaining = (companies || []).filter(c => c.id !== companyId)
+        if (remaining.length > 0) {
+          onCompanyChange(remaining[0].id)
+        } else {
+          onCompanyChange('')
+        }
       }
+      toast.success('Empresa eliminada de la base de datos')
+    } catch (e:any) {
+      console.error('[CompanyManagement] Error eliminando empresa', e)
+      toast.error(e.message || 'No se pudo eliminar la empresa')
     }
-    
-    toast.success('Empresa eliminada')
   }
 
   const userCompanies = (companies || []).filter(c => c.ownerId === currentUserId)

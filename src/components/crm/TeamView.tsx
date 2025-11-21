@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button'
 import { Trash, Building, Info } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useEffect, useState } from 'react'
+import { createEquipo, deleteEquipo, getEquipos } from '@/supabase/services/equipos'
+import { Input } from '@/components/ui/input'
+
+type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
 
 export function TeamView({ companyId }: { companyId?: string }) {
   if (!companyId) {
@@ -28,6 +33,20 @@ export function TeamView({ companyId }: { companyId?: string }) {
   const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
   const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [roles] = usePersistentState<Role[]>(`roles-${companyId}`, [])
+  const [equipos, setEquipos] = useState<Equipo[]>([])
+  const [newTeamName, setNewTeamName] = useState('')
+
+  useEffect(() => {
+    if (!companyId) return
+    ;(async () => {
+      try {
+        const data = await getEquipos(companyId)
+        setEquipos(data as any)
+      } catch (e:any) {
+        console.error('[TeamView] error cargando equipos', e)
+      }
+    })()
+  }, [companyId])
   
 
   const getAssignedLeadsCount = (memberName: string) => {
@@ -48,6 +67,31 @@ export function TeamView({ companyId }: { companyId?: string }) {
     toast.success('Miembro eliminado')
   }
 
+  const handleCreateEquipo = async () => {
+    if (!newTeamName.trim() || !companyId) return toast.error('Nombre requerido')
+    try {
+      // Usamos "name" por posible ausencia de columna "nombre" en la tabla real
+      const inserted = await createEquipo({ nombre_equipo: newTeamName.trim(), empresa_id: companyId })
+      setEquipos((curr) => [inserted as any, ...(curr || [])])
+      setNewTeamName('')
+      toast.success('Equipo creado y guardado')
+    } catch (e:any) {
+      console.error('[TeamView] error creando equipo', e)
+      toast.error(e.message || 'No se pudo crear el equipo')
+    }
+  }
+
+  const handleDeleteEquipo = async (id: string) => {
+    try {
+      await deleteEquipo(id)
+      setEquipos((curr) => (curr || []).filter(e => e.id !== id))
+      toast.success('Equipo eliminado')
+    } catch (e:any) {
+      console.error('[TeamView] error eliminando equipo', e)
+      toast.error(e.message || 'No se pudo eliminar el equipo')
+    }
+  }
+
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -58,6 +102,28 @@ export function TeamView({ companyId }: { companyId?: string }) {
         </div>
         <div className="flex items-center gap-2">
           <AddTeamMemberDialog onAdd={handleAddMember} />
+        </div>
+      </div>
+
+      <div className="rounded-lg border p-4 space-y-3">
+        <h2 className="text-lg font-semibold">Equipos de la empresa</h2>
+        <div className="flex gap-2">
+          <Input placeholder="Nombre del equipo" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} className="max-w-xs" />
+          <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
+        </div>
+        <div className="grid gap-2">
+          {(equipos || []).length === 0 && <p className="text-sm text-muted-foreground">Sin equipos aún</p>}
+          {(equipos || []).map(eq => (
+            <div key={eq.id} className="flex items-center justify-between border rounded-md p-2">
+              <div>
+                <div className="font-medium">{eq.nombre_equipo}</div>
+                <div className="text-xs text-muted-foreground">Creado: {new Date(eq.created_at).toLocaleString('es-ES')}</div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => handleDeleteEquipo(eq.id)}>
+                <Trash size={14} />
+              </Button>
+            </div>
+          ))}
         </div>
       </div>
 
