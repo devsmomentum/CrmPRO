@@ -27,6 +27,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
+import { deletePipeline } from '@/supabase/helpers/pipeline'
 
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
@@ -133,11 +134,22 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     toast.success('Etapa eliminada')
   }
 
-  const handleDeletePipeline = () => {
+  const handleDeletePipeline = async () => {
     if (['sales', 'support', 'administrative'].includes(activePipeline)) return
-    setPipelines((current) => (current || []).filter(p => p.type !== activePipeline))
-    setActivePipeline('sales')
-    toast.success('Pipeline eliminado correctamente')
+
+    try {
+      // Si el pipeline tiene un ID (es decir, está guardado en BD), lo eliminamos
+      if (currentPipeline?.id && !currentPipeline.id.startsWith('pipeline-')) {
+         await deletePipeline(currentPipeline.id)
+      }
+      
+      setPipelines((current) => (current || []).filter(p => p.type !== activePipeline))
+      setActivePipeline('sales')
+      toast.success('Pipeline eliminado correctamente')
+    } catch (error: any) {
+      console.error('Error deleting pipeline:', error)
+      toast.error(`Error al eliminar pipeline: ${error.message || 'Error desconocido'}`)
+    }
   }
 
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {

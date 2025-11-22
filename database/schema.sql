@@ -1,161 +1,284 @@
--- =========================================================
--- ESQUEMA DE BASE DE DATOS PARA SUPABASE (Multi-tenant)
--- =========================================================
+-- ============================================================
+-- USUARIOS
+-- ============================================================
+alter table usuarios enable row level security;
 
--- 1. Tabla de Empresas (Company)
-CREATE TABLE public.Empresas (
-    empresa_id SERIAL PRIMARY KEY,
-    nombre VARCHAR(255) NOT NULL,
-    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    es_activa BOOLEAN DEFAULT TRUE,
-    descripcion TEXT
-);
+create policy usuarios_select_self on usuarios
+  for select
+  using (id = auth.uid());
 
--- 2. Tabla de Usuarios (Perfiles públicos vinculados a auth.users)
-CREATE TABLE public.Usuarios (
-    usuario_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE, -- Vinculado a Supabase Auth
-    empresa_id INT NOT NULL REFERENCES public.Empresas(empresa_id) ON DELETE CASCADE,
-    nombre_usuario VARCHAR(100),
-    email VARCHAR(255) NOT NULL,
-    es_administrador BOOLEAN DEFAULT FALSE,
-    fecha_registro TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 3. Tabla de Equipos (Team)
-CREATE TABLE public.Equipos (
-    equipo_id SERIAL PRIMARY KEY,
-    empresa_id INT NOT NULL REFERENCES public.Empresas(empresa_id) ON DELETE CASCADE,
-    nombre VARCHAR(255) NOT NULL,
-    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    UNIQUE(empresa_id, nombre)
-);
-
--- 4. Tabla de Pipelines (Workflow/Funnel)
-CREATE TABLE public.Pipelines (
-    pipeline_id SERIAL PRIMARY KEY,
-    equipo_id INT NOT NULL REFERENCES public.Equipos(equipo_id) ON DELETE CASCADE,
-    nombre VARCHAR(255) NOT NULL,
-    descripcion TEXT,
-    fecha_creacion TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
-);
-
--- 5. Tabla de Etapas del Pipeline (Pipeline Stages)
-CREATE TABLE public.EtapasPipeline (
-    etapa_id SERIAL PRIMARY KEY,
-    pipeline_id INT NOT NULL REFERENCES public.Pipelines(pipeline_id) ON DELETE CASCADE,
-    nombre VARCHAR(255) NOT NULL,
-    orden INT NOT NULL,
-    es_final BOOLEAN DEFAULT FALSE
-);
-
--- 6. Tabla de Configuraciones
-CREATE TABLE public.Configuraciones (
-    config_id SERIAL PRIMARY KEY,
-    usuario_id UUID REFERENCES public.Usuarios(usuario_id) ON DELETE CASCADE,
-    empresa_id INT REFERENCES public.Empresas(empresa_id) ON DELETE CASCADE,
-    clave VARCHAR(100) NOT NULL,
-    valor TEXT,
-    CONSTRAINT chk_scope_not_null CHECK (usuario_id IS NOT NULL OR empresa_id IS NOT NULL)
-);
-
--- =========================================================
--- FUNCIONES Y TRIGGERS (Automatización de Registro)
--- =========================================================
-
--- Función para manejar nuevos usuarios registrados en Supabase Auth
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-DECLARE
-    new_empresa_id INT;
-    business_name TEXT;
-BEGIN
-    -- Obtenemos el nombre del negocio de los metadatos del usuario (enviados desde el frontend)
-    business_name := new.raw_user_meta_data->>'business_name';
-
-    -- Si no hay nombre de negocio, usamos un default (o podrías lanzar error)
-    IF business_name IS NULL THEN
-        business_name := 'Mi Empresa';
-    END IF;
-
-    -- 1. Crear la Empresa
-    INSERT INTO public.Empresas (nombre)
-    VALUES (business_name)
-    RETURNING empresa_id INTO new_empresa_id;
-
-    -- 2. Crear el perfil de Usuario vinculado
-    INSERT INTO public.Usuarios (usuario_id, empresa_id, email, nombre_usuario, es_administrador)
-    VALUES (
-        new.id, 
-        new_empresa_id, 
-        new.email, 
-        COALESCE(new.raw_user_meta_data->>'full_name', new.email),
-        TRUE -- El primer usuario es admin por defecto
-    );
-
-    -- 3. Crear un Equipo por defecto "General"
-    INSERT INTO public.Equipos (empresa_id, nombre)
-    VALUES (new_empresa_id, 'General');
-
-    RETURN new;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
--- Trigger que se dispara cada vez que alguien se registra
-CREATE OR REPLACE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+create policy usuarios_update_self on usuarios
+  for update
+  using (id = auth.uid());
 
 
--- =========================================================
--- ROW LEVEL SECURITY (RLS)
--- =========================================================
+-- ============================================================
+-- EMPRESA
+-- ============================================================
+alter table empresa enable row level security;
 
--- Habilitar RLS en todas las tablas
-ALTER TABLE public.Empresas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.Usuarios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.Equipos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.Pipelines ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.EtapasPipeline ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.Configuraciones ENABLE ROW LEVEL SECURITY;
+create policy empresa_select on empresa
+  for select
+  using (usuario_id = auth.uid());
 
--- Función auxiliar para obtener el ID de empresa del usuario actual
-CREATE OR REPLACE FUNCTION get_my_empresa_id()
-RETURNS INT AS $$
-    SELECT empresa_id FROM public.Usuarios WHERE usuario_id = auth.uid() LIMIT 1;
-$$ LANGUAGE sql STABLE;
+create policy empresa_update on empresa
+  for update
+  using (usuario_id = auth.uid());
 
--- Políticas de Seguridad
+create policy empresa_insert on empresa
+  for insert
+  with check (usuario_id = auth.uid());
 
--- EMPRESAS: Los usuarios solo ven su propia empresa
-CREATE POLICY "Usuarios ven su propia empresa" ON public.Empresas
-    FOR SELECT USING (empresa_id = get_my_empresa_id());
+create policy empresa_delete on empresa
+  for delete
+  using (usuario_id = auth.uid());
 
--- USUARIOS: Los usuarios ven a otros usuarios de su misma empresa
-CREATE POLICY "Usuarios ven compañeros de empresa" ON public.Usuarios
-    FOR SELECT USING (empresa_id = get_my_empresa_id());
 
+-- ============================================================
+-- PANEL
+-- ============================================================
+alter table panel enable row level security;
+
+create policy panel_rw on panel
+  for all
+  using (
+    empresa_id in (
+      select id from empresa
+      where usuario_id = auth.uid()
+    )
+  )
+  with check (
+    empresa_id in (
+      select id from empresa
+      where usuario_id = auth.uid()
+    )
+  );
+
+
+-- ============================================================
+-- PIPELINE
+-- ============================================================
+alter table pipeline enable row level security;
+
+create policy pipeline_rw on pipeline
+  for all
+  using (
+    empresa_id in (
+      select id from empresa
+      where usuario_id = auth.uid()
+    )
+  )
+  with check (
+    empresa_id in (
+      select id from empresa
+      where usuario_id = auth.uid()
+    )
+  );
+
+
+-- ============================================================
+-- ETAPAS
+-- ============================================================
+alter table etapas enable row level security;
+
+create policy etapas_rw on etapas
+  for all
+  using (
+    pipeline_id in (
+      select p.id
+      from pipeline p
+      join empresa e on p.empresa_id = e.id
+      where e.usuario_id = auth.uid()
+    )
+  )
+  with check (
+    pipeline_id in (
+      select p.id
+      from pipeline p
+      join empresa e on p.empresa_id = e.id
+      where e.usuario_id = auth.uid()
+    )
+  );
+
+
+-- ============================================================
 -- EQUIPOS
-CREATE POLICY "Aislamiento de Equipos" ON public.Equipos
-    FOR ALL USING (empresa_id = get_my_empresa_id());
+-- ============================================================
+alter table equipos enable row level security;
 
--- PIPELINES (A través de Equipos)
-CREATE POLICY "Aislamiento de Pipelines" ON public.Pipelines
-    FOR ALL USING (
-        equipo_id IN (SELECT equipo_id FROM public.Equipos WHERE empresa_id = get_my_empresa_id())
-    );
+create policy equipos_rw on equipos
+  for all
+  using (
+    empresa_id in (
+      select id from empresa
+      where usuario_id = auth.uid()
+    )
+  )
+  with check (
+    empresa_id in (
+      select id from empresa
+      where usuario_id = auth.uid()
+    )
+  );
 
--- ETAPAS (A través de Pipelines)
-CREATE POLICY "Aislamiento de Etapas" ON public.EtapasPipeline
-    FOR ALL USING (
-        pipeline_id IN (
-            SELECT p.pipeline_id FROM public.Pipelines p
-            JOIN public.Equipos e ON p.equipo_id = e.equipo_id
-            WHERE e.empresa_id = get_my_empresa_id()
-        )
-    );
 
--- CONFIGURACIONES
-CREATE POLICY "Aislamiento de Configuraciones" ON public.Configuraciones
-    FOR ALL USING (
-        empresa_id = get_my_empresa_id() OR usuario_id = auth.uid()
-    );
+-- ============================================================
+-- PERSONA
+-- ============================================================
+alter table persona enable row level security;
+
+create policy persona_rw on persona
+  for all
+  using (
+    equipo_id in (
+      select eq.id
+      from equipos eq
+      join empresa e on eq.empresa_id = e.id
+      where e.usuario_id = auth.uid()
+    )
+  )
+  with check (
+    equipo_id in (
+      select eq.id
+      from equipos eq
+      join empresa e on eq.empresa_id = e.id
+      where e.usuario_id = auth.uid()
+    )
+  );
+
+CREATE TABLE lead (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre_completo text NOT NULL,
+  correo_electronico text NOT NULL,
+  telefono text,
+  empresa text,
+  presupuesto numeric,
+  etapa_id uuid REFERENCES etapas(id),
+  pipeline_id uuid REFERENCES pipeline(id),
+  prioridad text,
+  asignado_a uuid, -- referencia a usuario/persona si lo deseas
+  empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Habilitar RLS
+ALTER TABLE lead ENABLE ROW LEVEL SECURITY;
+
+-- Política: solo pueden ver/editar leads de su empresa
+CREATE POLICY lead_rw ON lead
+  FOR ALL
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+  );
+
+
+  alter table persona_pipeline enable row level security;
+
+-- SELECT
+create policy select_persona_pipeline on persona_pipeline
+for select
+to authenticated
+using (
+  persona_id in (
+    select p.id
+    from persona p
+    join equipos eq on p.equipo_id = eq.id
+    join empresa e on eq.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+  AND
+  pipeline_id in (
+    select pl.id
+    from pipeline pl
+    join empresa e on pl.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+);
+
+-- INSERT
+create policy insert_persona_pipeline on persona_pipeline
+for insert
+to authenticated
+with check (
+  persona_id in (
+    select p.id
+    from persona p
+    join equipos eq on p.equipo_id = eq.id
+    join empresa e on eq.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+  AND
+  pipeline_id in (
+    select pl.id
+    from pipeline pl
+    join empresa e on pl.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+);
+
+-- UPDATE
+create policy update_persona_pipeline on persona_pipeline
+for update
+to authenticated
+using (
+  persona_id in (
+    select p.id
+    from persona p
+    join equipos eq on p.equipo_id = eq.id
+    join empresa e on eq.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+  AND
+  pipeline_id in (
+    select pl.id
+    from pipeline pl
+    join empresa e on pl.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+)
+with check (
+  persona_id in (
+    select p.id
+    from persona p
+    join equipos eq on p.equipo_id = eq.id
+    join empresa e on eq.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+  AND
+  pipeline_id in (
+    select pl.id
+    from pipeline pl
+    join empresa e on pl.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+);
+
+-- DELETE
+create policy delete_persona_pipeline on persona_pipeline
+for delete
+to authenticated
+using (
+  persona_id in (
+    select p.id
+    from persona p
+    join equipos eq on p.equipo_id = eq.id
+    join empresa e on eq.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+  AND
+  pipeline_id in (
+    select pl.id
+    from pipeline pl
+    join empresa e on pl.empresa_id = e.id
+    where e.usuario_id = auth.uid()
+  )
+);
+
+

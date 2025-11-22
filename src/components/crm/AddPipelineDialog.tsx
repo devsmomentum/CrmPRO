@@ -9,14 +9,16 @@ import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Plus, X } from '@phosphor-icons/react'
+import { createPipelineWithStages } from '@/supabase/helpers/pipeline'
 
 interface AddPipelineDialogProps {
   open: boolean
   onClose: () => void
   onAdd: (pipeline: Pipeline) => void
+  empresaId: string | undefined
 }
 
-export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogProps) {
+export function AddPipelineDialog({ open, onClose, onAdd, empresaId }: AddPipelineDialogProps) {
   const t = useTranslation('es')
   
   const [name, setName] = useState('')
@@ -50,7 +52,7 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
     setStages(filtered.map((s, idx) => ({ ...s, order: idx })))
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       toast.error('Ingresa un nombre para el pipeline')
       return
@@ -60,21 +62,37 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
       toast.error('Agrega al menos una etapa')
       return
     }
-
-    // Generate a unique type/slug for the pipeline based on its name
-    const pipelineType = name.toLowerCase().trim().replace(/\s+/g, '-')
-
-    const newPipeline: Pipeline = {
-      id: `pipeline-${Date.now()}`,
-      name: name.trim(),
-      type: pipelineType,
-      stages: stages.map(s => ({ ...s, pipelineType: pipelineType }))
+    
+    if (!empresaId) {
+      toast.error('No se ha podido identificar la empresa.')
+      return
     }
 
-    onAdd(newPipeline)
-    resetForm()
-    onClose()
-    toast.success('Pipeline creado exitosamente')
+    try {
+      const pipelineData = {
+        name: name.trim(),
+        stages: stages,
+        empresa_id: empresaId
+      }
+
+      const newPipeline = await createPipelineWithStages(pipelineData)
+
+      // Si la creación en BD fue exitosa (aunque sea solo el pipeline), actualizamos el estado local
+      // Usamos los stages locales porque en BD no se están guardando aún
+      const pipelineForState = {
+        ...newPipeline,
+        stages: stages, // Mantenemos las etapas locales para que se vean en la UI
+        type: newPipeline.type || pipelineData.name.toLowerCase().trim().replace(/\s+/g, '-')
+      }
+
+      onAdd(pipelineForState)
+      resetForm()
+      onClose()
+      toast.success('Pipeline guardado en la base de datos (Tabla Pipeline)')
+    } catch (error: any) {
+      console.error(error)
+      toast.error(`Error al guardar en BD: ${error.message || 'Error desconocido'}`)
+    }
   }
 
   const resetForm = () => {

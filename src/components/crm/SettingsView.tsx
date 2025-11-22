@@ -230,6 +230,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
         open={showPipelineDialog}
         onClose={() => setShowPipelineDialog(false)}
         onAdd={handleAddPipeline}
+        empresaId={currentCompanyId}
       />
     </div>
   )
