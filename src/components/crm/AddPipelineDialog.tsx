@@ -20,7 +20,6 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
   const t = useTranslation('es')
   
   const [name, setName] = useState('')
-  const [type, setType] = useState<PipelineType>('sales')
   const [stages, setStages] = useState<Stage[]>([
     { id: 'stage-1', name: 'Inicial', order: 0, color: '#3b82f6', pipelineType: 'sales' }
   ])
@@ -38,7 +37,7 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
       name: stageName.trim(),
       order: stages.length,
       color: stageColor,
-      pipelineType: type
+      pipelineType: name.toLowerCase().replace(/\s+/g, '-') // Temporary type, will be updated on submit
     }
 
     setStages([...stages, newStage])
@@ -62,11 +61,14 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
       return
     }
 
+    // Generate a unique type/slug for the pipeline based on its name
+    const pipelineType = name.toLowerCase().trim().replace(/\s+/g, '-')
+
     const newPipeline: Pipeline = {
       id: `pipeline-${Date.now()}`,
       name: name.trim(),
-      type,
-      stages: stages.map(s => ({ ...s, pipelineType: type }))
+      type: pipelineType,
+      stages: stages.map(s => ({ ...s, pipelineType: pipelineType }))
     }
 
     onAdd(newPipeline)
@@ -77,7 +79,6 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
 
   const resetForm = () => {
     setName('')
-    setType('sales')
     setStages([
       { id: 'stage-1', name: 'Inicial', order: 0, color: '#3b82f6', pipelineType: 'sales' }
     ])
@@ -100,20 +101,6 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
               onChange={(e) => setName(e.target.value)}
               placeholder="Ej: Ventas B2B"
             />
-          </div>
-
-          <div>
-            <Label htmlFor="pipeline-type">Tipo de Pipeline</Label>
-            <Select value={type} onValueChange={(v) => setType(v as PipelineType)}>
-              <SelectTrigger id="pipeline-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sales">Ventas</SelectItem>
-                <SelectItem value="support">Soporte</SelectItem>
-                <SelectItem value="administrative">Administrativo</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           <div>

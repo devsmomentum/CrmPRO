@@ -13,6 +13,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
@@ -121,6 +133,13 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     toast.success('Etapa eliminada')
   }
 
+  const handleDeletePipeline = () => {
+    if (['sales', 'support', 'administrative'].includes(activePipeline)) return
+    setPipelines((current) => (current || []).filter(p => p.type !== activePipeline))
+    setActivePipeline('sales')
+    toast.success('Pipeline eliminado correctamente')
+  }
+
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     setDraggedLead(lead)
     e.dataTransfer.effectAllowed = 'move'
@@ -160,6 +179,47 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
           <div className="flex gap-2">
+            {['sales', 'support', 'administrative'].includes(activePipeline) ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button variant="destructive" size="sm" disabled className="opacity-50">
+                        <Trash className="mr-2" size={20} />
+                        <span className="hidden sm:inline">Eliminar Pipeline</span>
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Los pipelines predeterminados no se pueden eliminar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <Trash className="mr-2" size={20} />
+                    <span className="hidden sm:inline">Eliminar Pipeline</span>
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
+                      Los leads asociados podrían dejar de ser visibles.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                      Eliminar
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <AddStageDialog
               pipelineType={activePipeline}
               currentStagesCount={currentPipeline?.stages.length || 0}
@@ -182,10 +242,17 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         </div>
 
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
-          <TabsList className="w-full md:w-auto">
+          <TabsList className="w-full md:w-auto flex-wrap h-auto">
             <TabsTrigger value="sales" className="text-xs md:text-sm">{t.pipeline.sales}</TabsTrigger>
             <TabsTrigger value="support" className="text-xs md:text-sm">{t.pipeline.support}</TabsTrigger>
             <TabsTrigger value="administrative" className="text-xs md:text-sm">{t.pipeline.administrative}</TabsTrigger>
+            {(pipelines || [])
+              .filter(p => !['sales', 'support', 'administrative'].includes(p.type))
+              .map(p => (
+                <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm">
+                  {p.name}
+                </TabsTrigger>
+              ))}
           </TabsList>
         </Tabs>
 

@@ -4,14 +4,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus } from '@phosphor-icons/react'
-import { TeamMember, Role, PipelineType } from '@/lib/types'
+import { Plus, CaretUpDown, Check } from '@phosphor-icons/react'
+import { TeamMember, Role, PipelineType, Pipeline } from '@/lib/types'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getEquipos } from '@/supabase/services/equipos'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { cn } from '@/lib/utils'
 
 interface AddTeamMemberDialogProps {
   onAdd: (member: TeamMember) => void
@@ -27,12 +30,20 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
   const [selectedTeamId, setSelectedTeamId] = useState<string>('none')
   const [teams, setTeams] = useState<{ id: string; nombre_equipo: string }[]>([])
   const [roles] = usePersistentState<Role[]>('roles', [])
+  const [pipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
   const [memberPipelines, setMemberPipelines] = useState<Set<PipelineType>>(new Set(['sales']))
-  const pipelineOptions: { value: PipelineType; label: string }[] = [
+  
+  const defaultPipelines: { value: PipelineType; label: string }[] = [
     { value: 'sales', label: 'Ventas' },
     { value: 'support', label: 'Soporte' },
     { value: 'administrative', label: 'Administrativo' }
   ]
+
+  const customPipelines = (pipelines || [])
+    .filter(p => !['sales', 'support', 'administrative'].includes(p.type))
+    .map(p => ({ value: p.type, label: p.name }))
+
+  const pipelineOptions = [...defaultPipelines, ...customPipelines]
 
   const jobRoles = [
     'Sales Rep',
@@ -184,30 +195,57 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
           </div>
           <div className="pt-2 border-t border-border">
             <Label className="mb-2 block">Pipelines del Miembro</Label>
-            <div className="space-y-2">
-              {pipelineOptions.map(opt => {
-                const checked = memberPipelines.has(opt.value)
-                return (
-                  <div key={opt.value} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`team-pipeline-${opt.value}`}
-                      checked={checked}
-                      onCheckedChange={() => {
-                        setMemberPipelines(prev => {
-                          const next = new Set(prev)
-                          if (next.has(opt.value)) next.delete(opt.value)
-                          else next.add(opt.value)
-                          return next
-                        })
-                      }}
-                    />
-                    <Label htmlFor={`team-pipeline-${opt.value}`} className="text-sm cursor-pointer">
-                      {opt.label}
-                    </Label>
-                  </div>
-                )
-              })}
-            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={cn(
+                    "w-full justify-between font-normal",
+                    memberPipelines.size === 0 && "text-muted-foreground"
+                  )}
+                >
+                  {memberPipelines.size > 0
+                    ? `${memberPipelines.size} pipeline${memberPipelines.size > 1 ? 's' : ''} seleccionado${memberPipelines.size > 1 ? 's' : ''}`
+                    : "Seleccionar pipelines"}
+                  <CaretUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar pipeline..." />
+                  <CommandList>
+                    <CommandEmpty>No se encontraron pipelines.</CommandEmpty>
+                    <CommandGroup>
+                      {pipelineOptions.map((pipeline) => (
+                        <CommandItem
+                          key={pipeline.value}
+                          value={pipeline.label}
+                          onSelect={() => {
+                            setMemberPipelines(prev => {
+                              const next = new Set(prev)
+                              if (next.has(pipeline.value)) next.delete(pipeline.value)
+                              else next.add(pipeline.value)
+                              return next
+                            })
+                          }}
+                        >
+                          <div className={cn(
+                            "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                            memberPipelines.has(pipeline.value)
+                              ? "bg-primary text-primary-foreground"
+                              : "opacity-50 [&_svg]:invisible"
+                          )}>
+                            <Check className={cn("h-4 w-4")} />
+                          </div>
+                          {pipeline.label}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             <p className="text-xs text-muted-foreground mt-1">Selecciona los pipelines que este miembro utilizará (puede ser más de uno).</p>
           </div>
           <Button onClick={handleSubmit} className="w-full">Add Team Member</Button>

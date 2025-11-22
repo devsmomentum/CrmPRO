@@ -212,8 +212,21 @@ function App() {
       
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         <div className="border-b px-4 py-2 text-xs text-muted-foreground flex items-center gap-4">
-          <span>Usuario: {user.businessName} ({user.email})</span>
-          <span>ID: {user.id}</span>
+          <div className="flex items-center gap-3">
+            {/* avatar */}
+            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+              <img
+                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
+                alt={user.businessName}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="leading-none">
+              <div className="text-sm font-medium text-foreground">{user.businessName}</div>
+              <div className="text-[11px] text-muted-foreground">{user.email}</div>
+            </div>
+          </div>
+          <div className="ml-auto text-[11px] text-muted-foreground">ID: <span className="font-mono text-[11px] text-foreground">{user.id}</span></div>
         </div>
         {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
         {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} />}
