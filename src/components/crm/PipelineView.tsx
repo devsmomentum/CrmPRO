@@ -449,47 +449,51 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
           <div className="flex gap-2">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm">
-                    <Trash className="mr-2" size={20} />
-                    <span className="hidden sm:inline">Eliminar Pipeline</span>
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
-                      Los leads asociados podrían dejar de ser visibles.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                      Eliminar
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            <AddStageDialog
-              pipelineType={activePipeline}
-              currentStagesCount={currentPipeline?.stages.length || 0}
-              onAdd={handleAddStage}
-              trigger={
-                <Button variant="outline" size="sm">
-                  <Plus className="mr-2" size={20} />
-                  <span className="hidden sm:inline">{t.pipeline.addStage}</span>
-                </Button>
-              }
-            />
-            <AddLeadDialog
-              pipelineType={activePipeline}
-              stages={currentPipeline?.stages || []}
-              teamMembers={teamMemberNames}
-              onAdd={handleAddLead}
-              companies={companies}
-            />
+            {currentPipeline && (
+              <>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="sm">
+                      <Trash className="mr-2" size={20} />
+                      <span className="hidden sm:inline">Eliminar Pipeline</span>
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
+                        Los leads asociados podrían dejar de ser visibles.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Eliminar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+                <AddStageDialog
+                  pipelineType={activePipeline}
+                  currentStagesCount={currentPipeline?.stages.length || 0}
+                  onAdd={handleAddStage}
+                  trigger={
+                    <Button variant="outline" size="sm">
+                      <Plus className="mr-2" size={20} />
+                      <span className="hidden sm:inline">{t.pipeline.addStage}</span>
+                    </Button>
+                  }
+                />
+                <AddLeadDialog
+                  pipelineType={activePipeline}
+                  stages={currentPipeline?.stages || []}
+                  teamMembers={teamMemberNames}
+                  onAdd={handleAddLead}
+                  companies={companies}
+                />
+              </>
+            )}
           </div>
         </div>
 
@@ -525,6 +529,12 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       </div>
 
       <div className="flex-1 overflow-hidden">
+        {(!pipelines || pipelines.length === 0) && (
+           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+             <p className="text-lg font-medium">No hay pipelines disponibles</p>
+             <p className="text-sm">Ve a Configuración para crear uno nuevo.</p>
+           </div>
+        )}
         <div className="h-full overflow-x-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex gap-3 md:gap-4 h-full min-h-0 min-w-max">
             {(currentPipeline?.stages || []).map(stage => {
