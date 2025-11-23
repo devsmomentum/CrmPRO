@@ -11,6 +11,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useEffect, useState } from 'react'
 import { createEquipo, deleteEquipo, getEquipos } from '@/supabase/services/equipos'
 import { getPersonas, createPersona, deletePersona } from '@/supabase/services/persona'
+import { getPipelines } from '@/supabase/helpers/pipeline'
+import { addPersonaToPipeline, getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
 import { Input } from '@/components/ui/input'
 
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
@@ -35,8 +37,16 @@ export function TeamView({ companyId }: { companyId?: string }) {
   const [leads, setLeads] = useState<Lead[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [equipos, setEquipos] = useState<Equipo[]>([])
+  const [dbPipelines, setDbPipelines] = useState<any[]>([])
   const [newTeamName, setNewTeamName] = useState('')
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string | null>(null) // null = all, 'no-team' = unassigned, uuid = specific team
+
+  useEffect(() => {
+    if (!companyId) return
+    getPipelines(companyId).then(({ data }) => {
+      if (data) setDbPipelines(data)
+    })
+  }, [companyId])
 
   useEffect(() => {
     if (!companyId) return
@@ -64,20 +74,46 @@ export function TeamView({ companyId }: { companyId?: string }) {
           const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
           personas = allPersonas.flat()
         }
-        const mapped = personas.map(p => ({
-          id: p.id,
+        
+        const mapped = await Promise.all(personas.map(async p => {
+          let memberPipelines: string[] = []
+          try {
+            const { data: pPipelines } = await getPipelinesForPersona(p.id)
+            if (pPipelines) {
+              memberPipelines = pPipelines.map((pp: any) => {
+                // Intentamos encontrar el pipeline en los cargados de BD
+                const found = dbPipelines.find(dbp => dbp.id === pp.pipeline_id)
+                // Si lo encontramos, devolvemos su nombre (o ID si prefieres manejarlo así)
+                // Para mantener compatibilidad con 'sales', 'support', etc., si el nombre coincide, usamos el slug?
+                // Por ahora devolvemos el nombre si es custom, o el ID si no se encuentra.
+                // Pero espera, la UI espera 'sales', 'support' para los badges.
+                // Si guardamos 'sales' como un pipeline real en BD, tendría un ID.
+                // Si no guardamos 'sales' en BD, entonces no vendrá de getPipelinesForPersona.
+                
+                // Asumimos que lo que viene de BD es lo que se guardó.
+                return found ? found.nombre : pp.pipeline_id
+              })
+            }
+          } catch (err) {
+            console.error('Error loading pipelines for persona', p.id, err)
+          }
+
+          return {
+            id: p.id,
             name: p.nombre,
             email: p.email,
             avatar: '',
             role: p.titulo_trabajo || '',
-            teamId: p.equipo_id || undefined
+            teamId: p.equipo_id || undefined,
+            pipelines: memberPipelines
+          }
         }))
         setTeamMembers(mapped)
       } catch (e:any) {
         console.error('[TeamView] error cargando personas', e)
       }
     })()
-  }, [companyId, equipos, selectedTeamFilter])
+  }, [companyId, equipos, selectedTeamFilter, dbPipelines])
   
 
   // Si necesitas cargar leads y roles desde la BD, agrega aquí los efectos y servicios
@@ -99,13 +135,53 @@ export function TeamView({ companyId }: { companyId?: string }) {
         equipo_id: member.teamId || null,
         permisos: []
       })
+
+      // Guardar pipelines
+      if (member.pipelines && member.pipelines.length > 0) {
+        for (const pipelineVal of member.pipelines) {
+          // Verificamos si es un UUID válido
+          const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pipelineVal)
+          
+          if (isUUID) {
+             await addPersonaToPipeline({
+               persona_id: inserted.id,
+               pipeline_id: pipelineVal
+             })
+          } else {
+            // Si no es UUID (ej: 'sales'), intentamos buscarlo en los pipelines de la BD por nombre o tipo si existiera
+            // Esto es un "best effort" por si acaso existen pipelines con esos nombres
+            const found = dbPipelines.find(p => p.nombre.toLowerCase() === pipelineVal.toLowerCase())
+            if (found) {
+              await addPersonaToPipeline({
+               persona_id: inserted.id,
+               pipeline_id: found.id
+             })
+            }
+          }
+        }
+      }
+
+      // Resolver nombres de pipelines para visualización local
+      const resolvedPipelines = (member.pipelines || []).map(pVal => {
+        // Si es uno de los defaults, lo dejamos tal cual
+        if (['sales', 'support', 'administrative'].includes(pVal)) return pVal
+        
+        // Si es UUID, buscamos en dbPipelines
+        const found = dbPipelines.find(p => p.id === pVal)
+        if (found) return found.nombre
+        
+        // Si no encontramos, devolvemos el valor original (fallback)
+        return pVal
+      })
+
       const mapped: TeamMember = {
         id: inserted.id,
         name: inserted.nombre,
         email: inserted.email,
         avatar: '',
         role: inserted.titulo_trabajo || '',
-        teamId: inserted.equipo_id || undefined
+        teamId: inserted.equipo_id || undefined,
+        pipelines: resolvedPipelines // Usamos los nombres resueltos
       }
       setTeamMembers((current) => [...(current || []), mapped])
       toast.success('Miembro guardado')
@@ -307,13 +383,18 @@ export function TeamView({ companyId }: { companyId?: string }) {
                   <div className="text-sm">
                     <span className="text-muted-foreground">Pipelines</span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {(member.pipelines || []).map(tp => (
-                        <Badge key={tp} variant="outline" className="text-xs capitalize">
-                          {tp === 'sales' && 'Ventas'}
-                          {tp === 'support' && 'Soporte'}
-                          {tp === 'administrative' && 'Administrativo'}
-                        </Badge>
-                      ))}
+                      {(member.pipelines || []).map(tp => {
+                        let label = tp
+                        if (tp === 'sales') label = 'Ventas'
+                        else if (tp === 'support') label = 'Soporte'
+                        else if (tp === 'administrative') label = 'Administrativo'
+                        
+                        return (
+                          <Badge key={tp} variant="outline" className="text-xs capitalize">
+                            {label}
+                          </Badge>
+                        )
+                      })}
                       {(member.pipelines || []).length === 0 && (
                         <span className="text-xs text-muted-foreground">Sin asignar</span>
                       )}

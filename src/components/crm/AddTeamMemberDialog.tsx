@@ -41,7 +41,7 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
 
   const customPipelines = (pipelines || [])
     .filter(p => !['sales', 'support', 'administrative'].includes(p.type))
-    .map(p => ({ value: p.type, label: p.name }))
+    .map(p => ({ value: p.id, label: p.name })) // Use ID instead of type for custom pipelines
 
   const pipelineOptions = [...defaultPipelines, ...customPipelines]
 
