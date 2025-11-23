@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lead, Message, Note, Budget, Meeting, Channel, Tag } from '@/lib/types'
+import { Lead, Message, Note, Budget, Meeting, Channel, Tag, TeamMember } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -41,9 +41,10 @@ interface LeadDetailSheetProps {
   open: boolean
   onClose: () => void
   onUpdate: (lead: Lead) => void
+  teamMembers?: TeamMember[]
 }
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [] }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useKV<Message[]>('messages', [])
   const [notes, setNotes] = useKV<Note[]>('notes', [])
@@ -324,7 +325,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
-                <p className="font-medium mt-1">{lead.assignedTo}</p>
+                <p className="font-medium mt-1">
+                  {teamMembers.find(m => m.id === lead.assignedTo)?.name || lead.assignedTo || 'Sin asignar'}
+                </p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.budget}</Label>

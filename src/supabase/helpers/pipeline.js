@@ -1,7 +1,7 @@
 import { supabase } from "../client";
 
 export const getPipelines = (empresa_id) =>
-  supabase.from("pipeline").select("*").eq("empresa_id", empresa_id);
+  supabase.from("pipeline").select("*, etapas(*)").eq("empresa_id", empresa_id);
 
 export const createPipeline = (payload) =>
   supabase.from("pipeline").insert(payload).select().single();
@@ -34,8 +34,6 @@ export const createPipelineWithStages = async (pipelineData) => {
   const pipelineId = pipeline.id;
 
   // 2. Preparar las etapas para la inserción
-  // TODO: Verificar la estructura de la tabla 'etapas' antes de insertar
-  /*
   const stagesToInsert = stages.map(stage => ({
     nombre: stage.name,
     pipeline_id: pipelineId,
@@ -44,29 +42,35 @@ export const createPipelineWithStages = async (pipelineData) => {
   }));
 
   // 3. Insertar las etapas
-  const { error: stagesError } = await supabase
+  const { data: insertedStages, error: stagesError } = await supabase
     .from('etapas')
-    .insert(stagesToInsert);
+    .insert(stagesToInsert)
+    .select();
 
   if (stagesError) {
     console.error('Error creating stages:', stagesError);
-    // Opcional: si falla la creación de etapas, se podría eliminar el pipeline recién creado.
-    // await supabase.from('pipeline').delete().match({ id: pipelineId });
-    // throw new Error(stagesError.message);
     console.warn('Stages creation failed, but pipeline was created.');
   }
-  */
 
-  // 4. Devolver el pipeline completo (por ahora sin etapas)
+  // 4. Devolver el pipeline completo
   const { data: newPipelineWithStages } = await supabase
     .from('pipeline')
     .select(`*`)
     .eq('id', pipelineId)
     .single();
 
+  // Mapear etapas insertadas
+  const mappedStages = (insertedStages || []).map(s => ({
+    id: s.id,
+    name: s.nombre,
+    order: s.orden,
+    color: s.color,
+    pipelineType: newPipelineWithStages.nombre.toLowerCase().trim().replace(/\s+/g, '-')
+  }));
+
   return { 
     ...newPipelineWithStages, 
-    name: newPipelineWithStages.nombre, // Map nombre to name for frontend compatibility
-    stages: [] 
+    name: newPipelineWithStages.nombre, 
+    stages: mappedStages 
   };
 };

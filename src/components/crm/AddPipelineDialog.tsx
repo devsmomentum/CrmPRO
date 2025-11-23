@@ -77,18 +77,18 @@ export function AddPipelineDialog({ open, onClose, onAdd, empresaId }: AddPipeli
 
       const newPipeline = await createPipelineWithStages(pipelineData)
 
-      // Si la creación en BD fue exitosa (aunque sea solo el pipeline), actualizamos el estado local
-      // Usamos los stages locales porque en BD no se están guardando aún
+      // Si la creación en BD fue exitosa, actualizamos el estado local
+      // Usamos los stages devueltos por la BD que ya tienen UUIDs reales
       const pipelineForState = {
         ...newPipeline,
-        stages: stages, // Mantenemos las etapas locales para que se vean en la UI
+        stages: newPipeline.stages && newPipeline.stages.length > 0 ? newPipeline.stages : stages,
         type: newPipeline.type || pipelineData.name.toLowerCase().trim().replace(/\s+/g, '-')
       }
 
       onAdd(pipelineForState)
       resetForm()
       onClose()
-      toast.success('Pipeline guardado en la base de datos (Tabla Pipeline)')
+      toast.success('Pipeline y etapas guardados en la base de datos')
     } catch (error: any) {
       console.error(error)
       toast.error(`Error al guardar en BD: ${error.message || 'Error desconocido'}`)

@@ -1,0 +1,1 @@
+ALTER TABLE etapas ADD COLUMN IF NOT EXISTS nombre text;

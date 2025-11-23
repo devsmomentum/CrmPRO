@@ -27,7 +27,12 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
-import { deletePipeline } from '@/supabase/helpers/pipeline'
+import { deletePipeline, getPipelines } from '@/supabase/helpers/pipeline'
+import { createLead, deleteLead, getLeads, updateLead } from '@/supabase/services/leads'
+import { getEquipos } from '@/supabase/services/equipos'
+import { getPersonas } from '@/supabase/services/persona'
+import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
+import { createEtapa, deleteEtapa } from '@/supabase/helpers/etapas'
 
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
@@ -49,17 +54,178 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     )
   }
 
-  const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [leads, setLeads] = useState<Lead[]>([])
   const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
-  const [teamMembers] = usePersistentState<TeamMember[]>(`team-members-${companyId}`, [])
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
 
+  // Cargar miembros del equipo desde BD para tener pipelines actualizados
+  useEffect(() => {
+    if (!companyId) return
+    ;(async () => {
+      try {
+        const equipos = await getEquipos(companyId)
+        const equiposIds = (equipos as any[]).map(e => e.id)
+        const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
+        const personas = allPersonas.flat()
+
+        const mapped = await Promise.all(personas.map(async p => {
+          let memberPipelines: string[] = []
+          try {
+            const { data: pPipelines } = await getPipelinesForPersona(p.id)
+            if (pPipelines) {
+              // Aquí obtenemos los IDs de los pipelines asignados
+              memberPipelines = pPipelines.map((pp: any) => pp.pipeline_id)
+            }
+          } catch (err) {
+            console.error('Error loading pipelines for persona', p.id, err)
+          }
+
+          return {
+            id: p.id,
+            name: p.nombre,
+            email: p.email,
+            avatar: '',
+            role: p.titulo_trabajo || '',
+            teamId: p.equipo_id || undefined,
+            pipelines: memberPipelines
+          }
+        }))
+        setTeamMembers(mapped)
+      } catch (e) {
+        console.error('Error loading team members in PipelineView', e)
+      }
+    })()
+  }, [companyId])
+
+  useEffect(() => {
+    if (companyId) {
+      // Cargar leads
+      getLeads(companyId)
+        .then((data: any) => {
+          const mappedLeads = data.map((l: any) => ({
+            id: l.id,
+            name: l.nombre_completo,
+            email: l.correo_electronico,
+            phone: l.telefono,
+            company: l.empresa,
+            budget: l.presupuesto,
+            stage: l.etapa_id,
+            pipeline: l.pipeline_id || 'sales',
+            priority: l.prioridad,
+            assignedTo: l.asignado_a, 
+            tags: [],
+            createdAt: new Date(l.created_at),
+            lastContact: new Date(l.created_at)
+          }))
+          setLeads(mappedLeads)
+        })
+        .catch(err => console.error('Error loading leads:', err))
+
+      // Cargar pipelines de BD para asegurar consistencia de IDs
+      getPipelines(companyId)
+        .then(({ data }) => {
+          if (data) {
+            setPipelines(prev => {
+              // Fusionar con los existentes o reemplazarlos. 
+              // Los pipelines de BD son los "custom". Los defaults (sales, support...) no están en BD (a menos que los creemos).
+              // Mantenemos los defaults si no vienen de BD.
+              
+              // Mapear DB pipelines a estructura Pipeline
+              const dbPipelines: Pipeline[] = data.map((p: any) => ({
+                id: p.id,
+                name: p.nombre,
+                type: p.id, // Usamos ID como type para consistencia en tabs si queremos, o generamos slug.
+                            // Pero AddPipelineDialog usa slug.
+                            // Mejor usamos el ID como type para evitar ambigüedades, o mantenemos el slug si lo guardamos.
+                            // Como no guardamos slug en BD, usaremos el ID o generaremos uno consistente.
+                            // Para simplificar y que coincida con lo que espera eligibleMembers:
+                type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+                stages: (p.etapas || []).map((s: any) => ({
+                  id: s.id,
+                  name: s.nombre,
+                  order: s.orden,
+                  color: s.color,
+                  pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
+                })).sort((a: any, b: any) => a.order - b.order)
+              }))
+
+              // Nota: Esto puede duplicar si el slug coincide con uno local.
+              // Lo ideal sería usar lo de BD como fuente de verdad para los custom.
+              
+              // Filtramos los locales que NO sean defaults y NO estén ya en la lista de BD (por ID)
+              const defaults = (prev || []).filter(p => ['sales', 'support', 'administrative'].includes(p.type))
+              
+              // Si queremos que la UI se actualice con lo de BD:
+              // Necesitamos las etapas también. getPipelines no trae etapas por defecto en el helper actual.
+              // Por ahora, solo actualizamos la lista para que existan los objetos con ID correcto.
+              // Si reemplazamos todo, perdemos las etapas locales si no las cargamos de BD.
+              
+              // Estrategia conservadora: Actualizar solo IDs de los que coincidan por nombre/slug
+              const updated = (prev || []).map(localP => {
+                const found = dbPipelines.find(dbP => dbP.name === localP.name)
+                if (found) {
+                  return found
+                }
+                return localP
+              })
+
+              const newFromDB = dbPipelines.filter(dbP => !updated.find(up => up.name === dbP.name))
+              
+              return [...updated, ...newFromDB]
+            })
+          }
+        })
+        .catch(err => console.error('Error loading pipelines:', err))
+    }
+  }, [companyId])
+
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
-  const allPipelineLeads = (leads || []).filter(l => l.pipeline === activePipeline)
-  const eligibleMembers = (teamMembers || []).filter(m => !m.pipelines || (m.pipelines || []).includes(activePipeline))
+  // Filtrar leads por pipeline activo. 
+  // Nota: Si los leads en BD tienen pipeline_id (UUID), y activePipeline es 'sales' (string), 
+  // necesitamos una forma de relacionarlos.
+  // Por ahora, asumiremos que si el pipeline es custom, activePipeline es el ID.
+  // Si es default ('sales'), los leads deberían tener ese valor o null?
+  // La tabla lead tiene pipeline_id uuid. 'sales' no es uuid.
+  // Necesitamos que al crear el lead se guarde el ID del pipeline correcto.
+  
+  const allPipelineLeads = leads.filter(l => {
+    if (['sales', 'support', 'administrative'].includes(activePipeline)) {
+       return l.pipeline === activePipeline
+    }
+    // Para pipelines custom (BD), comparamos con el ID real (UUID)
+    return l.pipeline === currentPipeline?.id
+  })
+
+  const eligibleMembers = (teamMembers || []).filter(m => {
+    if (!m.pipelines || m.pipelines.length === 0) return false 
+    
+    // Normalizamos para comparar
+    // Si activePipeline es 'sales', buscamos 'sales' o 'Ventas'
+    // Si activePipeline es UUID (custom), buscamos ese UUID
+    
+    const activeName = activePipeline === 'sales' ? 'Ventas' : 
+                       activePipeline === 'support' ? 'Soporte' : 
+                       activePipeline === 'administrative' ? 'Administrativo' : 
+                       null
+
+    return m.pipelines.some(p => {
+      // Coincidencia exacta (UUID o slug)
+      if (p === activePipeline) return true
+      // Coincidencia por nombre (para defaults si se guardaron como nombre)
+      if (activeName && p === activeName) return true
+      // Coincidencia por nombre del pipeline custom (si se guardó nombre en vez de ID)
+      if (currentPipeline && p === currentPipeline.name) return true
+      // Coincidencia por ID del pipeline actual (si es custom y tiene ID)
+      if (currentPipeline && currentPipeline.id && p === currentPipeline.id) return true
+      
+      return false
+    })
+  })
+  
   const teamMemberNames = eligibleMembers.map(m => m.name)
   const pipelineLeads = filterByMember === 'all' 
     ? allPipelineLeads 
@@ -80,18 +246,53 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     }
   }
 
-  const handleAddStage = (stage: Stage) => {
+  const handleAddStage = async (stage: Stage) => {
+    const currentPipeline = pipelines.find(p => p.type === activePipeline)
+    let stageToState = stage
+
+    // Validar si es un UUID real
+    const isPipelineUUID = currentPipeline?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentPipeline.id)
+
+    // Si el pipeline existe en BD (tiene UUID), guardamos la etapa en BD
+    if (currentPipeline && isPipelineUUID) {
+      try {
+        const { data: newStage, error } = await createEtapa({
+          nombre: stage.name,
+          pipeline_id: currentPipeline.id,
+          orden: stage.order,
+          color: stage.color
+        })
+
+        if (error) throw error
+
+        // Usamos el ID real de la BD
+        stageToState = { ...stage, id: newStage.id }
+        toast.success('Etapa guardada en BD')
+      } catch (err: any) {
+        console.error('Error creating stage:', err)
+        toast.error(`Error al guardar etapa en BD: ${err.message}`)
+        return // No actualizamos estado local si falla BD
+      }
+    } else {
+       // Si es un pipeline default (no UUID), advertimos que solo es local
+       if (['sales', 'support', 'administrative'].includes(activePipeline)) {
+          // Opcional: Podríamos crear el pipeline en BD aquí si quisiéramos persistencia total
+          // Por ahora solo guardamos local
+       }
+    }
+
     setPipelines((current) => {
       const pipelines = current || []
       const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
       
       if (pipelineIndex === -1) {
+        // Esto no debería pasar para pipelines de BD, solo para defaults si no existen
         const newPipeline: Pipeline = {
           id: `${activePipeline}-pipeline`,
           name: activePipeline === 'sales' ? 'Sales Pipeline' : 
                 activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline',
           type: activePipeline,
-          stages: [stage]
+          stages: [stageToState]
         }
         return [...pipelines, newPipeline]
       }
@@ -99,24 +300,106 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       const updatedPipelines = [...pipelines]
       updatedPipelines[pipelineIndex] = {
         ...updatedPipelines[pipelineIndex],
-        stages: [...updatedPipelines[pipelineIndex].stages, stage]
+        stages: [...updatedPipelines[pipelineIndex].stages, stageToState]
       }
       
       return updatedPipelines
     })
   }
 
-  const handleAddLead = (lead: Lead) => {
-    setLeads((current) => [...(current || []), lead])
+  const handleAddLead = async (lead: Lead) => {
+    try {
+      // Resolver el UUID del pipeline actual
+      const currentPipeline = pipelines.find(p => p.type === activePipeline)
+      let pipelineIdToSave = currentPipeline?.id
+      
+      // Si es uno de los defaults, no tenemos un UUID real en la tabla pipeline
+      if (['sales', 'support', 'administrative'].includes(activePipeline)) {
+        pipelineIdToSave = null as any
+      }
+
+      const payload: any = {
+        nombre_completo: lead.name,
+        correo_electronico: lead.email,
+        telefono: lead.phone,
+        empresa: lead.company,
+        presupuesto: lead.budget,
+        etapa_id: lead.stage, 
+        pipeline_id: pipelineIdToSave,
+        prioridad: lead.priority,
+        asignado_a: null, 
+        empresa_id: companyId
+      }
+      
+      // Mapear nombre de asignado a UUID
+      const assignedMember = teamMembers?.find(m => m.name === lead.assignedTo)
+      if (assignedMember) {
+        payload.asignado_a = assignedMember.id
+      }
+
+      // Si el pipeline es custom (tiene UUID), intentamos guardar
+      if (pipelineIdToSave) {
+         // Validar que la etapa sea UUID
+         const isStageUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead.stage)
+         
+         if (!isStageUUID) {
+           toast.warning('No se puede guardar en BD: La etapa no está sincronizada (ID inválido). Se guardará localmente.')
+           setLeads((current) => [...(current || []), lead])
+           return
+         }
+
+         const created = await createLead(payload)
+         // IMPORTANTE: Usar el UUID del pipeline (pipelineIdToSave) para el estado local
+         // para que coincida con el filtro de allPipelineLeads
+         const newLead = { 
+           ...lead, 
+           id: created.id,
+           pipeline: pipelineIdToSave || lead.pipeline 
+         }
+         setLeads((current) => [...(current || []), newLead])
+         toast.success('Lead guardado en BD')
+      } else {
+        // Fallback local para defaults
+        setLeads((current) => [...(current || []), lead])
+        toast.warning('Lead guardado localmente (Pipeline default)')
+      }
+      
+    } catch (error: any) {
+      console.error('Error creating lead:', error)
+      toast.error(`Error al crear lead: ${error.message}`)
+    }
   }
 
-  const handleDeleteLead = (leadId: string) => {
-    setLeads((current) => (current || []).filter(l => l.id !== leadId))
-    setSelectedLead((current) => current?.id === leadId ? null : current)
-    toast.success(t.messages.leadDeleted)
+  const handleDeleteLead = async (leadId: string) => {
+    try {
+      // Intentar borrar de BD si parece un UUID
+      if (leadId.length > 20) { // Simple check
+        await deleteLead(leadId)
+      }
+      setLeads((current) => (current || []).filter(l => l.id !== leadId))
+      setSelectedLead((current) => current?.id === leadId ? null : current)
+      toast.success(t.messages.leadDeleted)
+    } catch (error: any) {
+      console.error('Error deleting lead:', error)
+      toast.error('Error al eliminar lead')
+    }
   }
   
-  const handleDeleteStage = (stageId: string) => {
+  const handleDeleteStage = async (stageId: string) => {
+    // Check if it's a UUID (DB stage)
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stageId)
+
+    if (isUUID) {
+      try {
+        const { error } = await deleteEtapa(stageId)
+        if (error) throw error
+      } catch (err: any) {
+        console.error('Error deleting stage:', err)
+        toast.error(`Error al eliminar etapa de BD: ${err.message || err.details || 'Error desconocido'}`)
+        return 
+      }
+    }
+
     setPipelines((current) => {
       const pipelines = current || []
       const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
@@ -180,6 +463,19 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     setLeads((current) => 
       (current || []).map(l => l.id === draggedLead.id ? updatedLead : l)
     )
+
+    // Actualizar en BD
+    if (draggedLead.id.length > 20) { // Check simple de UUID
+      updateLead(draggedLead.id, { etapa_id: targetStageId })
+        .catch(err => {
+          console.error('Error updating lead stage in DB:', err)
+          toast.error(`Error al mover lead: ${err.message || 'Error desconocido'}`)
+          // Revertir cambio local
+          setLeads((current) => 
+            (current || []).map(l => l.id === draggedLead.id ? draggedLead : l)
+          )
+        })
+    }
     
     setDraggedLead(null)
     toast.success('Lead movido a nueva etapa')
@@ -424,7 +720,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                         </div>
 
                         <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
-                          {t.lead.assignedTo}: {lead.assignedTo}
+                          {t.lead.assignedTo}: {teamMembers.find(m => m.id === lead.assignedTo)?.name || lead.assignedTo || 'Sin asignar'}
                         </div>
                       </Card>
                     ))}
@@ -465,7 +761,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                   currentStagesCount={currentPipeline?.stages.length || 0}
                   onAdd={handleAddStage}
                   trigger={
-                    <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/20 rounded-lg p-2 border-2 border-dashed border-border hover:border-primary transition-colors cursor-pointer flex flex-col items-center justify-center" title={t.pipeline.addStage}>
+                    <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/20 rounded-lg p-2 border-2 border-dashed border-border hover:border-primary transition-colores cursor-pointer flex flex-col items-center justify-center" title={t.pipeline.addStage}>
                       <Plus size={22} className="text-muted-foreground mb-1" />
                       <span className="text-xs font-medium text-muted-foreground">{t.pipeline.addStage}</span>
                     </div>
@@ -488,6 +784,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             )
             setSelectedLead(updated)
           }}
+          teamMembers={teamMembers}
         />
       )}
     </div>
