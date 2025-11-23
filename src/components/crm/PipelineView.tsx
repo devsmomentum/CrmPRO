@@ -125,57 +125,33 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         })
         .catch(err => console.error('Error loading leads:', err))
 
-      // Cargar pipelines de BD para asegurar consistencia de IDs
+      // Cargar pipelines de BD
       getPipelines(companyId)
         .then(({ data }) => {
           if (data) {
-            setPipelines(prev => {
-              // Fusionar con los existentes o reemplazarlos. 
-              // Los pipelines de BD son los "custom". Los defaults (sales, support...) no están en BD (a menos que los creemos).
-              // Mantenemos los defaults si no vienen de BD.
-              
-              // Mapear DB pipelines a estructura Pipeline
-              const dbPipelines: Pipeline[] = data.map((p: any) => ({
-                id: p.id,
-                name: p.nombre,
-                type: p.id, // Usamos ID como type para consistencia en tabs si queremos, o generamos slug.
-                            // Pero AddPipelineDialog usa slug.
-                            // Mejor usamos el ID como type para evitar ambigüedades, o mantenemos el slug si lo guardamos.
-                            // Como no guardamos slug en BD, usaremos el ID o generaremos uno consistente.
-                            // Para simplificar y que coincida con lo que espera eligibleMembers:
-                type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
-                stages: (p.etapas || []).map((s: any) => ({
-                  id: s.id,
-                  name: s.nombre,
-                  order: s.orden,
-                  color: s.color,
-                  pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
-                })).sort((a: any, b: any) => a.order - b.order)
-              }))
+            // Mapear DB pipelines a estructura Pipeline
+            const dbPipelines: Pipeline[] = data.map((p: any) => ({
+              id: p.id,
+              name: p.nombre,
+              type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+              stages: (p.etapas || []).map((s: any) => ({
+                id: s.id,
+                name: s.nombre,
+                order: s.orden,
+                color: s.color,
+                pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
+              })).sort((a: any, b: any) => a.order - b.order)
+            }))
 
-              // Nota: Esto puede duplicar si el slug coincide con uno local.
-              // Lo ideal sería usar lo de BD como fuente de verdad para los custom.
-              
-              // Filtramos los locales que NO sean defaults y NO estén ya en la lista de BD (por ID)
-              const defaults = (prev || []).filter(p => ['sales', 'support', 'administrative'].includes(p.type))
-              
-              // Si queremos que la UI se actualice con lo de BD:
-              // Necesitamos las etapas también. getPipelines no trae etapas por defecto en el helper actual.
-              // Por ahora, solo actualizamos la lista para que existan los objetos con ID correcto.
-              // Si reemplazamos todo, perdemos las etapas locales si no las cargamos de BD.
-              
-              // Estrategia conservadora: Actualizar solo IDs de los que coincidan por nombre/slug
-              const updated = (prev || []).map(localP => {
-                const found = dbPipelines.find(dbP => dbP.name === localP.name)
-                if (found) {
-                  return found
-                }
-                return localP
-              })
-
-              const newFromDB = dbPipelines.filter(dbP => !updated.find(up => up.name === dbP.name))
-              
-              return [...updated, ...newFromDB]
+            setPipelines(dbPipelines)
+            
+            // Si el pipeline activo no existe en los nuevos pipelines, seleccionar el primero
+            setActivePipeline(current => {
+               const exists = dbPipelines.find(p => p.type === current)
+               if (!exists && dbPipelines.length > 0) {
+                 return dbPipelines[0].type
+               }
+               return current
             })
           }
         })
@@ -193,30 +169,16 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   // Necesitamos que al crear el lead se guarde el ID del pipeline correcto.
   
   const allPipelineLeads = leads.filter(l => {
-    if (['sales', 'support', 'administrative'].includes(activePipeline)) {
-       return l.pipeline === activePipeline
-    }
-    // Para pipelines custom (BD), comparamos con el ID real (UUID)
+    // Comparamos con el ID real (UUID) del pipeline actual
     return l.pipeline === currentPipeline?.id
   })
 
   const eligibleMembers = (teamMembers || []).filter(m => {
     if (!m.pipelines || m.pipelines.length === 0) return false 
     
-    // Normalizamos para comparar
-    // Si activePipeline es 'sales', buscamos 'sales' o 'Ventas'
-    // Si activePipeline es UUID (custom), buscamos ese UUID
-    
-    const activeName = activePipeline === 'sales' ? 'Ventas' : 
-                       activePipeline === 'support' ? 'Soporte' : 
-                       activePipeline === 'administrative' ? 'Administrativo' : 
-                       null
-
     return m.pipelines.some(p => {
       // Coincidencia exacta (UUID o slug)
       if (p === activePipeline) return true
-      // Coincidencia por nombre (para defaults si se guardaron como nombre)
-      if (activeName && p === activeName) return true
       // Coincidencia por nombre del pipeline custom (si se guardó nombre en vez de ID)
       if (currentPipeline && p === currentPipeline.name) return true
       // Coincidencia por ID del pipeline actual (si es custom y tiene ID)
@@ -313,9 +275,9 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       const currentPipeline = pipelines.find(p => p.type === activePipeline)
       let pipelineIdToSave = currentPipeline?.id
       
-      // Si es uno de los defaults, no tenemos un UUID real en la tabla pipeline
-      if (['sales', 'support', 'administrative'].includes(activePipeline)) {
-        pipelineIdToSave = null as any
+      if (!pipelineIdToSave) {
+        toast.error('No se ha seleccionado un pipeline válido')
+        return
       }
 
       const payload: any = {
@@ -487,23 +449,6 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
           <div className="flex gap-2">
-            {['sales', 'support', 'administrative'].includes(activePipeline) ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <Button variant="destructive" size="sm" disabled className="opacity-50">
-                        <Trash className="mr-2" size={20} />
-                        <span className="hidden sm:inline">Eliminar Pipeline</span>
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Los pipelines predeterminados no se pueden eliminar</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive" size="sm">
@@ -527,7 +472,6 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-            )}
             <AddStageDialog
               pipelineType={activePipeline}
               currentStagesCount={currentPipeline?.stages.length || 0}
@@ -551,12 +495,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
 
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
           <TabsList className="w-full md:w-auto flex-wrap h-auto">
-            <TabsTrigger value="sales" className="text-xs md:text-sm">{t.pipeline.sales}</TabsTrigger>
-            <TabsTrigger value="support" className="text-xs md:text-sm">{t.pipeline.support}</TabsTrigger>
-            <TabsTrigger value="administrative" className="text-xs md:text-sm">{t.pipeline.administrative}</TabsTrigger>
-            {(pipelines || [])
-              .filter(p => !['sales', 'support', 'administrative'].includes(p.type))
-              .map(p => (
+            {(pipelines || []).map(p => (
                 <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm">
                   {p.name}
                 </TabsTrigger>

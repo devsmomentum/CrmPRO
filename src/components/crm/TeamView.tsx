@@ -13,6 +13,7 @@ import { createEquipo, deleteEquipo, getEquipos } from '@/supabase/services/equi
 import { getPersonas, createPersona, deletePersona } from '@/supabase/services/persona'
 import { getPipelines } from '@/supabase/helpers/pipeline'
 import { addPersonaToPipeline, getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
+import { getLeads } from '@/supabase/services/leads'
 import { Input } from '@/components/ui/input'
 
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
@@ -58,6 +59,30 @@ export function TeamView({ companyId }: { companyId?: string }) {
         console.error('[TeamView] error cargando equipos', e)
       }
     })()
+  }, [companyId])
+
+  useEffect(() => {
+    if (!companyId) return
+    getLeads(companyId)
+      .then((data: any) => {
+        const mappedLeads = data.map((l: any) => ({
+          id: l.id,
+          name: l.nombre_completo,
+          email: l.correo_electronico,
+          phone: l.telefono,
+          company: l.empresa,
+          budget: l.presupuesto,
+          stage: l.etapa_id,
+          pipeline: l.pipeline_id,
+          priority: l.prioridad,
+          assignedTo: l.asignado_a, 
+          tags: [],
+          createdAt: new Date(l.created_at),
+          lastContact: new Date(l.created_at)
+        }))
+        setLeads(mappedLeads)
+      })
+      .catch(err => console.error('[TeamView] Error loading leads:', err))
   }, [companyId])
 
   useEffect(() => {
@@ -117,8 +142,8 @@ export function TeamView({ companyId }: { companyId?: string }) {
   
 
   // Si necesitas cargar leads y roles desde la BD, agrega aquí los efectos y servicios
-  const getAssignedLeadsCount = (memberName: string) => {
-    return leads.filter(l => l.assignedTo === memberName).length
+  const getAssignedLeadsCount = (memberId: string) => {
+    return leads.filter(l => l.assignedTo === memberId).length
   }
 
   const getRoleInfo = (roleId?: string) => {
@@ -352,8 +377,8 @@ export function TeamView({ companyId }: { companyId?: string }) {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Active Tasks</span>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{getAssignedLeadsCount(member.name)}</Badge>
-                      {getAssignedLeadsCount(member.name) > 0 && (
+                      <Badge variant="secondary">{getAssignedLeadsCount(member.id)}</Badge>
+                      {getAssignedLeadsCount(member.id) > 0 && (
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-muted">
@@ -364,7 +389,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
                             <div className="space-y-2">
                               <h4 className="font-medium text-sm">Leads Asignados</h4>
                               <div className="grid gap-1">
-                                {(leads || []).filter(l => l.assignedTo === member.name).map(lead => (
+                                {(leads || []).filter(l => l.assignedTo === member.id).map(lead => (
                                   <div key={lead.id} className="text-sm flex items-center gap-2">
                                     <div className={`w-2 h-2 rounded-full ${
                                       lead.priority === 'high' ? 'bg-red-500' : 
