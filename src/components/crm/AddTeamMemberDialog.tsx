@@ -12,6 +12,7 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { getEquipos } from '@/supabase/services/equipos'
+import { getPipelines } from '@/supabase/helpers/pipeline'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { cn } from '@/lib/utils'
@@ -30,20 +31,10 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
   const [selectedTeamId, setSelectedTeamId] = useState<string>('none')
   const [teams, setTeams] = useState<{ id: string; nombre_equipo: string }[]>([])
   const [roles] = usePersistentState<Role[]>('roles', [])
-  const [pipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
-  const [memberPipelines, setMemberPipelines] = useState<Set<PipelineType>>(new Set(['sales']))
+  const [dbPipelines, setDbPipelines] = useState<Pipeline[]>([])
+  const [memberPipelines, setMemberPipelines] = useState<Set<PipelineType>>(new Set())
   
-  const defaultPipelines: { value: PipelineType; label: string }[] = [
-    { value: 'sales', label: 'Ventas' },
-    { value: 'support', label: 'Soporte' },
-    { value: 'administrative', label: 'Administrativo' }
-  ]
-
-  const customPipelines = (pipelines || [])
-    .filter(p => !['sales', 'support', 'administrative'].includes(p.type))
-    .map(p => ({ value: p.id, label: p.name })) // Use ID instead of type for custom pipelines
-
-  const pipelineOptions = [...defaultPipelines, ...customPipelines]
+  const pipelineOptions = dbPipelines.map(p => ({ value: p.id, label: p.name }))
 
   const jobRoles = [
     'Sales Rep',
@@ -61,6 +52,20 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
       getEquipos(companyId)
         .then((data: any) => setTeams(data || []))
         .catch(err => console.error('Error fetching teams:', err))
+
+      getPipelines(companyId)
+        .then(({ data }) => {
+          if (data) {
+            const mappedPipelines: Pipeline[] = data.map((p: any) => ({
+              id: p.id,
+              name: p.nombre,
+              type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+              stages: [] // No necesitamos las etapas aquí
+            }))
+            setDbPipelines(mappedPipelines)
+          }
+        })
+        .catch(err => console.error('Error fetching pipelines:', err))
     }
   }, [open, companyId])
 
@@ -95,7 +100,7 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
       setRole('Sales Rep')
       setSelectedRoleId('none')
       setSelectedTeamId('none')
-      setMemberPipelines(new Set(['sales']))
+      setMemberPipelines(new Set())
       setOpen(false)
       toast.success('Miembro enviado para guardar')
     } catch (e:any) {
