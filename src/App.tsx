@@ -8,6 +8,7 @@ import { CalendarView } from '@/components/crm/CalendarView'
 import { TeamView } from '@/components/crm/TeamView'
 import { SettingsView } from '@/components/crm/SettingsView'
 import { NotificationPanel } from '@/components/crm/NotificationPanel'
+import { NotificationsView } from '@/components/crm/NotificationsView'
 import LoginView from '@/components/crm/LoginView'
 import { RegisterView } from '@/components/crm/RegisterView'
 import { register, login, logout } from '@/supabase/auth'
@@ -21,7 +22,7 @@ import { toast } from 'sonner'
 import { Pipeline, PipelineType } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
 
-type View = 'dashboard' | 'pipeline' | 'analytics' | 'calendar' | 'team' | 'settings'
+type View = 'dashboard' | 'pipeline' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
 type AuthView = 'login' | 'register'
 
 interface User {
@@ -40,7 +41,7 @@ function App() {
 
   // Exponer utilidades de diagnóstico en window para usar desde la consola
   useEffect(() => {
-    ;(window as any).empDiag = {
+    ; (window as any).empDiag = {
       verifyEmpresaTable,
       testInsertEmpresa,
       listEmpresasCurrentUser,
@@ -48,13 +49,13 @@ function App() {
     }
     console.log('[EMPRESA:DIAG] Herramientas empDiag disponibles en window.empDiag')
   }, [])
-  
+
   const handleLogin = async (email: string, password: string) => {
     try {
       console.log('[LOGIN] iniciando login para', email)
       const authUser = await login(email, password)
       console.log('[LOGIN] authUser recibido', authUser)
-      
+
       // Intentar obtener usuario de la tabla usuarios
       let row
       try {
@@ -62,17 +63,17 @@ function App() {
       } catch (err: any) {
         // Si no existe, crear el usuario en la tabla usuarios
         console.log('[LOGIN] usuario no existe en tabla usuarios, creando...')
-        row = await createUsuario({ 
-          id: authUser.id, 
+        row = await createUsuario({
+          id: authUser.id,
           email: authUser.email || email,
-          nombre: authUser.email?.split('@')[0] || 'Usuario' 
+          nombre: authUser.email?.split('@')[0] || 'Usuario'
         })
       }
-      
+
       console.log('[LOGIN] fila usuarios', row)
       const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
       setUser(newUser)
-      
+
       // Cargar empresas del usuario
       const empresas = await getEmpresasByUsuario(authUser.id)
       const uiCompanies = empresas.map(e => ({
@@ -99,13 +100,13 @@ function App() {
           }
           setCompanies([nuevaCompany])
           setCurrentCompanyId(nuevaCompany.id)
-        } catch (err:any) {
+        } catch (err: any) {
           console.error('[LOGIN] Error creando empresa inicial en login', err)
         }
       }
-      
+
       toast.success('¡Sesión iniciada exitosamente!')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[LOGIN] error', e)
       if (e.message?.toLowerCase().includes('email not confirmed')) {
         toast.error('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
@@ -122,10 +123,10 @@ function App() {
       console.log('[REGISTER] iniciando registro para', email)
       const authUser = await register(email, password)
       console.log('[REGISTER] authUser recibido', authUser)
-      
+
       // Verificar si se requiere confirmación de email
       const { data: sessionData } = await supabase.auth.getSession()
-      
+
       if (!sessionData.session) {
         // No hay sesión inmediata - se requiere confirmación de email
         console.log('[REGISTER] confirmación de email requerida')
@@ -136,18 +137,18 @@ function App() {
         setAuthView('login')
         return
       }
-      
+
       // Si hay sesión, continuar con la creación del usuario y empresa
       const row = await createUsuario({ id: authUser.id, email, nombre: businessName })
       console.log('[REGISTER] fila insertada usuarios', row)
-      
+
       // Crear empresa inicial
       const empresa = await createEmpresa({ nombre_empresa: businessName, usuario_id: authUser.id })
       console.log('[REGISTER] empresa creada', empresa)
 
       const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
       setUser(newUser)
-      
+
       // Map a Company shape para UI
       const uiCompany = {
         id: empresa.id,
@@ -158,7 +159,7 @@ function App() {
       setCompanies([uiCompany])
       setCurrentCompanyId(uiCompany.id)
       toast.success('¡Cuenta creada exitosamente!')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[REGISTER] error', e)
       if (e.message?.toLowerCase().includes('429')) {
         toast.error('Demasiados intentos. Espera unos segundos e intenta de nuevo.')
@@ -183,7 +184,7 @@ function App() {
     return (
       <>
         {authView === 'login' ? (
-          <LoginView 
+          <LoginView
             onLogin={handleLogin}
             onSwitchToRegister={() => setAuthView('register')}
           />
@@ -200,8 +201,8 @@ function App() {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      <Sidebar 
-        currentView={currentView} 
+      <Sidebar
+        currentView={currentView}
         onViewChange={setCurrentView}
         onLogout={handleLogout}
         user={user}
@@ -209,7 +210,7 @@ function App() {
         onCompanyChange={setCurrentCompanyId}
         companies={companies}
       />
-      
+
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
         <div className="border-b px-4 py-2 text-xs text-muted-foreground flex items-center gap-4">
           <div className="flex items-center gap-3">
@@ -234,7 +235,7 @@ function App() {
         {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'settings' && (
-          <SettingsView 
+          <SettingsView
             key={currentCompanyId}
             currentUserId={user.id}
             currentCompanyId={currentCompanyId}
@@ -243,10 +244,11 @@ function App() {
             setCompanies={setCompanies}
           />
         )}
+        {currentView === 'notifications' && <NotificationsView />}
       </main>
 
       <NotificationPanel open={showNotifications} onClose={() => setShowNotifications(false)} />
-      
+
       <Toaster />
     </div>
   )

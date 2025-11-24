@@ -33,7 +33,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
   const [notifications] = usePersistentState<Notification[]>('notifications', [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   // const [companies] = usePersistentState<Company[]>('companies', [])
-  
+
   const unreadCount = (notifications || []).filter(n => !n.read).length
 
   const menuItems = [
@@ -82,7 +82,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
             {menuItems.map((item) => {
               const Icon = item.icon
               const isActive = currentView === item.id
-              
+
               return (
                 <li key={item.id}>
                   <button
@@ -104,16 +104,22 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
         </nav>
 
         <div className="p-4 border-t border-border space-y-2">
-          <button 
+          <button
             onClick={() => setShowVoiceRecorder(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors"
           >
             <Microphone size={20} />
             <span>{t.nav.voice}</span>
           </button>
-          
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors relative">
-            <Bell size={20} />
+
+          <button
+            onClick={() => onViewChange('notifications')}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors relative",
+              currentView === 'notifications' ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground hover:bg-muted"
+            )}
+          >
+            <Bell size={20} weight={currentView === 'notifications' ? 'fill' : 'regular'} />
             <span>{t.nav.notifications}</span>
             {unreadCount > 0 && (
               <Badge variant="destructive" className="ml-auto pulse-notification">
@@ -121,9 +127,9 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
               </Badge>
             )}
           </button>
-          
+
           {onLogout && (
-            <button 
+            <button
               onClick={onLogout}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
             >
@@ -139,7 +145,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           {menuItems.slice(0, 4).map((item) => {
             const Icon = item.icon
             const isActive = currentView === item.id
-            
+
             return (
               <button
                 key={item.id}
@@ -156,7 +162,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
               </button>
             )
           })}
-          
+
           <button
             onClick={() => setShowVoiceRecorder(true)}
             className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-primary bg-primary/10"
@@ -164,11 +170,11 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
             <Microphone size={24} weight="fill" />
             <span className="text-[10px]">{t.nav.voice}</span>
           </button>
-          
+
           {menuItems.slice(4).map((item) => {
             const Icon = item.icon
             const isActive = currentView === item.id
-            
+
             return (
               <button
                 key={item.id}
@@ -187,7 +193,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           })}
         </nav>
       </div>
-      
+
       <Dialog open={showVoiceRecorder} onOpenChange={setShowVoiceRecorder}>
         <DialogContent>
           <DialogHeader>
