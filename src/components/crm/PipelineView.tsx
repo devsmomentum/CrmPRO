@@ -39,7 +39,7 @@ import { Company } from './CompanyManagement'
 
 export function PipelineView({ companyId, companies = [] }: { companyId?: string; companies?: Company[] }) {
   const t = useTranslation('es')
-  
+
   if (!companyId) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
@@ -65,40 +65,40 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   // Cargar miembros del equipo desde BD para tener pipelines actualizados
   useEffect(() => {
     if (!companyId) return
-    ;(async () => {
-      try {
-        const equipos = await getEquipos(companyId)
-        const equiposIds = (equipos as any[]).map(e => e.id)
-        const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
-        const personas = allPersonas.flat()
+      ; (async () => {
+        try {
+          const equipos = await getEquipos(companyId)
+          const equiposIds = (equipos as any[]).map(e => e.id)
+          const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
+          const personas = allPersonas.flat()
 
-        const mapped = await Promise.all(personas.map(async p => {
-          let memberPipelines: string[] = []
-          try {
-            const { data: pPipelines } = await getPipelinesForPersona(p.id)
-            if (pPipelines) {
-              // Aquí obtenemos los IDs de los pipelines asignados
-              memberPipelines = pPipelines.map((pp: any) => pp.pipeline_id)
+          const mapped = await Promise.all(personas.map(async p => {
+            let memberPipelines: string[] = []
+            try {
+              const { data: pPipelines } = await getPipelinesForPersona(p.id)
+              if (pPipelines) {
+                // Aquí obtenemos los IDs de los pipelines asignados
+                memberPipelines = pPipelines.map((pp: any) => pp.pipeline_id)
+              }
+            } catch (err) {
+              console.error('Error loading pipelines for persona', p.id, err)
             }
-          } catch (err) {
-            console.error('Error loading pipelines for persona', p.id, err)
-          }
 
-          return {
-            id: p.id,
-            name: p.nombre,
-            email: p.email,
-            avatar: '',
-            role: p.titulo_trabajo || '',
-            teamId: p.equipo_id || undefined,
-            pipelines: memberPipelines
-          }
-        }))
-        setTeamMembers(mapped)
-      } catch (e) {
-        console.error('Error loading team members in PipelineView', e)
-      }
-    })()
+            return {
+              id: p.id,
+              name: p.nombre,
+              email: p.email,
+              avatar: '',
+              role: p.titulo_trabajo || '',
+              teamId: p.equipo_id || undefined,
+              pipelines: memberPipelines
+            }
+          }))
+          setTeamMembers(mapped)
+        } catch (e) {
+          console.error('Error loading team members in PipelineView', e)
+        }
+      })()
   }, [companyId])
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             stage: l.etapa_id,
             pipeline: l.pipeline_id || 'sales',
             priority: l.prioridad,
-            assignedTo: l.asignado_a, 
+            assignedTo: l.asignado_a,
             tags: [],
             createdAt: new Date(l.created_at),
             lastContact: new Date(l.created_at)
@@ -144,14 +144,14 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             }))
 
             setPipelines(dbPipelines)
-            
+
             // Si el pipeline activo no existe en los nuevos pipelines, seleccionar el primero
             setActivePipeline(current => {
-               const exists = dbPipelines.find(p => p.type === current)
-               if (!exists && dbPipelines.length > 0) {
-                 return dbPipelines[0].type
-               }
-               return current
+              const exists = dbPipelines.find(p => p.type === current)
+              if (!exists && dbPipelines.length > 0) {
+                return dbPipelines[0].type
+              }
+              return current
             })
           }
         })
@@ -160,22 +160,19 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   }, [companyId])
 
   const currentPipeline = (pipelines || []).find(p => p.type === activePipeline)
-  // Filtrar leads por pipeline activo. 
-  // Nota: Si los leads en BD tienen pipeline_id (UUID), y activePipeline es 'sales' (string), 
-  // necesitamos una forma de relacionarlos.
-  // Por ahora, asumiremos que si el pipeline es custom, activePipeline es el ID.
-  // Si es default ('sales'), los leads deberían tener ese valor o null?
-  // La tabla lead tiene pipeline_id uuid. 'sales' no es uuid.
-  // Necesitamos que al crear el lead se guarde el ID del pipeline correcto.
-  
+
+  // LOGICA DE FILTRADO ROBUSTA
   const allPipelineLeads = leads.filter(l => {
     // Comparamos con el ID real (UUID) del pipeline actual
-    return l.pipeline === currentPipeline?.id
+    if (l.pipeline === currentPipeline?.id) return true
+    // También permitimos coincidencia por tipo si el lead tiene el string (ej: 'sales')
+    if (currentPipeline?.type && l.pipeline === currentPipeline.type) return true
+    return false
   })
 
   const eligibleMembers = (teamMembers || []).filter(m => {
-    if (!m.pipelines || m.pipelines.length === 0) return false 
-    
+    if (!m.pipelines || m.pipelines.length === 0) return false
+
     return m.pipelines.some(p => {
       // Coincidencia exacta (UUID o slug)
       if (p === activePipeline) return true
@@ -183,21 +180,28 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       if (currentPipeline && p === currentPipeline.name) return true
       // Coincidencia por ID del pipeline actual (si es custom y tiene ID)
       if (currentPipeline && currentPipeline.id && p === currentPipeline.id) return true
-      
+
       return false
     })
   })
-  
+
   const teamMemberNames = eligibleMembers.map(m => m.name)
-  const pipelineLeads = filterByMember === 'all' 
-    ? allPipelineLeads 
-    : allPipelineLeads.filter(l => l.assignedTo === filterByMember)
+  const pipelineLeads = filterByMember === 'all'
+    ? allPipelineLeads
+    : allPipelineLeads.filter(l => {
+      if (l.assignedTo === filterByMember) return true
+      // Soporte para datos legacy donde assignedTo podría ser el nombre
+      const member = teamMembers.find(m => m.id === filterByMember)
+      if (member && l.assignedTo === member.name) return true
+      return false
+    })
 
   useEffect(() => {
-    if (filterByMember !== 'all' && !teamMemberNames.includes(filterByMember)) {
+    // Si el miembro filtrado ya no existe en eligibleMembers, resetear
+    if (filterByMember !== 'all' && !eligibleMembers.find(m => m.id === filterByMember)) {
       setFilterByMember('all')
     }
-  }, [activePipeline, teamMembers])
+  }, [activePipeline, teamMembers, filterByMember, eligibleMembers])
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -236,35 +240,35 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         return // No actualizamos estado local si falla BD
       }
     } else {
-       // Si es un pipeline default (no UUID), advertimos que solo es local
-       if (['sales', 'support', 'administrative'].includes(activePipeline)) {
-          // Opcional: Podríamos crear el pipeline en BD aquí si quisiéramos persistencia total
-          // Por ahora solo guardamos local
-       }
+      // Si es un pipeline default (no UUID), advertimos que solo es local
+      if (['sales', 'support', 'administrative'].includes(activePipeline)) {
+        // Opcional: Podríamos crear el pipeline en BD aquí si quisiéramos persistencia total
+        // Por ahora solo guardamos local
+      }
     }
 
     setPipelines((current) => {
       const pipelines = current || []
       const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
-      
+
       if (pipelineIndex === -1) {
         // Esto no debería pasar para pipelines de BD, solo para defaults si no existen
         const newPipeline: Pipeline = {
           id: `${activePipeline}-pipeline`,
-          name: activePipeline === 'sales' ? 'Sales Pipeline' : 
-                activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline',
+          name: activePipeline === 'sales' ? 'Sales Pipeline' :
+            activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline',
           type: activePipeline,
           stages: [stageToState]
         }
         return [...pipelines, newPipeline]
       }
-      
+
       const updatedPipelines = [...pipelines]
       updatedPipelines[pipelineIndex] = {
         ...updatedPipelines[pipelineIndex],
         stages: [...updatedPipelines[pipelineIndex].stages, stageToState]
       }
-      
+
       return updatedPipelines
     })
   }
@@ -274,7 +278,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       // Resolver el UUID del pipeline actual
       const currentPipeline = pipelines.find(p => p.type === activePipeline)
       let pipelineIdToSave = currentPipeline?.id
-      
+
       if (!pipelineIdToSave) {
         toast.error('No se ha seleccionado un pipeline válido')
         return
@@ -286,13 +290,13 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         telefono: lead.phone,
         empresa: lead.company,
         presupuesto: lead.budget,
-        etapa_id: lead.stage, 
+        etapa_id: lead.stage,
         pipeline_id: pipelineIdToSave,
         prioridad: lead.priority,
-        asignado_a: null, 
+        asignado_a: null,
         empresa_id: companyId
       }
-      
+
       // Mapear nombre de asignado a UUID
       const assignedMember = teamMembers?.find(m => m.name === lead.assignedTo)
       if (assignedMember) {
@@ -301,31 +305,31 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
 
       // Si el pipeline es custom (tiene UUID), intentamos guardar
       if (pipelineIdToSave) {
-         // Validar que la etapa sea UUID
-         const isStageUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead.stage)
-         
-         if (!isStageUUID) {
-           toast.warning('No se puede guardar en BD: La etapa no está sincronizada (ID inválido). Se guardará localmente.')
-           setLeads((current) => [...(current || []), lead])
-           return
-         }
+        // Validar que la etapa sea UUID
+        const isStageUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead.stage)
 
-         const created = await createLead(payload)
-         // IMPORTANTE: Usar el UUID del pipeline (pipelineIdToSave) para el estado local
-         // para que coincida con el filtro de allPipelineLeads
-         const newLead = { 
-           ...lead, 
-           id: created.id,
-           pipeline: pipelineIdToSave || lead.pipeline 
-         }
-         setLeads((current) => [...(current || []), newLead])
-         toast.success('Lead guardado en BD')
+        if (!isStageUUID) {
+          toast.warning('No se puede guardar en BD: La etapa no está sincronizada (ID inválido). Se guardará localmente.')
+          setLeads((current) => [...(current || []), lead])
+          return
+        }
+
+        const created = await createLead(payload)
+        // IMPORTANTE: Usar el UUID del pipeline (pipelineIdToSave) para el estado local
+        // para que coincida con el filtro de allPipelineLeads
+        const newLead = {
+          ...lead,
+          id: created.id,
+          pipeline: pipelineIdToSave || lead.pipeline
+        }
+        setLeads((current) => [...(current || []), newLead])
+        toast.success('Lead guardado en BD')
       } else {
         // Fallback local para defaults
         setLeads((current) => [...(current || []), lead])
         toast.warning('Lead guardado localmente (Pipeline default)')
       }
-      
+
     } catch (error: any) {
       console.error('Error creating lead:', error)
       toast.error(`Error al crear lead: ${error.message}`)
@@ -346,7 +350,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       toast.error('Error al eliminar lead')
     }
   }
-  
+
   const handleDeleteStage = async (stageId: string) => {
     // Check if it's a UUID (DB stage)
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stageId)
@@ -358,22 +362,22 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       } catch (err: any) {
         console.error('Error deleting stage:', err)
         toast.error(`Error al eliminar etapa de BD: ${err.message || err.details || 'Error desconocido'}`)
-        return 
+        return
       }
     }
 
     setPipelines((current) => {
       const pipelines = current || []
       const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
-      
+
       if (pipelineIndex === -1) return pipelines
-      
+
       const updatedPipelines = [...pipelines]
       updatedPipelines[pipelineIndex] = {
         ...updatedPipelines[pipelineIndex],
         stages: updatedPipelines[pipelineIndex].stages.filter(s => s.id !== stageId)
       }
-      
+
       return updatedPipelines
     })
     toast.success('Etapa eliminada')
@@ -385,9 +389,9 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     try {
       // Si el pipeline tiene un ID (es decir, está guardado en BD), lo eliminamos
       if (currentPipeline?.id && !currentPipeline.id.startsWith('pipeline-')) {
-         await deletePipeline(currentPipeline.id)
+        await deletePipeline(currentPipeline.id)
       }
-      
+
       setPipelines((current) => (current || []).filter(p => p.type !== activePipeline))
       setActivePipeline('sales')
       toast.success('Pipeline eliminado correctamente')
@@ -401,28 +405,28 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
     setDraggedLead(lead)
     e.dataTransfer.effectAllowed = 'move'
   }
-  
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
   }
-  
+
   const handleDrop = (e: React.DragEvent, targetStageId: string) => {
     e.preventDefault()
-    
+
     if (!draggedLead) return
-    
+
     if (draggedLead.stage === targetStageId) {
       setDraggedLead(null)
       return
     }
-    
+
     const updatedLead = {
       ...draggedLead,
       stage: targetStageId
     }
-    
-    setLeads((current) => 
+
+    setLeads((current) =>
       (current || []).map(l => l.id === draggedLead.id ? updatedLead : l)
     )
 
@@ -433,12 +437,12 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
           console.error('Error updating lead stage in DB:', err)
           toast.error(`Error al mover lead: ${err.message || 'Error desconocido'}`)
           // Revertir cambio local
-          setLeads((current) => 
+          setLeads((current) =>
             (current || []).map(l => l.id === draggedLead.id ? draggedLead : l)
           )
         })
     }
-    
+
     setDraggedLead(null)
     toast.success('Lead movido a nueva etapa')
   }
@@ -500,10 +504,10 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
           <TabsList className="w-full md:w-auto flex-wrap h-auto">
             {(pipelines || []).map(p => (
-                <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm">
-                  {p.name}
-                </TabsTrigger>
-              ))}
+              <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm">
+                {p.name}
+              </TabsTrigger>
+            ))}
           </TabsList>
         </Tabs>
 
@@ -515,8 +519,8 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los miembros</SelectItem>
-              {teamMemberNames.map(name => (
-                <SelectItem key={name} value={name}>{name}</SelectItem>
+              {eligibleMembers.map(member => (
+                <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -530,10 +534,10 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
 
       <div className="flex-1 overflow-hidden">
         {(!pipelines || pipelines.length === 0) && (
-           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-             <p className="text-lg font-medium">No hay pipelines disponibles</p>
-             <p className="text-sm">Ve a Configuración para crear uno nuevo.</p>
-           </div>
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <p className="text-lg font-medium">No hay pipelines disponibles</p>
+            <p className="text-sm">Ve a Configuración para crear uno nuevo.</p>
+          </div>
         )}
         <div className="h-full overflow-x-auto px-4 md:px-6 py-4 md:py-6">
           <div className="flex gap-3 md:gap-4 h-full min-h-0 min-w-max">
@@ -723,12 +727,12 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
       </div>
 
       {selectedLead && (
-        <LeadDetailSheet 
-          lead={selectedLead} 
+        <LeadDetailSheet
+          lead={selectedLead}
           open={!!selectedLead}
           onClose={() => setSelectedLead(null)}
           onUpdate={(updated) => {
-            setLeads((current) => 
+            setLeads((current) =>
               (current || []).map(l => l.id === updated.id ? updated : l)
             )
             setSelectedLead(updated)
