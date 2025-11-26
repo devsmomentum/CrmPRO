@@ -43,16 +43,63 @@ export async function createEmpresa({ nombre_empresa, usuario_id }) {
 
 export async function getEmpresasByUsuario(usuario_id) {
   console.log('[EMPRESA] getEmpresasByUsuario', usuario_id)
-  const { data, error } = await supabase
+  
+  // 1. Empresas propias
+  const { data: owned, error: ownedError } = await supabase
     .from('empresa')
     .select('*')
     .eq('usuario_id', usuario_id)
-  if (error) {
-    console.error('[EMPRESA] error select empresas', error)
-    throw error
+  
+  if (ownedError) {
+    console.error('[EMPRESA] error getEmpresasByUsuario (owned)', ownedError)
+    throw ownedError
   }
-  console.log('[EMPRESA] empresas encontradas', data?.length || 0)
-  return data || []
+
+  // 2. Empresas donde soy miembro (via persona)
+  // Necesitamos saber en qué equipos estoy (persona.usuario_id = usuario_id)
+  // y de esos equipos, qué empresas son.
+  const { data: memberData, error: memberError } = await supabase
+    .from('persona')
+    .select(`
+      equipo_id,
+      equipos (
+        empresa_id,
+        empresa (
+          id,
+          nombre_empresa,
+          usuario_id,
+          created_at
+        )
+      )
+    `)
+    .eq('usuario_id', usuario_id)
+
+  if (memberError) {
+    console.error('[EMPRESA] error getEmpresasByUsuario (member)', memberError)
+    // No lanzamos error fatal, solo logueamos, para no romper el flujo principal si falla esta parte
+  }
+
+  const memberCompanies = memberData 
+    ? memberData
+        .map(p => p.equipos?.empresa) // Extraer la empresa anidada
+        .filter(Boolean) // Eliminar nulos
+        // Eliminar duplicados (si estoy en varios equipos de la misma empresa)
+        .filter((emp, index, self) => 
+          index === self.findIndex((t) => (
+            t.id === emp.id
+          ))
+        )
+    : []
+
+  // Combinar y eliminar duplicados (por si soy dueño y miembro a la vez, raro pero posible)
+  const allCompanies = [...(owned || []), ...memberCompanies].filter((emp, index, self) =>
+    index === self.findIndex((t) => (
+      t.id === emp.id
+    ))
+  )
+
+  console.log('[EMPRESA] empresas encontradas (propias + miembro)', allCompanies)
+  return allCompanies
 }
 
 export async function deleteEmpresa(id) {

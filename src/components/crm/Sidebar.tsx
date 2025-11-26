@@ -26,15 +26,16 @@ interface SidebarProps {
   currentCompanyId?: string
   onCompanyChange?: (companyId: string) => void
   companies?: Company[]
+  notificationCount?: number
 }
 
-export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [] }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [], notificationCount = 0 }: SidebarProps) {
   const t = useTranslation('es')
   const [notifications] = usePersistentState<Notification[]>('notifications', [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   // const [companies] = usePersistentState<Company[]>('companies', [])
 
-  const unreadCount = (notifications || []).filter(n => !n.read).length
+  const unreadCount = (notifications || []).filter(n => !n.read).length + notificationCount
 
   const menuItems = [
     { id: 'dashboard', icon: House, label: t.nav.dashboard },
@@ -68,7 +69,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                 <SelectContent>
                   {(companies || []).map(c => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.name}
+                      {c.name} {c.ownerId !== user?.id && <span className="text-muted-foreground text-[10px] ml-1">({t.common?.guest || 'Invitado'})</span>}
                     </SelectItem>
                   ))}
                 </SelectContent>

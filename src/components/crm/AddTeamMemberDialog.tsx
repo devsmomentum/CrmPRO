@@ -20,9 +20,10 @@ import { cn } from '@/lib/utils'
 interface AddTeamMemberDialogProps {
   onAdd: (member: TeamMember) => void
   companyId?: string
+  onInvitationCreated?: () => void // Callback para recargar invitaciones
 }
 
-export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogProps) {
+export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: AddTeamMemberDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -33,7 +34,7 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
   const [roles] = usePersistentState<Role[]>('roles', [])
   const [dbPipelines, setDbPipelines] = useState<Pipeline[]>([])
   const [memberPipelines, setMemberPipelines] = useState<Set<PipelineType>>(new Set())
-  
+
   const pipelineOptions = dbPipelines.map(p => ({ value: p.id, label: p.name }))
 
   const jobRoles = [
@@ -75,26 +76,41 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
       return
     }
 
+    // Validar que se seleccione un equipo (es obligatorio en el schema)
+    if (!selectedTeamId || selectedTeamId === 'none') {
+      toast.error('Debes seleccionar un equipo para enviar la invitación')
+      return
+    }
+
     const selectedPipelines = Array.from(memberPipelines)
     if (selectedPipelines.length === 0) {
       toast.error('Selecciona al menos un pipeline')
       return
     }
 
-    const newMember: TeamMember = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      email: email.trim(),
-      role,
-      roleId: selectedRoleId && selectedRoleId !== 'none' ? selectedRoleId : undefined,
-      teamId: selectedTeamId && selectedTeamId !== 'none' ? selectedTeamId : undefined,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
-      pipelines: selectedPipelines
-    }
-
     try {
-      // Delegamos persistencia al padre (TeamView)
-      onAdd(newMember)
+      const { createInvitation } = await import('@/supabase/services/invitations')
+
+      await createInvitation({
+        equipo_id: selectedTeamId,
+        empresa_id: companyId,
+        invited_email: email.trim(),
+        invited_nombre: name.trim(),
+        invited_titulo_trabajo: role,
+        pipeline_ids: selectedPipelines
+      })
+
+      onAdd({
+        id: 'temp-' + Date.now(),
+        name: name.trim(),
+        email: email.trim(),
+        role,
+        pipelines: selectedPipelines,
+        avatar: '',
+        // @ts-ignore
+        status: 'pending'
+      })
+
       setName('')
       setEmail('')
       setRole('Sales Rep')
@@ -102,10 +118,17 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
       setSelectedTeamId('none')
       setMemberPipelines(new Set())
       setOpen(false)
-      toast.success('Miembro enviado para guardar')
-    } catch (e:any) {
-      console.error('[AddTeamMemberDialog] error preparando miembro', e)
-      toast.error(e.message || 'No se pudo preparar el miembro')
+      toast.success('Invitación enviada', {
+        description: 'El usuario recibirá una notificación en su CRM.'
+      })
+
+      // Llamar callback para recargar invitaciones
+      if (onInvitationCreated) {
+        onInvitationCreated()
+      }
+    } catch (e: any) {
+      console.error('[AddTeamMemberDialog] error invitando', e)
+      toast.error(e.message || 'Error al enviar invitación')
     }
   }
 
@@ -120,6 +143,9 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Team Member</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Invita a un usuario existente a tu equipo. Debe tener una cuenta registrada con este email.
+          </p>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -165,8 +191,8 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
                 {(roles || []).map(r => (
                   <SelectItem key={r.id} value={r.id}>
                     <div className="flex items-center gap-2">
-                      <div 
-                        className="w-2 h-2 rounded-full" 
+                      <div
+                        className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: r.color }}
                       />
                       {r.name}
@@ -180,13 +206,13 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
             </p>
           </div>
           <div>
-            <Label htmlFor="team">Equipo (Opcional)</Label>
+            <Label htmlFor="team">Equipo *</Label>
             <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
               <SelectTrigger id="team">
-                <SelectValue placeholder="Sin equipo" />
+                <SelectValue placeholder="Selecciona un equipo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sin equipo</SelectItem>
+                <SelectItem value="none" disabled>Selecciona un equipo</SelectItem>
                 {teams.map(team => (
                   <SelectItem key={team.id} value={team.id}>
                     {team.nombre_equipo}
@@ -195,7 +221,7 @@ export function AddTeamMemberDialog({ onAdd, companyId }: AddTeamMemberDialogPro
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
-              Asigna un equipo a este miembro
+              El equipo es obligatorio para enviar la invitación
             </p>
           </div>
           <div className="pt-2 border-t border-border">

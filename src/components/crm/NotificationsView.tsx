@@ -9,57 +9,79 @@ import { es } from 'date-fns/locale'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
-// Mock data for invitations
+import { getPendingInvitations, acceptInvitation, rejectInvitation } from '@/supabase/services/invitations'
+import { supabase } from '@/supabase/client'
+import { useEffect } from 'react'
+
 interface Invitation {
     id: string
-    companyName: string
-    companyLogo?: string
-    inviterName: string
-    inviterEmail: string
-    role: string
-    sentAt: Date
+    empresa_id: string
+    empresa: { nombre_empresa: string }
+    equipo: { nombre_equipo: string }
+    invited_email: string
+    invited_nombre: string
+    invited_titulo_trabajo: string
+    created_at: string
     status: 'pending' | 'accepted' | 'rejected'
 }
 
-const MOCK_INVITATIONS: Invitation[] = [
-    {
-        id: '1',
-        companyName: 'TechCorp Solutions',
-        inviterName: 'Roberto Gómez',
-        inviterEmail: 'roberto@techcorp.com',
-        role: 'Sales Manager',
-        sentAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-        status: 'pending'
-    },
-    {
-        id: '2',
-        companyName: 'Innovate Design',
-        inviterName: 'Ana Martínez',
-        inviterEmail: 'ana@innovate.com',
-        role: 'Marketing Specialist',
-        sentAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2), // 2 days ago
-        status: 'pending'
-    }
-]
+interface NotificationsViewProps {
+    onInvitationAccepted?: (companyId?: string) => void
+}
 
-export function NotificationsView() {
+export function NotificationsView({ onInvitationAccepted }: NotificationsViewProps) {
     const t = useTranslation('es')
-    const [invitations, setInvitations] = useState<Invitation[]>(MOCK_INVITATIONS)
+    const [invitations, setInvitations] = useState<Invitation[]>([])
+    const [loading, setLoading] = useState(true)
 
-    const handleAccept = (id: string) => {
-        setInvitations(current =>
-            current.map(inv => inv.id === id ? { ...inv, status: 'accepted' } : inv)
-        )
-        toast.success('Invitación aceptada', {
-            description: 'Ahora tienes acceso a la empresa.'
-        })
+    useEffect(() => {
+        const loadInvitations = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (user && user.email) {
+                    const data = await getPendingInvitations(user.email)
+                    setInvitations(data)
+                }
+            } catch (error) {
+                console.error('Error loading invitations:', error)
+            } finally {
+                setLoading(false)
+            }
+        }
+        loadInvitations()
+    }, [])
+
+    const handleAccept = async (id: string, token: string) => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user) throw new Error('No authenticated user')
+
+            const result = await acceptInvitation(token, user.id)
+            setInvitations(current => current.filter(inv => inv.id !== id))
+            toast.success('Invitación aceptada', {
+                description: 'Ahora tienes acceso a la empresa.'
+            })
+
+            // Notificar al padre para actualizar estado y navegar
+            if (onInvitationAccepted) {
+                const acceptedInvite = invitations.find(i => i.id === id)
+                onInvitationAccepted(acceptedInvite?.empresa_id)
+            }
+        } catch (error: any) {
+            console.error('Error accepting invitation:', error)
+            toast.error('Error al aceptar invitación: ' + error.message)
+        }
     }
 
-    const handleReject = (id: string) => {
-        setInvitations(current =>
-            current.map(inv => inv.id === id ? { ...inv, status: 'rejected' } : inv)
-        )
-        toast.info('Invitación rechazada')
+    const handleReject = async (id: string) => {
+        try {
+            await rejectInvitation(id)
+            setInvitations(current => current.filter(inv => inv.id !== id))
+            toast.info('Invitación rechazada')
+        } catch (error: any) {
+            console.error('Error rejecting invitation:', error)
+            toast.error('Error al rechazar invitación')
+        }
     }
 
     const pendingInvitations = invitations.filter(i => i.status === 'pending')
@@ -107,27 +129,27 @@ export function NotificationsView() {
                                         <div className="flex items-start gap-4">
                                             <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
                                                 <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                                                    {invitation.companyName.substring(0, 2).toUpperCase()}
+                                                    {invitation.empresa?.nombre_empresa?.substring(0, 2).toUpperCase() || 'EM'}
                                                 </AvatarFallback>
                                             </Avatar>
 
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2">
-                                                    <h3 className="font-semibold text-lg">{invitation.companyName}</h3>
+                                                    <h3 className="font-semibold text-lg">{invitation.empresa?.nombre_empresa || 'Empresa'}</h3>
                                                     <Badge variant="outline" className="text-xs font-normal">
-                                                        {invitation.role}
+                                                        {invitation.invited_titulo_trabajo || 'Miembro'}
                                                     </Badge>
                                                 </div>
 
                                                 <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-sm text-muted-foreground">
                                                     <div className="flex items-center gap-1">
                                                         <User size={14} />
-                                                        <span>Invitado por <span className="font-medium text-foreground">{invitation.inviterName}</span></span>
+                                                        <span>Equipo: <span className="font-medium text-foreground">{invitation.equipo?.nombre_equipo || 'General'}</span></span>
                                                     </div>
                                                     <span className="hidden sm:inline">•</span>
                                                     <div className="flex items-center gap-1">
                                                         <Clock size={14} />
-                                                        <span>{format(invitation.sentAt, "d 'de' MMMM, HH:mm", { locale: es })}</span>
+                                                        <span>{format(new Date(invitation.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -143,7 +165,7 @@ export function NotificationsView() {
                                                 Rechazar
                                             </Button>
                                             <Button
-                                                onClick={() => handleAccept(invitation.id)}
+                                                onClick={() => handleAccept(invitation.id, (invitation as any).token)}
                                                 className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
                                             >
                                                 <Check className="mr-2" size={16} />
@@ -158,28 +180,7 @@ export function NotificationsView() {
                 </div>
 
                 {/* Historial de invitaciones (opcional, para dar más cuerpo a la vista) */}
-                {(invitations.length > pendingInvitations.length) && (
-                    <div className="space-y-4 pt-8 border-t">
-                        <h2 className="text-lg font-semibold text-muted-foreground">Historial reciente</h2>
-                        <div className="space-y-2 opacity-70">
-                            {invitations.filter(i => i.status !== 'pending').map(inv => (
-                                <div key={inv.id} className="flex items-center justify-between p-4 bg-muted/20 rounded-lg border border-transparent hover:border-border transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                            "w-2 h-2 rounded-full",
-                                            inv.status === 'accepted' ? "bg-green-500" : "bg-red-500"
-                                        )} />
-                                        <span className="font-medium">{inv.companyName}</span>
-                                        <span className="text-sm text-muted-foreground">- {inv.role}</span>
-                                    </div>
-                                    <span className="text-xs text-muted-foreground capitalize">
-                                        {inv.status === 'accepted' ? 'Aceptada' : 'Rechazada'}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                {/* Eliminado historial mock por ahora */}
             </div>
         </div>
     )

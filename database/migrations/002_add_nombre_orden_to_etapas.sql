@@ -1,2 +1,0 @@
-ALTER TABLE etapas ADD COLUMN IF NOT EXISTS nombre text;
-ALTER TABLE etapas ADD COLUMN IF NOT EXISTS orden integer DEFAULT 0;

@@ -1,1 +1,0 @@
-ALTER TABLE etapas ADD COLUMN IF NOT EXISTS color text DEFAULT '#3b82f6';

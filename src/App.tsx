@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Toaster } from '@/components/ui/sonner'
+import { Button } from '@/components/ui/button'
 import { Sidebar } from '@/components/crm/Sidebar'
 import { Dashboard } from '@/components/crm/Dashboard'
 import { PipelineView } from '@/components/crm/PipelineView'
@@ -16,11 +17,12 @@ import { createUsuario, getUsuarioById } from '@/supabase/services/usuarios'
 import { createEmpresa, getEmpresasByUsuario } from '@/supabase/services/empresa'
 import { supabase } from '@/supabase/client'
 import { verifyEmpresaTable, testInsertEmpresa, listEmpresasCurrentUser, testRLSViolation } from '@/supabase/diagnostics/empresaDebug'
-// import { useKV } from '@github/spark/hooks'
+import { getPendingInvitations } from '@/supabase/services/invitations'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { toast } from 'sonner'
 import { Pipeline, PipelineType } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
+import { JoinTeam } from '@/components/crm/JoinTeam'
 
 type View = 'dashboard' | 'pipeline' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
 type AuthView = 'login' | 'register'
@@ -28,7 +30,7 @@ type AuthView = 'login' | 'register'
 interface User {
   id: string
   email: string
-  businessName: string // usamos businessName en UI pero se guarda como nombre en tabla usuarios
+  businessName: string
 }
 
 function App() {
@@ -38,8 +40,10 @@ function App() {
   const [user, setUser] = usePersistentState<User | null>('current-user', null)
   const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
   const [currentCompanyId, setCurrentCompanyId] = usePersistentState<string>('current-company-id', '')
+  const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0)
+  const [inviteToken, setInviteToken] = useState<string | null>(null)
+  const [isLoggingInForInvite, setIsLoggingInForInvite] = useState(false)
 
-  // Exponer utilidades de diagnóstico en window para usar desde la consola
   useEffect(() => {
     ; (window as any).empDiag = {
       verifyEmpresaTable,
@@ -50,18 +54,60 @@ function App() {
     console.log('[EMPRESA:DIAG] Herramientas empDiag disponibles en window.empDiag')
   }, [])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('token')
+    if (token) {
+      setInviteToken(token)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user?.email) {
+      getPendingInvitations(user.email)
+        .then(invites => setPendingInvitationsCount(invites?.length || 0))
+        .catch(err => console.error('Error fetching invitations count:', err))
+    }
+  }, [user?.email])
+
+  const fetchCompanies = async () => {
+    if (!user?.id) return
+    try {
+      const empresas = await getEmpresasByUsuario(user.id)
+      const uiCompanies = empresas.map(e => ({
+        id: e.id,
+        name: e.nombre_empresa,
+        ownerId: e.usuario_id,
+        createdAt: new Date(e.created_at)
+      }))
+      setCompanies(uiCompanies)
+
+      if (!currentCompanyId && uiCompanies.length > 0) {
+        setCurrentCompanyId(uiCompanies[0].id)
+      }
+      return uiCompanies
+    } catch (error) {
+      console.error('Error fetching companies:', error)
+      return []
+    }
+  }
+
+  useEffect(() => {
+    if (user?.id) {
+      fetchCompanies()
+    }
+  }, [user?.id])
+
   const handleLogin = async (email: string, password: string) => {
     try {
       console.log('[LOGIN] iniciando login para', email)
       const authUser = await login(email, password)
       console.log('[LOGIN] authUser recibido', authUser)
 
-      // Intentar obtener usuario de la tabla usuarios
       let row
       try {
         row = await getUsuarioById(authUser.id)
       } catch (err: any) {
-        // Si no existe, crear el usuario en la tabla usuarios
         console.log('[LOGIN] usuario no existe en tabla usuarios, creando...')
         row = await createUsuario({
           id: authUser.id,
@@ -74,7 +120,6 @@ function App() {
       const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
       setUser(newUser)
 
-      // Cargar empresas del usuario
       const empresas = await getEmpresasByUsuario(authUser.id)
       const uiCompanies = empresas.map(e => ({
         id: e.id,
@@ -86,7 +131,7 @@ function App() {
       if (uiCompanies.length > 0) {
         setCurrentCompanyId(uiCompanies[0].id)
       }
-      // Fallback: si el registro inicial no creó empresa (por confirmación email) crearla ahora
+
       if (uiCompanies.length === 0) {
         console.log('[LOGIN] No se encontraron empresas; creando empresa inicial')
         try {
@@ -124,32 +169,26 @@ function App() {
       const authUser = await register(email, password)
       console.log('[REGISTER] authUser recibido', authUser)
 
-      // Verificar si se requiere confirmación de email
       const { data: sessionData } = await supabase.auth.getSession()
 
       if (!sessionData.session) {
-        // No hay sesión inmediata - se requiere confirmación de email
         console.log('[REGISTER] confirmación de email requerida')
         toast.success('¡Registro exitoso! Por favor revisa tu email para confirmar tu cuenta.', {
           duration: 6000
         })
-        // Volver a la vista de login
         setAuthView('login')
         return
       }
 
-      // Si hay sesión, continuar con la creación del usuario y empresa
       const row = await createUsuario({ id: authUser.id, email, nombre: businessName })
       console.log('[REGISTER] fila insertada usuarios', row)
 
-      // Crear empresa inicial
       const empresa = await createEmpresa({ nombre_empresa: businessName, usuario_id: authUser.id })
       console.log('[REGISTER] empresa creada', empresa)
 
       const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
       setUser(newUser)
 
-      // Map a Company shape para UI
       const uiCompany = {
         id: empresa.id,
         name: empresa.nombre_empresa,
@@ -178,6 +217,57 @@ function App() {
     setUser(null)
     setCurrentCompanyId('')
     toast.success('¡Sesión cerrada!')
+  }
+
+  if (inviteToken) {
+    if (user) {
+      return (
+        <>
+          <JoinTeam
+            token={inviteToken}
+            user={user}
+            onSuccess={() => {
+              setInviteToken(null)
+              window.history.replaceState({}, document.title, window.location.pathname)
+              setCurrentView('dashboard')
+            }}
+            onLoginRequest={() => { }}
+          />
+          <Toaster />
+        </>
+      )
+    }
+
+    if (isLoggingInForInvite) {
+      return (
+        <>
+          {authView === 'login' ? (
+            <LoginView
+              onLogin={handleLogin}
+              onSwitchToRegister={() => setAuthView('register')}
+            />
+          ) : (
+            <RegisterView
+              onRegister={handleRegister}
+              onSwitchToLogin={() => setAuthView('login')}
+            />
+          )}
+          <Toaster />
+        </>
+      )
+    } else {
+      return (
+        <>
+          <JoinTeam
+            token={inviteToken}
+            user={null}
+            onSuccess={() => { }}
+            onLoginRequest={() => setIsLoggingInForInvite(true)}
+          />
+          <Toaster />
+        </>
+      )
+    }
   }
 
   if (!user) {
@@ -209,12 +299,47 @@ function App() {
         currentCompanyId={currentCompanyId}
         onCompanyChange={setCurrentCompanyId}
         companies={companies}
+        notificationCount={pendingInvitationsCount}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {(() => {
+          const currentCompany = companies.find(c => c.id === currentCompanyId)
+          const isGuest = currentCompany && currentCompany.ownerId !== user.id
+
+          if (isGuest) {
+            return (
+              <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-amber-900 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">Modo Invitado:</span>
+                  <span>Estás viendo la empresa <strong>{currentCompany.name}</strong>. Tienes acceso de lectura/escritura limitado según tu rol.</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 bg-white border-amber-300 hover:bg-amber-50 text-amber-900"
+                  onClick={() => {
+                    console.log('[GUEST_MODE] Saliendo del modo invitado...')
+                    const myCompany = companies.find(c => c.ownerId === user.id)
+                    if (myCompany) {
+                      setCurrentCompanyId(myCompany.id)
+                      setCurrentView('dashboard')
+                      toast.info('Has vuelto a tu empresa')
+                    } else {
+                      toast.error('No se encontró tu empresa personal')
+                    }
+                  }}
+                >
+                  Salir del Modo Invitado
+                </Button>
+              </div>
+            )
+          }
+          return null
+        })()}
+
         <div className="border-b px-4 py-2 text-xs text-muted-foreground flex items-center gap-4">
           <div className="flex items-center gap-3">
-            {/* avatar */}
             <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden">
               <img
                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
@@ -244,7 +369,17 @@ function App() {
             setCompanies={setCompanies}
           />
         )}
-        {currentView === 'notifications' && <NotificationsView />}
+        {currentView === 'notifications' && (
+          <NotificationsView
+            onInvitationAccepted={async (newCompanyId) => {
+              await fetchCompanies()
+              if (newCompanyId) {
+                setCurrentCompanyId(newCompanyId)
+              }
+              setCurrentView('dashboard')
+            }}
+          />
+        )}
       </main>
 
       <NotificationPanel open={showNotifications} onClose={() => setShowNotifications(false)} />

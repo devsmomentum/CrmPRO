@@ -41,6 +41,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
   const [dbPipelines, setDbPipelines] = useState<any[]>([])
   const [newTeamName, setNewTeamName] = useState('')
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string | null>(null) // null = all, 'no-team' = unassigned, uuid = specific team
+  const [refreshTrigger, setRefreshTrigger] = useState(0) // Disparar recarga de invitaciones
 
   useEffect(() => {
     if (!companyId) return
@@ -51,14 +52,14 @@ export function TeamView({ companyId }: { companyId?: string }) {
 
   useEffect(() => {
     if (!companyId) return
-    ;(async () => {
-      try {
-        const data = await getEquipos(companyId)
-        setEquipos(data as any)
-      } catch (e:any) {
-        console.error('[TeamView] error cargando equipos', e)
-      }
-    })()
+      ; (async () => {
+        try {
+          const data = await getEquipos(companyId)
+          setEquipos(data as any)
+        } catch (e: any) {
+          console.error('[TeamView] error cargando equipos', e)
+        }
+      })()
   }, [companyId])
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
           stage: l.etapa_id,
           pipeline: l.pipeline_id,
           priority: l.prioridad,
-          assignedTo: l.asignado_a, 
+          assignedTo: l.asignado_a,
           tags: [],
           createdAt: new Date(l.created_at),
           lastContact: new Date(l.created_at)
@@ -87,59 +88,78 @@ export function TeamView({ companyId }: { companyId?: string }) {
 
   useEffect(() => {
     if (!companyId) return
-    ;(async () => {
-      try {
-        // Si hay filtro de equipo, solo ese; si no, todos de la empresa
-        let personas: any[] = []
-        if (selectedTeamFilter && selectedTeamFilter !== 'no-team') {
-          personas = await getPersonas(selectedTeamFilter)
-        } else {
-          // Obtener todos los equipos y concatenar miembros
-          const equiposIds = equipos.map(e => e.id)
-          const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
-          personas = allPersonas.flat()
-        }
-        
-        const mapped = await Promise.all(personas.map(async p => {
-          let memberPipelines: string[] = []
-          try {
-            const { data: pPipelines } = await getPipelinesForPersona(p.id)
-            if (pPipelines) {
-              memberPipelines = pPipelines.map((pp: any) => {
-                // Intentamos encontrar el pipeline en los cargados de BD
-                const found = dbPipelines.find(dbp => dbp.id === pp.pipeline_id)
-                // Si lo encontramos, devolvemos su nombre (o ID si prefieres manejarlo así)
-                // Para mantener compatibilidad con 'sales', 'support', etc., si el nombre coincide, usamos el slug?
-                // Por ahora devolvemos el nombre si es custom, o el ID si no se encuentra.
-                // Pero espera, la UI espera 'sales', 'support' para los badges.
-                // Si guardamos 'sales' como un pipeline real en BD, tendría un ID.
-                // Si no guardamos 'sales' en BD, entonces no vendrá de getPipelinesForPersona.
-                
-                // Asumimos que lo que viene de BD es lo que se guardó.
-                return found ? found.nombre : pp.pipeline_id
-              })
-            }
-          } catch (err) {
-            console.error('Error loading pipelines for persona', p.id, err)
+      ; (async () => {
+        try {
+          // Si hay filtro de equipo, solo ese; si no, todos de la empresa
+          let personas: any[] = []
+          if (selectedTeamFilter && selectedTeamFilter !== 'no-team') {
+            personas = await getPersonas(selectedTeamFilter)
+          } else {
+            // Obtener todos los equipos y concatenar miembros
+            const equiposIds = equipos.map(e => e.id)
+            const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
+            personas = allPersonas.flat()
           }
 
-          return {
-            id: p.id,
-            name: p.nombre,
-            email: p.email,
+          // Obtener invitaciones pendientes
+          const { getPendingInvitationsByCompany } = await import('@/supabase/services/invitations')
+          const pendingInvites = await getPendingInvitationsByCompany(companyId)
+
+          const mappedPending = pendingInvites.map((inv: any) => ({
+            id: inv.id,
+            name: inv.invited_nombre || inv.invited_email,
+            email: inv.invited_email,
+            role: inv.invited_titulo_trabajo || 'Pending',
+            pipelines: [],
             avatar: '',
-            role: p.titulo_trabajo || '',
-            teamId: p.equipo_id || undefined,
-            pipelines: memberPipelines
-          }
-        }))
-        setTeamMembers(mapped)
-      } catch (e:any) {
-        console.error('[TeamView] error cargando personas', e)
-      }
-    })()
-  }, [companyId, equipos, selectedTeamFilter, dbPipelines])
-  
+            status: 'pending'
+          }))
+
+          const mapped = await Promise.all(personas.map(async p => {
+            let memberPipelines: string[] = []
+            try {
+              const { data: pPipelines } = await getPipelinesForPersona(p.id)
+              if (pPipelines) {
+                memberPipelines = pPipelines.map((pp: any) => {
+                  // Intentamos encontrar el pipeline en los cargados de BD
+                  const found = dbPipelines.find(dbp => dbp.id === pp.pipeline_id)
+                  // Si lo encontramos, devolvemos su nombre (o ID si prefieres manejarlo así)
+                  // Para mantener compatibilidad con 'sales', 'support', etc., si el nombre coincide, usamos el slug?
+                  // Por ahora devolvemos el nombre si es custom, o el ID si no se encuentra.
+                  // Pero espera, la UI espera 'sales', 'support' para los badges.
+                  // Si guardamos 'sales' como un pipeline real en BD, tendría un ID.
+                  // Si no guardamos 'sales' en BD, entonces no vendrá de getPipelinesForPersona.
+
+                  // Asumimos que lo que viene de BD es lo que se guardó.
+                  return found ? found.nombre : pp.pipeline_id
+                })
+              }
+            } catch (err) {
+              console.error('Error loading pipelines for persona', p.id, err)
+            }
+
+            return {
+              id: p.id,
+              name: p.nombre,
+              email: p.email,
+              avatar: '',
+              role: p.titulo_trabajo || '',
+              teamId: p.equipo_id || undefined,
+              pipelines: memberPipelines
+            }
+          }))
+          const mappedMembers = mapped.map((m: any) => ({
+            ...m,
+            status: 'active'
+          }))
+
+          setTeamMembers([...mappedMembers, ...mappedPending])
+        } catch (e: any) {
+          console.error('[TeamView] error cargando miembros', e)
+        }
+      })()
+  }, [companyId, equipos, selectedTeamFilter, dbPipelines, refreshTrigger])
+
 
   // Si necesitas cargar leads y roles desde la BD, agrega aquí los efectos y servicios
   const getAssignedLeadsCount = (memberId: string) => {
@@ -166,21 +186,21 @@ export function TeamView({ companyId }: { companyId?: string }) {
         for (const pipelineVal of member.pipelines) {
           // Verificamos si es un UUID válido
           const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pipelineVal)
-          
+
           if (isUUID) {
-             await addPersonaToPipeline({
-               persona_id: inserted.id,
-               pipeline_id: pipelineVal
-             })
+            await addPersonaToPipeline({
+              persona_id: inserted.id,
+              pipeline_id: pipelineVal
+            })
           } else {
             // Si no es UUID (ej: 'sales'), intentamos buscarlo en los pipelines de la BD por nombre o tipo si existiera
             // Esto es un "best effort" por si acaso existen pipelines con esos nombres
             const found = dbPipelines.find(p => p.nombre.toLowerCase() === pipelineVal.toLowerCase())
             if (found) {
               await addPersonaToPipeline({
-               persona_id: inserted.id,
-               pipeline_id: found.id
-             })
+                persona_id: inserted.id,
+                pipeline_id: found.id
+              })
             }
           }
         }
@@ -190,11 +210,11 @@ export function TeamView({ companyId }: { companyId?: string }) {
       const resolvedPipelines = (member.pipelines || []).map(pVal => {
         // Si es uno de los defaults, lo dejamos tal cual
         if (['sales', 'support', 'administrative'].includes(pVal)) return pVal
-        
+
         // Si es UUID, buscamos en dbPipelines
         const found = dbPipelines.find(p => p.id === pVal)
         if (found) return found.nombre
-        
+
         // Si no encontramos, devolvemos el valor original (fallback)
         return pVal
       })
@@ -210,7 +230,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
       }
       setTeamMembers((current) => [...(current || []), mapped])
       toast.success('Miembro guardado')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[TeamView] error creando persona', e)
       toast.error(e.message || 'No se pudo crear el miembro')
     }
@@ -221,7 +241,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
       await deletePersona(memberId)
       setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
       toast.success('Miembro eliminado de la base de datos')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[TeamView] error eliminando persona', e)
       toast.error(e.message || 'No se pudo eliminar el miembro')
     }
@@ -235,7 +255,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
       setEquipos((curr) => [inserted as any, ...(curr || [])])
       setNewTeamName('')
       toast.success('Equipo creado y guardado')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[TeamView] error creando equipo', e)
       toast.error(e.message || 'No se pudo crear el equipo')
     }
@@ -246,7 +266,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
       await deleteEquipo(id)
       setEquipos((curr) => (curr || []).filter(e => e.id !== id))
       toast.success('Equipo eliminado')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[TeamView] error eliminando equipo', e)
       toast.error(e.message || 'No se pudo eliminar el equipo')
     }
@@ -264,10 +284,14 @@ export function TeamView({ companyId }: { companyId?: string }) {
         <div className="space-y-1">
           <h1 className="text-3xl font-bold">Team</h1>
           <p className="text-muted-foreground text-sm">Manage team members and assignments</p>
-          
+
         </div>
         <div className="flex items-center gap-2">
-          <AddTeamMemberDialog onAdd={handleAddMember} companyId={companyId} />
+          <AddTeamMemberDialog
+            onAdd={handleAddMember}
+            companyId={companyId}
+            onInvitationCreated={() => setRefreshTrigger(prev => prev + 1)}
+          />
         </div>
       </div>
 
@@ -275,16 +299,16 @@ export function TeamView({ companyId }: { companyId?: string }) {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">Equipos de la empresa</h2>
           <div className="flex gap-2">
-            <Button 
-              variant={selectedTeamFilter === null ? "secondary" : "ghost"} 
+            <Button
+              variant={selectedTeamFilter === null ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setSelectedTeamFilter(null)}
             >
               <Users className="mr-2" size={16} />
               Todos
             </Button>
-            <Button 
-              variant={selectedTeamFilter === 'no-team' ? "secondary" : "ghost"} 
+            <Button
+              variant={selectedTeamFilter === 'no-team' ? "secondary" : "ghost"}
               size="sm"
               onClick={() => setSelectedTeamFilter('no-team')}
             >
@@ -305,9 +329,9 @@ export function TeamView({ companyId }: { companyId?: string }) {
                 <div className="text-xs text-muted-foreground">Creado: {new Date(eq.created_at).toLocaleString('es-ES')}</div>
               </div>
               <div className="flex items-center gap-2">
-                <Button 
-                  variant={selectedTeamFilter === eq.id ? "default" : "outline"} 
-                  size="sm" 
+                <Button
+                  variant={selectedTeamFilter === eq.id ? "default" : "outline"}
+                  size="sm"
                   onClick={() => setSelectedTeamFilter(selectedTeamFilter === eq.id ? null : eq.id)}
                   title={selectedTeamFilter === eq.id ? "Mostrar todos" : "Ver miembros de este equipo"}
                 >
@@ -335,12 +359,19 @@ export function TeamView({ companyId }: { companyId?: string }) {
                     <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1">
-                    <CardTitle className="text-base">{member.name}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-base">{member.name}</CardTitle>
+                      {(member as any).status === 'pending' && (
+                        <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">
+                          Pendiente
+                        </Badge>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-sm text-muted-foreground">{member.role}</p>
                       {roleInfo && (
-                        <Badge 
-                          variant="outline" 
+                        <Badge
+                          variant="outline"
                           className="text-xs"
                           style={{ borderColor: roleInfo.color, color: roleInfo.color }}
                         >
@@ -391,10 +422,9 @@ export function TeamView({ companyId }: { companyId?: string }) {
                               <div className="grid gap-1">
                                 {(leads || []).filter(l => l.assignedTo === member.id).map(lead => (
                                   <div key={lead.id} className="text-sm flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${
-                                      lead.priority === 'high' ? 'bg-red-500' : 
+                                    <div className={`w-2 h-2 rounded-full ${lead.priority === 'high' ? 'bg-red-500' :
                                       lead.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                                    }`} />
+                                      }`} />
                                     <span className="truncate">{lead.name}</span>
                                   </div>
                                 ))}
@@ -413,7 +443,7 @@ export function TeamView({ companyId }: { companyId?: string }) {
                         if (tp === 'sales') label = 'Ventas'
                         else if (tp === 'support') label = 'Soporte'
                         else if (tp === 'administrative') label = 'Administrativo'
-                        
+
                         return (
                           <Badge key={tp} variant="outline" className="text-xs capitalize">
                             {label}
@@ -440,8 +470,8 @@ export function TeamView({ companyId }: { companyId?: string }) {
 
         {filteredMembers.length === 0 && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            {selectedTeamFilter 
-              ? "No hay miembros en este equipo" 
+            {selectedTeamFilter
+              ? "No hay miembros en este equipo"
               : "No team members added yet"}
           </div>
         )}
