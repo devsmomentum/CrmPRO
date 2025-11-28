@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useLeadsRealtime } from '@/hooks/useLeadsRealtime';
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
@@ -61,6 +62,27 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
+
+  // Sincronización en tiempo real de leads
+  useLeadsRealtime({
+    companyId: companyId || '',
+    onInsert: (lead) => {
+      setLeads((current) => {
+        // Evitar duplicados
+        if (current.find(l => l.id === lead.id)) return current;
+        return [...current, lead];
+      });
+      toast.success(`Nuevo lead agregado: ${lead.name}`);
+    },
+    onUpdate: (lead) => {
+      setLeads((current) => current.map(l => l.id === lead.id ? lead : l));
+      toast.info(`Lead actualizado: ${lead.name}`);
+    },
+    onDelete: (leadId) => {
+      setLeads((current) => current.filter(l => l.id !== leadId));
+      toast.error(`Lead eliminado`);
+    }
+  });
 
   // Cargar miembros del equipo desde BD para tener pipelines actualizados
   useEffect(() => {
