@@ -25,6 +25,22 @@ interface Invitation {
     status: 'pending' | 'accepted' | 'rejected'
 }
 
+interface ResponseNotification {
+    id: string
+    type: string
+    title: string
+    message: string
+    data: {
+        response: 'accepted' | 'rejected'
+        invited_nombre: string
+        invited_email: string
+        empresa_nombre: string
+        equipo_nombre: string
+    }
+    read: boolean
+    created_at: string
+}
+
 interface NotificationsViewProps {
     onInvitationAccepted?: (companyId?: string) => void
 }
@@ -32,23 +48,38 @@ interface NotificationsViewProps {
 export function NotificationsView({ onInvitationAccepted }: NotificationsViewProps) {
     const t = useTranslation('es')
     const [invitations, setInvitations] = useState<Invitation[]>([])
+    const [responseNotifications, setResponseNotifications] = useState<ResponseNotification[]>([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        const loadInvitations = async () => {
+        const loadData = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser()
                 if (user && user.email) {
-                    const data = await getPendingInvitations(user.email)
-                    setInvitations(data)
+                    // Cargar invitaciones pendientes
+                    const invitationsData = await getPendingInvitations(user.email)
+                    setInvitations(invitationsData)
+
+                    // Cargar notificaciones de respuesta
+                    const { data: notifications } = await supabase
+                        .from('notificaciones')
+                        .select('*')
+                        .eq('usuario_email', user.email)
+                        .eq('type', 'invitation_response')
+                        .order('created_at', { ascending: false })
+                        .limit(10)
+
+                    if (notifications) {
+                        setResponseNotifications(notifications)
+                    }
                 }
             } catch (error) {
-                console.error('Error loading invitations:', error)
+                console.error('Error loading data:', error)
             } finally {
                 setLoading(false)
             }
         }
-        loadInvitations()
+        loadData()
     }, [])
 
     const handleAccept = async (id: string, token: string) => {
@@ -179,8 +210,89 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                     )}
                 </div>
 
-                {/* Historial de invitaciones (opcional, para dar más cuerpo a la vista) */}
-                {/* Eliminado historial mock por ahora */}
+                {/* Respuestas a tus Invitaciones */}
+                {responseNotifications.length > 0 && (
+                    <div className="space-y-6 mt-12">
+                        <h2 className="text-xl font-semibold flex items-center gap-2">
+                            Respuestas a tus Invitaciones
+                            <Badge variant="secondary" className="ml-2">
+                                {responseNotifications.length}
+                            </Badge>
+                        </h2>
+
+                        <div className="grid gap-4">
+                            {responseNotifications.map((notification) => {
+                                const isAccepted = notification.data.response === 'accepted'
+                                return (
+                                    <Card
+                                        key={notification.id}
+                                        className={`overflow-hidden transition-all hover:shadow-md border-l-4 ${isAccepted
+                                                ? 'border-l-green-500 bg-green-50/50 dark:bg-green-950/20'
+                                                : 'border-l-gray-400 bg-gray-50/50 dark:bg-gray-900/20'
+                                            }`}
+                                    >
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
+                                            <div className="flex items-start gap-4">
+                                                <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
+                                                    <AvatarFallback className={`font-bold ${isAccepted
+                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                                        }`}>
+                                                        {notification.data.invited_nombre?.substring(0, 2).toUpperCase() || 'US'}
+                                                    </AvatarFallback>
+                                                </Avatar>
+
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h3 className="font-semibold text-lg">
+                                                            {notification.data.invited_nombre || notification.data.invited_email}
+                                                        </h3>
+                                                        <Badge
+                                                            variant={isAccepted ? "default" : "secondary"}
+                                                            className={`text-xs font-normal ${isAccepted
+                                                                    ? 'bg-green-500 hover:bg-green-600'
+                                                                    : 'bg-gray-400 hover:bg-gray-500'
+                                                                }`}
+                                                        >
+                                                            {isAccepted ? (
+                                                                <><Check size={12} className="mr-1" /> Aceptó</>
+                                                            ) : (
+                                                                <><X size={12} className="mr-1" /> Rechazó</>
+                                                            )}
+                                                        </Badge>
+                                                    </div>
+
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {notification.message}
+                                                    </p>
+
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-sm text-muted-foreground mt-2">
+                                                        <div className="flex items-center gap-1">
+                                                            <Buildings size={14} />
+                                                            <span className="font-medium text-foreground">
+                                                                {notification.data.empresa_nombre}
+                                                            </span>
+                                                        </div>
+                                                        <span className="hidden sm:inline">•</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <User size={14} />
+                                                            <span>{notification.data.equipo_nombre}</span>
+                                                        </div>
+                                                        <span className="hidden sm:inline">•</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock size={14} />
+                                                            <span>{format(new Date(notification.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     )

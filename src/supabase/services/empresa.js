@@ -55,35 +55,29 @@ export async function getEmpresasByUsuario(usuario_id) {
     throw ownedError
   }
 
-  // 2. Empresas donde soy miembro (via persona)
-  // Necesitamos saber en qué equipos estoy (persona.usuario_id = usuario_id)
-  // y de esos equipos, qué empresas son.
+  // 2. Empresas donde soy miembro (via empresa_miembros)
   const { data: memberData, error: memberError } = await supabase
-    .from('persona')
+    .from('empresa_miembros')
     .select(`
-      equipo_id,
-      equipos (
-        empresa_id,
-        empresa (
-          id,
-          nombre_empresa,
-          usuario_id,
-          created_at
-        )
+      empresa_id,
+      empresa (
+        id,
+        nombre_empresa,
+        usuario_id,
+        created_at
       )
     `)
     .eq('usuario_id', usuario_id)
 
   if (memberError) {
     console.error('[EMPRESA] error getEmpresasByUsuario (member)', memberError)
-    // No lanzamos error fatal, solo logueamos, para no romper el flujo principal si falla esta parte
+    // No lanzamos error fatal, solo logueamos
   }
 
   const memberCompanies = memberData 
     ? memberData
-        .map(p => p.equipos?.empresa) // Extraer la empresa anidada
-        .filter(Boolean) // Eliminar nulos
-        // Eliminar duplicados (si estoy en varios equipos de la misma empresa)
+        .map(m => m.empresa) // Extraer la empresa
+        .filter(Boolean)
         .filter((emp, index, self) => 
           index === self.findIndex((t) => (
             t.id === emp.id

@@ -18,28 +18,89 @@ serve(async (req) => {
     // Usar Service Role para saltar RLS y ejecutar funciones admin
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // 1. Obtener la invitación primero para tener los pipeline_ids (ya que la RPC no los devuelve ni procesa)
+    // 1. Obtener la invitación primero para tener los pipeline_ids y datos de la empresa
     const { data: invite, error: inviteError } = await supabaseAdmin
       .from("equipo_invitaciones")
-      .select("pipeline_ids")
+      .select(`
+        id,
+        empresa_id,
+        equipo_id,
+        pipeline_ids,
+        invited_nombre,
+        invited_email,
+        invited_titulo_trabajo,
+        empresa:empresa_id (
+          id,
+          nombre_empresa,
+          usuario_id
+        ),
+        equipo:equipo_id (
+          id,
+          nombre_equipo
+        )
+      `)
       .eq("token", token)
       .single();
 
     if (inviteError) throw new Error("Invitación no encontrada");
 
-    // 2. Llamar a la función RPC accept_invitation
-    const { data: rpcResult, error: rpcError } = await supabaseAdmin
-      .rpc('accept_invitation', {
-        invite_token: token,
-        current_user_id: userId
+    // 2. Insertar en empresa_miembros (Nueva tabla de membresía)
+    const { error: memberError } = await supabaseAdmin
+      .from('empresa_miembros')
+      .insert({
+        empresa_id: invite.empresa_id,
+        usuario_id: userId,
+        email: invite.invited_email,
+        role: invite.invited_titulo_trabajo || 'member'
       });
 
-    if (rpcError) throw rpcError;
+    if (memberError) {
+      console.error("Error creating empresa_miembros:", memberError);
+      // Si ya existe, no fallamos, seguimos
+    }
 
-    const memberId = rpcResult.member_id;
+    // 3. Insertar en persona (Para compatibilidad con TeamView y asignación de equipos)
+    // Verificamos si ya existe una persona para este usuario en este equipo
+    const { data: existingPersona } = await supabaseAdmin
+      .from('persona')
+      .select('id')
+      .eq('usuario_id', userId)
+      .eq('equipo_id', invite.equipo_id)
+      .single();
 
-    // 3. Asignar a pipelines si existen
-    if (invite.pipeline_ids && invite.pipeline_ids.length > 0) {
+    let memberId = existingPersona?.id;
+
+    if (!memberId) {
+      const { data: newPersona, error: personaError } = await supabaseAdmin
+        .from('persona')
+        .insert({
+          nombre: invite.invited_nombre,
+          email: invite.invited_email,
+          titulo_trabajo: invite.invited_titulo_trabajo,
+          equipo_id: invite.equipo_id,
+          usuario_id: userId, // Vinculamos al usuario
+          permisos: [] // Permisos por defecto
+        })
+        .select()
+        .single();
+
+      if (personaError) throw personaError;
+      memberId = newPersona.id;
+    }
+
+    // 4. Actualizar estado de la invitación
+    const { error: updateError } = await supabaseAdmin
+      .from('equipo_invitaciones')
+      .update({ 
+        status: 'accepted',
+        responded_at: new Date()
+      })
+      .eq('id', invite.id);
+
+    if (updateError) throw updateError;
+
+    // 5. Asignar a pipelines si existen
+    if (invite.pipeline_ids && invite.pipeline_ids.length > 0 && memberId) {
       const pipelineInserts = invite.pipeline_ids.map((pipelineId: string) => ({
         persona_id: memberId,
         pipeline_id: pipelineId
@@ -51,20 +112,44 @@ serve(async (req) => {
 
       if (pipelineError) {
         console.error("Error assigning pipelines:", pipelineError);
-        // No fallamos la operación completa, solo logueamos
       }
     }
 
-    // 4. Crear notificación de bienvenida
+    // 6. Crear notificación de bienvenida para el invitado
+    const invitedUser = await supabaseAdmin.auth.admin.getUserById(userId);
     await supabaseAdmin
       .from("notificaciones")
       .insert({
-        usuario_email: (await supabaseAdmin.auth.admin.getUserById(userId)).data.user?.email,
+        usuario_email: invitedUser.data.user?.email,
         type: 'invitation_accepted',
         title: '¡Bienvenido al equipo!',
         message: 'Has aceptado la invitación exitosamente.',
         data: { memberId }
       });
+
+    // 5. Obtener email del dueño de la empresa y crear notificación
+    if (invite.empresa?.usuario_id) {
+      const { data: ownerUser } = await supabaseAdmin.auth.admin.getUserById(invite.empresa.usuario_id);
+
+      if (ownerUser?.user?.email) {
+        await supabaseAdmin
+          .from("notificaciones")
+          .insert({
+            usuario_email: ownerUser.user.email,
+            type: 'invitation_response',
+            title: `${invite.invited_nombre || invite.invited_email} aceptó tu invitación`,
+            message: `${invite.invited_nombre || invite.invited_email} se ha unido a ${invite.equipo?.nombre_equipo || 'tu equipo'}.`,
+            data: {
+              response: 'accepted',
+              invited_nombre: invite.invited_nombre,
+              invited_email: invite.invited_email,
+              empresa_nombre: invite.empresa.nombre_empresa,
+              equipo_nombre: invite.equipo?.nombre_equipo,
+              memberId
+            }
+          });
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, memberId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
