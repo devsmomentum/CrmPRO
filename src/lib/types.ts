@@ -1,7 +1,7 @@
 export type Priority = 'low' | 'medium' | 'high'
 export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'negotiation' | 'won' | 'lost'
 export type Channel = 'whatsapp' | 'instagram' | 'facebook' | 'email' | 'phone'
-export type PipelineType = 'sales' | 'support' | 'administrative'
+export type PipelineType = 'sales' | 'support' | 'administrative' | string
 
 export interface Tag {
   id: string
@@ -121,6 +121,9 @@ export interface TeamMember {
   avatar: string
   role: string
   roleId?: string
+  pipelines?: PipelineType[]
+  teamId?: string
+  permissionRole?: 'admin' | 'viewer' | 'owner'
 }
 
 export interface Appointment {

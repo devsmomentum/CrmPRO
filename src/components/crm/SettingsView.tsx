@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useKV } from '@github/spark/hooks'
+import { useState, Dispatch, SetStateAction } from 'react'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -11,18 +12,24 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AddPipelineDialog } from './AddPipelineDialog'
 import { RolesManagement } from './RolesManagement'
-import { CompanyManagement } from './CompanyManagement'
+import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 
 interface SettingsViewProps {
   currentUserId?: string
   currentCompanyId?: string
   onCompanyChange?: (companyId: string) => void
+  companies?: Company[]
+  setCompanies?: Dispatch<SetStateAction<Company[]>>
 }
 
-export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange }: SettingsViewProps = {}) {
-  const [pipelines, setPipelines] = useKV<Pipeline[]>('pipelines', [])
-  const [automations, setAutomations] = useKV<AutomationRule[]>('automations', [])
+export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange, companies, setCompanies }: SettingsViewProps = {}) {
+  const currentCompany = companies?.find(c => c.id === currentCompanyId)
+  const userRole = currentCompany?.role || 'viewer'
+  const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
+
+  const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${currentCompanyId}`, [])
+  const [automations, setAutomations] = usePersistentState<AutomationRule[]>(`automations-${currentCompanyId}`, [])
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
 
   const toggleAutomation = (id: string) => {
@@ -36,7 +43,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1">Configure pipelines and automations</p>
@@ -47,17 +54,19 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
           <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
-          <TabsTrigger value="roles">Roles</TabsTrigger>
-          <TabsTrigger value="automations">Automations</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          {isAdminOrOwner && <TabsTrigger value="roles">Roles</TabsTrigger>}
+          {isAdminOrOwner && <TabsTrigger value="automations">Automations</TabsTrigger>}
+          {isAdminOrOwner && <TabsTrigger value="integrations">Integrations</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="companies" className="space-y-4 mt-6">
-          {currentUserId && currentCompanyId && onCompanyChange ? (
+          {currentUserId && onCompanyChange && companies && setCompanies ? (
             <CompanyManagement
               currentUserId={currentUserId}
-              currentCompanyId={currentCompanyId}
+              currentCompanyId={currentCompanyId || ''}
               onCompanyChange={onCompanyChange}
+              companies={companies}
+              setCompanies={setCompanies}
             />
           ) : (
             <p className="text-center text-muted-foreground py-12">
@@ -67,16 +76,24 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
         </TabsContent>
 
         <TabsContent value="catalog" className="space-y-4 mt-6">
-          <CatalogManagement />
+          {isAdminOrOwner ? (
+            <CatalogManagement />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              No tienes permisos para gestionar el catálogo.
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4 mt-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Pipeline Configuration</h2>
-            <Button onClick={() => setShowPipelineDialog(true)}>
-              <Plus className="mr-2" size={20} />
-              New Pipeline
-            </Button>
+            {isAdminOrOwner && (
+              <Button onClick={() => setShowPipelineDialog(true)}>
+                <Plus className="mr-2" size={20} />
+                New Pipeline
+              </Button>
+            )}
           </div>
 
           {(pipelines || []).map(pipeline => (
@@ -87,10 +104,12 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
                     <CardTitle>{pipeline.name}</CardTitle>
                     <Badge variant="outline" className="mt-2">{pipeline.type}</Badge>
                   </div>
-                  <Button variant="outline" size="sm">
-                    <Plus size={16} className="mr-2" />
-                    Add Stage
-                  </Button>
+                  {isAdminOrOwner && (
+                    <Button variant="outline" size="sm">
+                      <Plus size={16} className="mr-2" />
+                      Add Stage
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -113,6 +132,14 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
 
           {(pipelines || []).length === 0 && (
             <p className="text-center text-muted-foreground py-12">No pipelines configured</p>
+          )}
+          
+          {isAdminOrOwner && (
+            <AddPipelineDialog 
+              open={showPipelineDialog} 
+              onOpenChange={setShowPipelineDialog}
+              onAdd={handleAddPipeline}
+            />
           )}
         </TabsContent>
 
@@ -225,6 +252,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange 
         open={showPipelineDialog}
         onClose={() => setShowPipelineDialog(false)}
         onAdd={handleAddPipeline}
+        empresaId={currentCompanyId}
       />
     </div>
   )

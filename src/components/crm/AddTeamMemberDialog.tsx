@@ -1,26 +1,50 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus } from '@phosphor-icons/react'
-import { TeamMember, Role } from '@/lib/types'
-import { useKV } from '@github/spark/hooks'
+import { Plus, CaretUpDown, Check } from '@phosphor-icons/react'
+import { TeamMember, Role, PipelineType, Pipeline } from '@/lib/types'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
+import { getEquipos } from '@/supabase/services/equipos'
+import { getPipelines } from '@/supabase/helpers/pipeline'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { cn } from '@/lib/utils'
 
 interface AddTeamMemberDialogProps {
   onAdd: (member: TeamMember) => void
+  companyId?: string
+  onInvitationCreated?: () => void // Callback para recargar invitaciones
 }
 
-export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
+export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: AddTeamMemberDialogProps) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('Sales Rep')
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('none')
-  const [roles] = useKV<Role[]>('roles', [])
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // No permitir números
+    if (/\d/.test(value)) return
+    // Máximo 30 caracteres
+    if (value.length > 30) return
+    setName(value)
+  }
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('viewer')
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('none')
+  const [teams, setTeams] = useState<{ id: string; nombre_equipo: string }[]>([])
+  const [roles] = usePersistentState<Role[]>('roles', [])
+  const [dbPipelines, setDbPipelines] = useState<Pipeline[]>([])
+  const [memberPipelines, setMemberPipelines] = useState<Set<PipelineType>>(new Set())
+
+  const pipelineOptions = dbPipelines.map(p => ({ value: p.id, label: p.name }))
 
   const jobRoles = [
     'Sales Rep',
@@ -33,28 +57,139 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
     'Administrator'
   ]
 
-  const handleSubmit = () => {
+  useEffect(() => {
+    if (open && companyId) {
+      getEquipos(companyId)
+        .then((data: any) => setTeams(data || []))
+        .catch(err => console.error('Error fetching teams:', err))
+
+      getPipelines(companyId)
+        .then(({ data }) => {
+          if (data) {
+            const mappedPipelines: Pipeline[] = data.map((p: any) => ({
+              id: p.id,
+              name: p.nombre,
+              type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+              stages: [] // No necesitamos las etapas aquí
+            }))
+            setDbPipelines(mappedPipelines)
+          }
+        })
+        .catch(err => console.error('Error fetching pipelines:', err))
+    }
+  }, [open, companyId])
+
+  const handleSubmit = async () => {
     if (!name.trim() || !email.trim()) {
       toast.error('Please fill in all required fields')
       return
     }
 
-    const newMember: TeamMember = {
-      id: Date.now().toString(),
-      name: name.trim(),
-      email: email.trim(),
-      role,
-      roleId: selectedRoleId && selectedRoleId !== 'none' ? selectedRoleId : undefined,
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`
+    // Validar que se seleccione un equipo (es obligatorio en el schema)
+    if (!selectedTeamId || selectedTeamId === 'none') {
+      toast.error('Debes seleccionar un equipo para enviar la invitación')
+      return
     }
 
-    onAdd(newMember)
-    setName('')
-    setEmail('')
-    setRole('Sales Rep')
-    setSelectedRoleId('none')
-    setOpen(false)
-    toast.success('Team member added!')
+    const selectedPipelines = Array.from(memberPipelines)
+    if (selectedPipelines.length === 0) {
+      toast.error('Selecciona al menos un pipeline')
+      return
+    }
+
+    try {
+      if (!companyId) {
+        toast.error('No hay empresa seleccionada')
+        return
+      }
+
+      const normalizedEmail = email.trim().toLowerCase()
+
+      // Validación: evitar invitar correos ya miembros o ya invitados (pendientes)
+      try {
+        const [{ getCompanyMembers }, { getPendingInvitationsByCompany }] = await Promise.all([
+          import('@/supabase/services/empresa'),
+          import('@/supabase/services/invitations')
+        ])
+
+        const [members, pendingInvites] = await Promise.all([
+          getCompanyMembers(companyId),
+          getPendingInvitationsByCompany(companyId)
+        ])
+
+        const isAlreadyMember = (members || []).some((m: any) => (m.email || '').toLowerCase() === normalizedEmail)
+        if (isAlreadyMember) {
+          toast.error('Esa persona ya es miembro de la empresa')
+          return
+        }
+
+        const alreadyInvited = (pendingInvites || []).some((inv: any) => (inv.invited_email || '').toLowerCase() === normalizedEmail)
+        if (alreadyInvited) {
+          toast.error('Ya existe una invitación pendiente para este correo')
+          return
+        }
+      } catch (dupErr) {
+        console.warn('[AddTeamMemberDialog] Advertencia al validar duplicados:', dupErr)
+        // No bloqueamos si la validación previa falla; el backend reforzará la restricción
+      }
+
+      // Force import of the TS file if possible, or just rely on the build system
+      const { createInvitation } = await import('@/supabase/services/invitations')
+
+      console.log('[AddTeamMemberDialog] Enviando invitación con payload:', {
+        equipo_id: selectedTeamId,
+        empresa_id: companyId,
+        invited_email: email.trim(),
+        invited_nombre: name.trim(),
+        invited_titulo_trabajo: role,
+        pipeline_ids: selectedPipelines,
+        permission_role: selectedRoleId
+      })
+
+      await createInvitation({
+        equipo_id: selectedTeamId,
+        empresa_id: companyId,
+        invited_email: normalizedEmail,
+        invited_nombre: name.trim(),
+        invited_titulo_trabajo: role,
+        pipeline_ids: selectedPipelines,
+        permission_role: selectedRoleId
+      })
+
+      // No llamamos a onAdd para evitar crear una persona duplicada/dummy.
+      // Confiamos en que la invitación se creó y recargamos la lista.
+      /*
+      onAdd({
+        id: 'temp-' + Date.now(),
+        name: name.trim(),
+        email: email.trim(),
+        role,
+        pipelines: selectedPipelines,
+        avatar: '',
+        // @ts-ignore
+        status: 'pending'
+      })
+      */
+
+      setName('')
+      setEmail('')
+      setRole('Sales Rep')
+      setSelectedRoleId('viewer')
+      setSelectedTeamId('none')
+      setMemberPipelines(new Set())
+      setOpen(false)
+      toast.success('Invitación enviada', {
+        description: 'El usuario recibirá una notificación en su CRM.'
+      })
+
+      // Llamar callback para recargar invitaciones
+      if (onInvitationCreated) {
+        onInvitationCreated()
+      }
+    } catch (e: any) {
+      console.error('[AddTeamMemberDialog] error invitando', e)
+      toast.error(e.message || 'Error al enviar invitación')
+    }
   }
 
   return (
@@ -68,6 +203,9 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Team Member</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Invita a un usuario existente a tu equipo. Debe tener una cuenta registrada con este email.
+          </p>
         </DialogHeader>
         <div className="space-y-4">
           <div>
@@ -75,7 +213,12 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
             <Input
               id="name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val.length <= 30 && !/\d/.test(val)) {
+                  setName(val)
+                }
+              }}
               placeholder="John Doe"
             />
           </div>
@@ -106,26 +249,90 @@ export function AddTeamMemberDialog({ onAdd }: AddTeamMemberDialogProps) {
             <Label htmlFor="permission-role">Permission Role (Opcional)</Label>
             <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
               <SelectTrigger id="permission-role">
-                <SelectValue placeholder="Sin rol de permisos" />
+                <SelectValue placeholder="Selecciona un rol" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sin rol de permisos</SelectItem>
-                {(roles || []).map(r => (
-                  <SelectItem key={r.id} value={r.id}>
-                    <div className="flex items-center gap-2">
-                      <div 
-                        className="w-2 h-2 rounded-full" 
-                        style={{ backgroundColor: r.color }}
-                      />
-                      {r.name}
-                    </div>
-                  </SelectItem>
-                ))}
+                <SelectItem value="viewer">Viewer (Lectura)</SelectItem>
+                <SelectItem value="admin">Admin (Control Total)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">
               Define los permisos de acceso para este miembro
             </p>
+          </div>
+          <div>
+            <Label htmlFor="team">Equipo *</Label>
+            <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+              <SelectTrigger id="team">
+                <SelectValue placeholder="Selecciona un equipo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" disabled>Selecciona un equipo</SelectItem>
+                {teams.map(team => (
+                  <SelectItem key={team.id} value={team.id}>
+                    {team.nombre_equipo}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              El equipo es obligatorio para enviar la invitación
+            </p>
+          </div>
+          <div className="pt-2 border-t border-border">
+            <Label className="mb-2 block">Pipelines del Miembro</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className={cn(
+                    "w-full justify-between font-normal",
+                    memberPipelines.size === 0 && "text-muted-foreground"
+                  )}
+                >
+                  {memberPipelines.size > 0
+                    ? `${memberPipelines.size} pipeline${memberPipelines.size > 1 ? 's' : ''} seleccionado${memberPipelines.size > 1 ? 's' : ''}`
+                    : "Seleccionar pipelines"}
+                  <CaretUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Buscar pipeline..." />
+                  <CommandList>
+                    <CommandEmpty>No se encontraron pipelines.</CommandEmpty>
+                    <CommandGroup>
+                      {pipelineOptions.map((pipeline) => (
+                        <CommandItem
+                          key={pipeline.value}
+                          value={pipeline.label}
+                          onSelect={() => {
+                            setMemberPipelines(prev => {
+                              const next = new Set(prev)
+                              if (next.has(pipeline.value)) next.delete(pipeline.value)
+                              else next.add(pipeline.value)
+                              return next
+                            })
+                          }}
+                        >
+                          <div className={cn(
+                            "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                            memberPipelines.has(pipeline.value)
+                              ? "bg-primary text-primary-foreground"
+                              : "opacity-50 [&_svg]:invisible"
+                          )}>
+                            <Check className={cn("h-4 w-4")} />
+                          </div>
+                          {pipeline.label}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <p className="text-xs text-muted-foreground mt-1">Selecciona los pipelines que este miembro utilizará (puede ser más de uno).</p>
           </div>
           <Button onClick={handleSubmit} className="w-full">Add Team Member</Button>
         </div>

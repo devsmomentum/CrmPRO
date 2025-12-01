@@ -9,85 +9,78 @@ import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Plus, X } from '@phosphor-icons/react'
+import { createPipelineWithStages } from '@/supabase/helpers/pipeline'
 
 interface AddPipelineDialogProps {
   open: boolean
   onClose: () => void
   onAdd: (pipeline: Pipeline) => void
+  empresaId: string | undefined
 }
 
-export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogProps) {
+export function AddPipelineDialog({ open, onClose, onAdd, empresaId }: AddPipelineDialogProps) {
   const t = useTranslation('es')
   
   const [name, setName] = useState('')
-  const [type, setType] = useState<PipelineType>('sales')
-  const [stages, setStages] = useState<Stage[]>([
+  // Solo mantenemos la etapa inicial por defecto, sin opción a agregar más
+  const [stages] = useState<Stage[]>([
     { id: 'stage-1', name: 'Inicial', order: 0, color: '#3b82f6', pipelineType: 'sales' }
   ])
-  const [stageName, setStageName] = useState('')
-  const [stageColor, setStageColor] = useState('#3b82f6')
 
-  const handleAddStage = () => {
-    if (!stageName.trim()) {
-      toast.error('Ingresa un nombre para la etapa')
-      return
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    // Permitir solo letras, números y espacios, máx 30 caracteres
+    if (val.length <= 30 && /^[a-zA-Z0-9 ]*$/.test(val)) {
+      setName(val)
     }
-
-    const newStage: Stage = {
-      id: `stage-${Date.now()}`,
-      name: stageName.trim(),
-      order: stages.length,
-      color: stageColor,
-      pipelineType: type
-    }
-
-    setStages([...stages, newStage])
-    setStageName('')
-    setStageColor('#3b82f6')
   }
 
-  const handleRemoveStage = (stageId: string) => {
-    const filtered = stages.filter(s => s.id !== stageId)
-    setStages(filtered.map((s, idx) => ({ ...s, order: idx })))
-  }
-
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       toast.error('Ingresa un nombre para el pipeline')
       return
     }
-
-    if (stages.length === 0) {
-      toast.error('Agrega al menos una etapa')
+    
+    if (!empresaId) {
+      toast.error('No se ha podido identificar la empresa.')
       return
     }
 
-    const newPipeline: Pipeline = {
-      id: `pipeline-${Date.now()}`,
-      name: name.trim(),
-      type,
-      stages: stages.map(s => ({ ...s, pipelineType: type }))
-    }
+    try {
+      const pipelineData = {
+        name: name.trim(),
+        stages: stages,
+        empresa_id: empresaId
+      }
 
-    onAdd(newPipeline)
-    resetForm()
-    onClose()
-    toast.success('Pipeline creado exitosamente')
+      const newPipeline = await createPipelineWithStages(pipelineData)
+
+      // Si la creación en BD fue exitosa, actualizamos el estado local
+      // Usamos los stages devueltos por la BD que ya tienen UUIDs reales
+      const pipelineForState = {
+        ...newPipeline,
+        stages: newPipeline.stages && newPipeline.stages.length > 0 ? newPipeline.stages : stages,
+        type: newPipeline.type || pipelineData.name.toLowerCase().trim().replace(/\s+/g, '-')
+      }
+
+      onAdd(pipelineForState)
+      resetForm()
+      onClose()
+      toast.success('Pipeline y etapas guardados en la base de datos')
+    } catch (error: any) {
+      console.error(error)
+      toast.error(`Error al guardar en BD: ${error.message || 'Error desconocido'}`)
+    }
   }
 
   const resetForm = () => {
     setName('')
-    setType('sales')
-    setStages([
-      { id: 'stage-1', name: 'Inicial', order: 0, color: '#3b82f6', pipelineType: 'sales' }
-    ])
-    setStageName('')
-    setStageColor('#3b82f6')
+    // No reseteamos stages porque es constante
   }
 
   return (
     <Dialog open={open} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Nuevo Pipeline</DialogTitle>
         </DialogHeader>
@@ -97,70 +90,30 @@ export function AddPipelineDialog({ open, onClose, onAdd }: AddPipelineDialogPro
             <Input
               id="pipeline-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={handleNameChange}
               placeholder="Ej: Ventas B2B"
             />
-          </div>
-
-          <div>
-            <Label htmlFor="pipeline-type">Tipo de Pipeline</Label>
-            <Select value={type} onValueChange={(v) => setType(v as PipelineType)}>
-              <SelectTrigger id="pipeline-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="sales">Ventas</SelectItem>
-                <SelectItem value="support">Soporte</SelectItem>
-                <SelectItem value="administrative">Administrativo</SelectItem>
-              </SelectContent>
-            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Máximo 30 caracteres (letras y números).
+            </p>
           </div>
 
           <div>
             <Label>Etapas del Pipeline</Label>
-            <div className="mt-2 space-y-2">
-              {stages.map((stage, idx) => (
-                <div key={stage.id} className="flex items-center gap-2 p-2 border border-border rounded">
-                  <Badge style={{ backgroundColor: stage.color, color: 'white' }}>
-                    {idx + 1}
-                  </Badge>
-                  <span className="flex-1">{stage.name}</span>
-                  {stages.length > 1 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveStage(stage.id)}
-                    >
-                      <X size={16} />
-                    </Button>
-                  )}
-                </div>
-              ))}
+            <div className="mt-2 p-3 border border-border rounded bg-muted/20">
+              <div className="flex items-center gap-2">
+                <Badge style={{ backgroundColor: '#3b82f6', color: 'white' }}>
+                  1
+                </Badge>
+                <span className="font-medium">Inicial</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Todo nuevo pipeline comienza con una etapa "Inicial". Podrás agregar más etapas después.
+              </p>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Agregar Nueva Etapa</Label>
-            <div className="flex gap-2">
-              <Input
-                value={stageName}
-                onChange={(e) => setStageName(e.target.value)}
-                placeholder="Nombre de la etapa"
-                onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddStage())}
-              />
-              <Input
-                type="color"
-                value={stageColor}
-                onChange={(e) => setStageColor(e.target.value)}
-                className="w-20"
-              />
-              <Button onClick={handleAddStage} type="button">
-                <Plus size={16} />
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
+          <div className="flex gap-2 pt-4">
             <Button onClick={handleSubmit} className="flex-1">Crear Pipeline</Button>
             <Button onClick={onClose} variant="outline">Cancelar</Button>
           </div>

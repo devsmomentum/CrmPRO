@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone } from '@phosphor-icons/react'
+import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone, Buildings } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import { useKV } from '@github/spark/hooks'
+// import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Notification } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useTranslation } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Company } from './CompanyManagement'
 
 interface User {
   id: string
@@ -20,14 +23,19 @@ interface SidebarProps {
   onViewChange: (view: any) => void
   onLogout?: () => void
   user?: User
+  currentCompanyId?: string
+  onCompanyChange?: (companyId: string) => void
+  companies?: Company[]
+  notificationCount?: number
 }
 
-export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [], notificationCount = 0 }: SidebarProps) {
   const t = useTranslation('es')
-  const [notifications] = useKV<Notification[]>('notifications', [])
+  const [notifications] = usePersistentState<Notification[]>('notifications', [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
-  
-  const unreadCount = (notifications || []).filter(n => !n.read).length
+  // const [companies] = usePersistentState<Company[]>('companies', [])
+
+  const unreadCount = (notifications || []).filter(n => !n.read).length + notificationCount
 
   const menuItems = [
     { id: 'dashboard', icon: House, label: t.nav.dashboard },
@@ -41,11 +49,32 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
   return (
     <>
       <div className="hidden md:flex md:w-64 bg-card border-r border-border flex-col">
-        <div className="p-6 border-b border-border">
-          <h1 className="text-2xl font-bold text-primary">{t.app.title}</h1>
-          <p className="text-xs text-muted-foreground mt-1">{t.app.subtitle}</p>
-          {user && (
-            <p className="text-xs text-muted-foreground mt-2 truncate">{user.businessName}</p>
+        <div className="p-6 border-b border-border space-y-2">
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            {t.app.title}
+          </h1>
+          <p className="text-xs text-muted-foreground">{t.app.subtitle}</p>
+          {user && (companies || []).length > 0 && (
+            <div className="space-y-1">
+              <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                <Buildings size={12} /> Empresa Activa
+              </label>
+              <Select
+                value={currentCompanyId || ''}
+                onValueChange={(val) => onCompanyChange && onCompanyChange(val)}
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="Seleccionar empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(companies || []).map(c => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name} {c.ownerId !== user?.id && <span className="text-muted-foreground text-[10px] ml-1">({t.common?.guest || 'Invitado'})</span>}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </div>
 
@@ -54,7 +83,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
             {menuItems.map((item) => {
               const Icon = item.icon
               const isActive = currentView === item.id
-              
+
               return (
                 <li key={item.id}>
                   <button
@@ -76,16 +105,22 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
         </nav>
 
         <div className="p-4 border-t border-border space-y-2">
-          <button 
+          <button
             onClick={() => setShowVoiceRecorder(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors"
           >
             <Microphone size={20} />
             <span>{t.nav.voice}</span>
           </button>
-          
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors relative">
-            <Bell size={20} />
+
+          <button
+            onClick={() => onViewChange('notifications')}
+            className={cn(
+              "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors relative",
+              currentView === 'notifications' ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground hover:bg-muted"
+            )}
+          >
+            <Bell size={20} weight={currentView === 'notifications' ? 'fill' : 'regular'} />
             <span>{t.nav.notifications}</span>
             {unreadCount > 0 && (
               <Badge variant="destructive" className="ml-auto pulse-notification">
@@ -93,9 +128,9 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
               </Badge>
             )}
           </button>
-          
+
           {onLogout && (
-            <button 
+            <button
               onClick={onLogout}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
             >
@@ -111,7 +146,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
           {menuItems.slice(0, 4).map((item) => {
             const Icon = item.icon
             const isActive = currentView === item.id
-            
+
             return (
               <button
                 key={item.id}
@@ -128,7 +163,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
               </button>
             )
           })}
-          
+
           <button
             onClick={() => setShowVoiceRecorder(true)}
             className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-primary bg-primary/10"
@@ -136,11 +171,11 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
             <Microphone size={24} weight="fill" />
             <span className="text-[10px]">{t.nav.voice}</span>
           </button>
-          
+
           {menuItems.slice(4).map((item) => {
             const Icon = item.icon
             const isActive = currentView === item.id
-            
+
             return (
               <button
                 key={item.id}
@@ -159,7 +194,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user }: SidebarPr
           })}
         </nav>
       </div>
-      
+
       <Dialog open={showVoiceRecorder} onOpenChange={setShowVoiceRecorder}>
         <DialogContent>
           <DialogHeader>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Appointment, Lead } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -9,9 +9,9 @@ import { Plus, Clock } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { AddAppointmentDialog } from './AddAppointmentDialog'
 
-export function CalendarView() {
-  const [appointments, setAppointments] = useKV<Appointment[]>('appointments', [])
-  const [leads] = useKV<Lead[]>('leads', [])
+export function CalendarView({ companyId }: { companyId?: string }) {
+  const [appointments, setAppointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
+  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [showAddDialog, setShowAddDialog] = useState(false)
 
@@ -28,7 +28,7 @@ export function CalendarView() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Calendar</h1>

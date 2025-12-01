@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Lead, Message, Note, Budget, Meeting, Channel, Tag } from '@/lib/types'
+import { Lead, Message, Note, Budget, Meeting, Channel, Tag, TeamMember } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -41,9 +41,11 @@ interface LeadDetailSheetProps {
   open: boolean
   onClose: () => void
   onUpdate: (lead: Lead) => void
+  teamMembers?: TeamMember[]
+  canEdit?: boolean
 }
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useKV<Message[]>('messages', [])
   const [notes, setNotes] = useKV<Note[]>('notes', [])
@@ -171,6 +173,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
   }
   
   const updateField = (field: keyof Lead, value: string | number) => {
+    if (field === 'budget' && typeof value === 'number' && value < 0) {
+      toast.error('El presupuesto no puede ser negativo')
+      return
+    }
+    if (field === 'budget' && typeof value === 'string' && parseFloat(value) < 0) {
+      toast.error('El presupuesto no puede ser negativo')
+      return
+    }
+    
     onUpdate({ ...lead, [field]: value })
     toast.success('Campo actualizado correctamente')
   }
@@ -203,6 +214,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                   value={lead.name}
                   onSave={(value) => updateField('name', value)}
                   displayClassName="text-2xl font-bold"
+                  disabled={!canEdit}
                 />
               </div>
               <div className="mb-2">
@@ -210,6 +222,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                   value={lead.company}
                   onSave={(value) => updateField('company', value)}
                   displayClassName="text-sm text-muted-foreground"
+                  disabled={!canEdit}
                 />
               </div>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -218,17 +231,19 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                   onSave={(value) => updateField('email', value)}
                   type="email"
                   displayClassName="text-xs"
+                  disabled={!canEdit}
                 />
                 <InlineEdit
                   value={lead.phone}
                   onSave={(value) => updateField('phone', value)}
                   type="tel"
                   displayClassName="text-xs"
+                  disabled={!canEdit}
                 />
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <Select value={lead.priority} onValueChange={updatePriority}>
+              <Select value={lead.priority} onValueChange={updatePriority} disabled={!canEdit}>
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>
@@ -324,7 +339,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
-                <p className="font-medium mt-1">{lead.assignedTo}</p>
+                <p className="font-medium mt-1">
+                  {teamMembers.find(m => m.id === lead.assignedTo)?.name || lead.assignedTo || 'Sin asignar'}
+                </p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.budget}</Label>
@@ -333,8 +350,10 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                     value={lead.budget}
                     onSave={(value) => updateField('budget', value)}
                     type="number"
+                    min={0}
                     prefix="$"
                     displayClassName="font-medium text-primary"
+                    disabled={!canEdit}
                   />
                 </div>
               </div>
@@ -425,8 +444,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                 onChange={(e) => setMessageInput(e.target.value)}
                 placeholder={t.chat.typeMessage}
                 onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                disabled={!canEdit}
               />
-              <Button onClick={sendMessage}>
+              <Button onClick={sendMessage} disabled={!canEdit}>
                 <PaperPlaneRight size={20} />
               </Button>
             </div>
@@ -436,10 +456,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">{t.budget.title}</h3>
-                <Button size="sm" onClick={() => setShowBudgetDialog(true)}>
-                  <Plus size={16} className="mr-2" />
-                  {t.budget.newBudget}
-                </Button>
+                {canEdit && (
+                  <Button size="sm" onClick={() => setShowBudgetDialog(true)}>
+                    <Plus size={16} className="mr-2" />
+                    {t.budget.newBudget}
+                  </Button>
+                )}
               </div>
 
               {leadBudgets.map(budget => (
@@ -453,13 +475,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge>{budget.status}</Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingBudget(budget)}
-                      >
-                        <PencilSimple size={16} />
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditingBudget(budget)}
+                        >
+                          <PencilSimple size={16} />
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <div className="text-right mt-4">
@@ -478,10 +502,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">{t.meeting.title}</h3>
-                <Button size="sm" onClick={() => setShowMeetingDialog(true)}>
-                  <Plus size={16} className="mr-2" />
-                  {t.meeting.addMeeting}
-                </Button>
+                {canEdit && (
+                  <Button size="sm" onClick={() => setShowMeetingDialog(true)}>
+                    <Plus size={16} className="mr-2" />
+                    {t.meeting.addMeeting}
+                  </Button>
+                )}
               </div>
 
               {leadMeetings.map(meeting => (
@@ -514,8 +540,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate }: LeadDetailShe
                 onChange={(e) => setNoteInput(e.target.value)}
                 placeholder={t.notes.placeholder}
                 className="mb-2"
+                disabled={!canEdit}
               />
-              <Button onClick={addNote} size="sm">
+              <Button onClick={addNote} size="sm" disabled={!canEdit}>
                 <NoteIcon size={16} className="mr-2" />
                 {t.notes.addNote}
               </Button>

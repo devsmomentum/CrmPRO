@@ -49,12 +49,14 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="register-business">Nombre del Negocio</Label>
+              <Label htmlFor="register-business">Nombre</Label>
               <Input
                 id="register-business"
                 value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                placeholder="Mi Empresa S.A."
+                onChange={(e) => {
+                  if (e.target.value.length <= 30) setBusinessName(e.target.value)
+                }}
+                placeholder="Nombre de la empresa"
               />
             </div>
             <div>

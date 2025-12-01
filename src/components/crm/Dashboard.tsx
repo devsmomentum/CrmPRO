@@ -1,29 +1,66 @@
-import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Task, Lead, Appointment, Notification as NotificationType } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone } from '@phosphor-icons/react'
+import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone, Users, CalendarBlank, Funnel } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getLeads } from '@/supabase/services/leads'
+import { getPipelines } from '@/supabase/helpers/pipeline'
 
 interface DashboardProps {
+  companyId?: string
   onShowNotifications: () => void
 }
 
-export function Dashboard({ onShowNotifications }: DashboardProps) {
-  const [tasks] = useKV<Task[]>('tasks', [])
-  const [leads] = useKV<Lead[]>('leads', [])
-  const [appointments] = useKV<Appointment[]>('appointments', [])
-  const [notifications] = useKV<NotificationType[]>('notifications', [])
+export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
+  const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
+  const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
+  const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [pipelinesCount, setPipelinesCount] = useState(0)
+
+  useEffect(() => {
+    if (companyId) {
+      // Cargar leads
+      getLeads(companyId)
+        .then((data: any) => {
+          const mappedLeads = data.map((l: any) => ({
+            id: l.id,
+            name: l.nombre_completo,
+            email: l.correo_electronico,
+            phone: l.telefono,
+            company: l.empresa,
+            budget: l.presupuesto,
+            stage: l.etapa_id,
+            pipeline: l.pipeline_id || 'sales',
+            priority: l.prioridad,
+            assignedTo: l.asignado_a,
+            tags: [],
+            createdAt: new Date(l.created_at),
+            lastContact: new Date(l.created_at)
+          }))
+          setLeads(mappedLeads)
+        })
+        .catch(err => console.error('Error fetching leads in Dashboard:', err))
+
+      // Cargar pipelines para contar
+      getPipelines(companyId)
+        .then(({ data }) => {
+          if (data) setPipelinesCount(data.length)
+        })
+        .catch(err => console.error('Error fetching pipelines in Dashboard:', err))
+    }
+  }, [companyId])
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  
+
   const myTasks = (tasks || []).filter(t => !t.completed)
   const todayTasks = myTasks.filter(t => {
     const taskDate = new Date(t.dueDate)
@@ -31,7 +68,7 @@ export function Dashboard({ onShowNotifications }: DashboardProps) {
     return taskDate.getTime() === today.getTime()
   })
   const overdueTasks = myTasks.filter(t => new Date(t.dueDate) < today)
-  
+
   const todayAppointments = (appointments || []).filter(a => {
     const apptDate = new Date(a.startTime)
     apptDate.setHours(0, 0, 0, 0)
@@ -50,7 +87,7 @@ export function Dashboard({ onShowNotifications }: DashboardProps) {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Welcome Back!</h1>
@@ -74,6 +111,17 @@ export function Dashboard({ onShowNotifications }: DashboardProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Pipelines</CardTitle>
+            <Funnel className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pipelinesCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active pipelines</p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
@@ -104,17 +152,6 @@ export function Dashboard({ onShowNotifications }: DashboardProps) {
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{overdueTasks.length}</div>
             <p className="text-xs text-muted-foreground mt-1">Need attention</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Appointments</CardTitle>
-            <CalendarBlank className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{todayAppointments.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Scheduled today</p>
           </CardContent>
         </Card>
       </div>

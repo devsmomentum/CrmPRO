@@ -1,11 +1,11 @@
-import { useKV } from '@github/spark/hooks'
+import { usePersistentState } from '@/hooks/usePersistentState'
 import { Lead, Task } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
 
-export function AnalyticsDashboard() {
-  const [leads] = useKV<Lead[]>('leads', [])
-  const [tasks] = useKV<Task[]>('tasks', [])
+export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
+  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
 
   const pipelineData = [
     { name: 'Sales', count: (leads || []).filter(l => l.pipeline === 'sales').length },
@@ -28,7 +28,7 @@ export function AnalyticsDashboard() {
   const avgDealSize = totalRevenue / ((leads || []).length || 1)
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Analytics</h1>
         <p className="text-muted-foreground mt-1">Performance insights and metrics</p>
