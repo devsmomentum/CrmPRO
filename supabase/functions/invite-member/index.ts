@@ -81,7 +81,7 @@ serve(async (req) => {
     const token = crypto.randomUUID();
 
     // 2. Insertar en equipo_invitaciones
-    const { error: dbError } = await supabaseAdmin
+    const { data: insertedInvite, error: dbError } = await supabaseAdmin
       .from("equipo_invitaciones")
       .insert({
         equipo_id: teamId,
@@ -93,9 +93,84 @@ serve(async (req) => {
         invited_titulo_trabajo: role,
         permission_role: permissionRole || 'viewer',
         pipeline_ids: pipelineIds
+      })
+      .select('id, token')
+      .single();
+
+    if (dbError) throw dbError;
+
+    // 3. Enviar correo vía Resend si está configurado, y reportar estado
+    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
+    const RESEND_DOMAIN = Deno.env.get('RESEND_DOMAIN');
+    const RESEND_FROM = Deno.env.get('RESEND_FROM') || (RESEND_DOMAIN ? `no-reply@${RESEND_DOMAIN}` : undefined);
+    const ENABLE_EMAILS = (Deno.env.get('ENABLE_EMAILS') || 'true').toLowerCase();
+    const APP_URL = Deno.env.get('APP_URL') || 'https://example.com';
+
+    let emailResult: { sent: boolean; reason?: string } = { sent: false };
+
+    if (ENABLE_EMAILS === 'false' || ENABLE_EMAILS === '0' || ENABLE_EMAILS === 'off') {
+      console.warn('[invite-member] Emails deshabilitados por ENABLE_EMAILS');
+      emailResult = { sent: false, reason: 'Emails disabled by ENABLE_EMAILS' };
+    } else if (!RESEND_API_KEY) {
+      console.warn('[invite-member] Falta RESEND_API_KEY, se omite envío de correo');
+      emailResult = { sent: false, reason: 'Missing RESEND_API_KEY' };
+    } else if (!RESEND_FROM) {
+      console.warn('[invite-member] Falta RESEND_FROM o RESEND_DOMAIN para construir el remitente verificado');
+      emailResult = { sent: false, reason: 'Missing RESEND_FROM/RESEND_DOMAIN' };
+    } else {
+      const acceptUrl = `${APP_URL}/accept-invite?token=${insertedInvite?.token || token}`;
+      const html = `
+        <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; max-width: 600px; margin: 0 auto;">
+          <h2>Has recibido una invitación</h2>
+          <p>Hola ${name || ''}, te han invitado a un equipo en nuestra plataforma.</p>
+          <p>
+            <a href="${acceptUrl}" style="display:inline-block;padding:10px 16px;background:#3b82f6;color:#fff;border-radius:6px;text-decoration:none">
+              Aceptar invitación
+            </a>
+          </p>
+          <p>Si no ves el botón, copia y pega este enlace en tu navegador:</p>
+          <p><a href="${acceptUrl}">${acceptUrl}</a></p>
+        </div>
+      `;
+
+      // Log remitente y destinatario para diagnóstico
+      console.log('[invite-member] Sending email via Resend', {
+        from: `Invitaciones <${RESEND_FROM}>`,
+        to: normalizedEmail,
       });
 
-    return new Response(JSON.stringify({ message: "Invitación enviada exitosamente" }), {
+      const sendRes = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          from: `Invitaciones <${RESEND_FROM}>`,
+          to: normalizedEmail,
+          subject: 'Invitación a un equipo',
+          html
+        })
+      });
+
+      if (!sendRes.ok) {
+        let errText = await sendRes.text();
+        // Intentar parsear JSON si es válido para obtener message y name
+        let parsed: any = null;
+        try { parsed = JSON.parse(errText); } catch (_) {}
+        const statusCode = sendRes.status;
+        const baseReason = parsed?.message || parsed?.error || errText || 'Unknown Resend error';
+        const validationHint = (statusCode === 403 && /testing emails|verify a domain/i.test(baseReason))
+          ? 'El dominio/remitente todavía no está verificado en Resend o estás usando un FROM distinto al dominio verificado.'
+          : undefined;
+        console.error('[invite-member] Error enviando correo Resend', { statusCode, baseReason, from: RESEND_FROM, to: normalizedEmail });
+        emailResult = { sent: false, reason: `Resend ${statusCode}: ${baseReason}${validationHint ? ' - ' + validationHint : ''}` };
+      } else {
+        emailResult = { sent: true };
+      }
+    }
+
+    return new Response(JSON.stringify({ message: "Invitación enviada exitosamente", email: emailResult }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
 
