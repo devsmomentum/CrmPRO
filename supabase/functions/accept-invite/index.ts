@@ -29,6 +29,7 @@ serve(async (req) => {
         invited_nombre,
         invited_email,
         invited_titulo_trabajo,
+        permission_role,
         empresa:empresa_id (
           id,
           nombre_empresa,
@@ -51,7 +52,7 @@ serve(async (req) => {
         empresa_id: invite.empresa_id,
         usuario_id: userId,
         email: invite.invited_email,
-        role: invite.invited_titulo_trabajo || 'member'
+        role: invite.permission_role || 'viewer'
       });
 
     if (memberError) {

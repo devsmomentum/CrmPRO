@@ -4,15 +4,20 @@ export async function createInvitation(payload) {
     // payload: { equipo_id, empresa_id, invited_email, invited_nombre, invited_titulo_trabajo, pipeline_ids }
     const { data: { session } } = await supabase.auth.getSession()
 
+    const body = {
+        teamId: payload.equipo_id,
+        companyId: payload.empresa_id,
+        email: payload.invited_email,
+        name: payload.invited_nombre,
+        role: payload.invited_titulo_trabajo,
+        pipelineIds: payload.pipeline_ids,
+        permissionRole: payload.permission_role || 'viewer'
+    }
+
+    console.log('[invitations.js] Invoking invite-member with body:', body)
+
     const response = await supabase.functions.invoke('invite-member', {
-        body: {
-            teamId: payload.equipo_id,
-            companyId: payload.empresa_id,
-            email: payload.invited_email,
-            name: payload.invited_nombre,
-            role: payload.invited_titulo_trabajo,
-            pipelineIds: payload.pipeline_ids
-        },
+        body: body,
         headers: {
             Authorization: `Bearer ${session?.access_token}`
         }

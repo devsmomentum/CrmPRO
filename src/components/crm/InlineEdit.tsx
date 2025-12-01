@@ -14,6 +14,7 @@ interface InlineEditProps {
   prefix?: string
   suffix?: string
   multiline?: boolean
+  disabled?: boolean
 }
 
 export function InlineEdit({ 
@@ -24,7 +25,8 @@ export function InlineEdit({
   displayClassName,
   prefix = '',
   suffix = '',
-  multiline = false
+  multiline = false,
+  disabled = false
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(value.toString())
@@ -66,17 +68,20 @@ export function InlineEdit({
       <div 
         className={cn(
           'group inline-flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2 -my-1 transition-colors',
-          displayClassName
+          displayClassName,
+          disabled && "cursor-default hover:bg-transparent"
         )}
-        onClick={() => setIsEditing(true)}
+        onClick={() => !disabled && setIsEditing(true)}
       >
         <span>
           {prefix}{value}{suffix}
         </span>
-        <PencilSimple 
-          size={14} 
-          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" 
-        />
+        {!disabled && (
+          <PencilSimple 
+            size={14} 
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" 
+          />
+        )}
       </div>
     )
   }

@@ -8,6 +8,7 @@ interface CreateInvitationPayload {
   invited_nombre: string
   invited_titulo_trabajo: string
   pipeline_ids: Set<PipelineType>
+  permission_role?: string
 }
 
 export async function createInvitation(payload: CreateInvitationPayload) {
@@ -18,7 +19,8 @@ export async function createInvitation(payload: CreateInvitationPayload) {
       companyId: payload.empresa_id,
       name: payload.invited_nombre,
       role: payload.invited_titulo_trabajo,
-      pipelineIds: Array.from(payload.pipeline_ids)
+      pipelineIds: Array.from(payload.pipeline_ids),
+      permissionRole: payload.permission_role || 'viewer'
     }
   })
 

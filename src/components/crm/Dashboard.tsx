@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/button'
 import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { getLeads } from '@/supabase/services/leads'
 
 interface DashboardProps {
   companyId?: string
@@ -17,14 +18,39 @@ interface DashboardProps {
 
 export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
-  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
 
+  useEffect(() => {
+    if (companyId) {
+      getLeads(companyId)
+        .then((data: any) => {
+          const mappedLeads = data.map((l: any) => ({
+            id: l.id,
+            name: l.nombre_completo,
+            email: l.correo_electronico,
+            phone: l.telefono,
+            company: l.empresa,
+            budget: l.presupuesto,
+            stage: l.etapa_id,
+            pipeline: l.pipeline_id || 'sales',
+            priority: l.prioridad,
+            assignedTo: l.asignado_a,
+            tags: [],
+            createdAt: new Date(l.created_at),
+            lastContact: new Date(l.created_at)
+          }))
+          setLeads(mappedLeads)
+        })
+        .catch(err => console.error('Error fetching leads in Dashboard:', err))
+    }
+  }, [companyId])
+
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  
+
   const myTasks = (tasks || []).filter(t => !t.completed)
   const todayTasks = myTasks.filter(t => {
     const taskDate = new Date(t.dueDate)
@@ -32,7 +58,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
     return taskDate.getTime() === today.getTime()
   })
   const overdueTasks = myTasks.filter(t => new Date(t.dueDate) < today)
-  
+
   const todayAppointments = (appointments || []).filter(a => {
     const apptDate = new Date(a.startTime)
     apptDate.setHours(0, 0, 0, 0)

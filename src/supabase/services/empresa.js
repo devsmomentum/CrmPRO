@@ -60,6 +60,7 @@ export async function getEmpresasByUsuario(usuario_id) {
     .from('empresa_miembros')
     .select(`
       empresa_id,
+      role,
       empresa (
         id,
         nombre_empresa,
@@ -76,7 +77,13 @@ export async function getEmpresasByUsuario(usuario_id) {
 
   const memberCompanies = memberData 
     ? memberData
-        .map(m => m.empresa) // Extraer la empresa
+        .map(m => {
+          if (!m.empresa) return null
+          return {
+            ...m.empresa,
+            role: m.role || 'viewer' // Asignar rol obtenido o default
+          }
+        }) 
         .filter(Boolean)
         .filter((emp, index, self) => 
           index === self.findIndex((t) => (
@@ -85,8 +92,11 @@ export async function getEmpresasByUsuario(usuario_id) {
         )
     : []
 
-  // Combinar y eliminar duplicados (por si soy dueño y miembro a la vez, raro pero posible)
-  const allCompanies = [...(owned || []), ...memberCompanies].filter((emp, index, self) =>
+  // Marcar las empresas propias con rol 'owner'
+  const ownedWithRole = (owned || []).map(e => ({ ...e, role: 'owner' }))
+
+  // Combinar y eliminar duplicados (priorizando 'owner' si existe duplicado)
+  const allCompanies = [...ownedWithRole, ...memberCompanies].filter((emp, index, self) =>
     index === self.findIndex((t) => (
       t.id === emp.id
     ))
@@ -107,4 +117,14 @@ export async function deleteEmpresa(id) {
     throw error
   }
   return true
+}
+
+export async function getCompanyMembers(companyId) {
+  const { data, error } = await supabase
+    .from('empresa_miembros')
+    .select('usuario_id, email, role')
+    .eq('empresa_id', companyId)
+  
+  if (error) throw error
+  return data
 }

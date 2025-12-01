@@ -63,6 +63,10 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
 
+  const currentCompany = companies.find(c => c.id === companyId)
+  const userRole = currentCompany?.role || 'viewer'
+  const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
+
   // Sincronización en tiempo real de leads
   useLeadsRealtime({
     companyId: companyId || '',
@@ -235,6 +239,11 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   }
 
   const handleAddStage = async (stage: Stage) => {
+    if (!isAdminOrOwner) {
+      toast.error('No tienes permisos para agregar etapas')
+      return
+    }
+
     const currentPipeline = pipelines.find(p => p.type === activePipeline)
     let stageToState = stage
 
@@ -374,6 +383,11 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   }
 
   const handleDeleteStage = async (stageId: string) => {
+    if (!isAdminOrOwner) {
+      toast.error('No tienes permisos para eliminar etapas')
+      return
+    }
+
     // Check if it's a UUID (DB stage)
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(stageId)
 
@@ -406,6 +420,10 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   }
 
   const handleDeletePipeline = async () => {
+    if (!isAdminOrOwner) {
+      toast.error('No tienes permisos para eliminar pipelines')
+      return
+    }
     if (['sales', 'support', 'administrative'].includes(activePipeline)) return
 
     try {
@@ -424,6 +442,10 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   }
 
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
+    if (!isAdminOrOwner) {
+      e.preventDefault()
+      return
+    }
     setDraggedLead(lead)
     e.dataTransfer.effectAllowed = 'move'
   }
@@ -435,6 +457,11 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
 
   const handleDrop = (e: React.DragEvent, targetStageId: string) => {
     e.preventDefault()
+
+    if (!isAdminOrOwner) {
+      toast.error('No tienes permisos para mover leads')
+      return
+    }
 
     if (!draggedLead) return
 
@@ -477,6 +504,8 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
           <div className="flex gap-2">
             {currentPipeline && (
               <>
+            {isAdminOrOwner && (
+              <>
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm">
@@ -511,13 +540,17 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                     </Button>
                   }
                 />
-                <AddLeadDialog
-                  pipelineType={activePipeline}
-                  stages={currentPipeline?.stages || []}
-                  teamMembers={teamMemberNames}
-                  onAdd={handleAddLead}
-                  companies={companies}
-                />
+              </>
+            )}
+            {isAdminOrOwner && (
+            <AddLeadDialog
+              pipelineType={activePipeline}
+              stages={currentPipeline?.stages || []}
+              teamMembers={teamMemberNames}
+              onAdd={handleAddLead}
+              companies={companies}
+            />
+            )}
               </>
             )}
           </div>
@@ -580,15 +613,18 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                       <Badge variant="secondary" className="text-xs shrink-0">{stageLeads.length}</Badge>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteStage(stage.id)}
-                        title="Eliminar etapa"
-                      >
-                        <Trash size={16} />
-                      </Button>
+                      {isAdminOrOwner && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteStage(stage.id)}
+                          title="Eliminar etapa"
+                        >
+                          <Trash size={16} />
+                        </Button>
+                      )}
+                      {isAdminOrOwner && (
                       <AddLeadDialog
                         pipelineType={activePipeline}
                         stages={currentPipeline?.stages || []}
@@ -608,23 +644,26 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                           </Button>
                         }
                       />
-                      <AddStageDialog
-                        pipelineType={activePipeline}
-                        currentStagesCount={currentPipeline?.stages.length || 0}
-                        onAdd={handleAddStage}
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground"
-                            type="button"
-                            title={t.pipeline.addStage}
-                          >
-                            <Plus size={16} />
-                            <span className="sr-only">{t.pipeline.addStage}</span>
-                          </Button>
-                        }
-                      />
+                      )}
+                      {isAdminOrOwner && (
+                        <AddStageDialog
+                          pipelineType={activePipeline}
+                          currentStagesCount={currentPipeline?.stages.length || 0}
+                          onAdd={handleAddStage}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground"
+                              type="button"
+                              title={t.pipeline.addStage}
+                            >
+                              <Plus size={16} />
+                              <span className="sr-only">{t.pipeline.addStage}</span>
+                            </Button>
+                          }
+                        />
+                      )}
                     </div>
                   </div>
 
@@ -650,17 +689,19 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem>{t.buttons.edit}</DropdownMenuItem>
-                              <DropdownMenuItem>Mover a Etapa</DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  handleDeleteLead(lead.id)
-                                }}
-                              >
-                                {t.buttons.delete}
-                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
+                              <DropdownMenuItem disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuItem>
+                              {isAdminOrOwner && (
+                                <DropdownMenuItem
+                                  className="text-destructive"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    handleDeleteLead(lead.id)
+                                  }}
+                                >
+                                  {t.buttons.delete}
+                                </DropdownMenuItem>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -714,22 +755,24 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
               <div className="flex-1 flex items-center justify-center text-muted-foreground">
                 <div className="text-center">
                   <p className="mb-4">{t.pipeline.noStages}</p>
-                  <AddStageDialog
-                    pipelineType={activePipeline}
-                    currentStagesCount={0}
-                    onAdd={handleAddStage}
-                    trigger={
-                      <Button>
-                        <Plus className="mr-2" size={20} />
-                        {t.pipeline.addFirstStage}
-                      </Button>
-                    }
-                  />
+                  {isAdminOrOwner && (
+                    <AddStageDialog
+                      pipelineType={activePipeline}
+                      currentStagesCount={0}
+                      onAdd={handleAddStage}
+                      trigger={
+                        <Button>
+                          <Plus className="mr-2" size={20} />
+                          {t.pipeline.addFirstStage}
+                        </Button>
+                      }
+                    />
+                  )}
                 </div>
               </div>
             )}
 
-            {(currentPipeline?.stages || []).length > 0 && (
+            {(currentPipeline?.stages || []).length > 0 && isAdminOrOwner && (
               <div className="w-72 md:w-80 flex flex-col shrink-0 min-h-0">
                 <AddStageDialog
                   pipelineType={activePipeline}
@@ -753,13 +796,34 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
           lead={selectedLead}
           open={!!selectedLead}
           onClose={() => setSelectedLead(null)}
-          onUpdate={(updated) => {
-            setLeads((current) =>
-              (current || []).map(l => l.id === updated.id ? updated : l)
-            )
-            setSelectedLead(updated)
+          onUpdate={async (updated) => {
+            if (!isAdminOrOwner) {
+              toast.error('No tienes permisos para editar leads')
+              return
+            }
+            try {
+              await updateLead(updated.id, {
+                nombre_completo: updated.name,
+                empresa: updated.company,
+                correo_electronico: updated.email,
+                telefono: updated.phone,
+                prioridad: updated.priority,
+                presupuesto: updated.budget
+              })
+              
+              // Actualizamos estado local (aunque el realtime debería hacerlo también)
+              setLeads((current) =>
+                (current || []).map(l => l.id === updated.id ? updated : l)
+              )
+              setSelectedLead(updated)
+              toast.success('Lead actualizado')
+            } catch (error: any) {
+              console.error('Error updating lead:', error)
+              toast.error('Error al actualizar lead')
+            }
           }}
           teamMembers={teamMembers}
+          canEdit={isAdminOrOwner}
         />
       )}
     </div>

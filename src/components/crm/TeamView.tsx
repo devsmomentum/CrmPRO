@@ -18,7 +18,9 @@ import { Input } from '@/components/ui/input'
 
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
 
-export function TeamView({ companyId }: { companyId?: string }) {
+import { Company } from './CompanyManagement'
+
+export function TeamView({ companyId, companies = [], currentUserId }: { companyId?: string; companies?: Company[]; currentUserId?: string }) {
   if (!companyId) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
@@ -32,6 +34,11 @@ export function TeamView({ companyId }: { companyId?: string }) {
       </div>
     )
   }
+
+  const currentCompany = companies.find(c => c.id === companyId)
+  const userRole = currentCompany?.role || 'viewer'
+  const isOwnerById = currentUserId && currentCompany?.ownerId === currentUserId
+  const isAdminOrOwner = userRole === 'admin' || userRole === 'owner' || isOwnerById
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   // leads y roles ahora se inicializan como arrays vacíos, y deben obtenerse de la BD si se requiere
@@ -104,16 +111,29 @@ export function TeamView({ companyId }: { companyId?: string }) {
           // Obtener invitaciones pendientes
           const { getPendingInvitationsByCompany } = await import('@/supabase/services/invitations')
           const pendingInvites = await getPendingInvitationsByCompany(companyId)
+          console.log('[TeamView] pendingInvites raw:', pendingInvites)
 
-          const mappedPending = pendingInvites.map((inv: any) => ({
-            id: inv.id,
-            name: inv.invited_nombre || inv.invited_email,
-            email: inv.invited_email,
-            role: inv.invited_titulo_trabajo || 'Pending',
-            pipelines: [],
-            avatar: '',
-            status: 'pending'
-          }))
+          // Obtener roles de miembros activos
+          const { getCompanyMembers } = await import('@/supabase/services/empresa')
+          const companyMembers = await getCompanyMembers(companyId)
+
+          const mappedPending = pendingInvites.map((inv: any) => {
+            const resolvedPipelines = (inv.pipeline_ids || []).map((pid: string) => {
+              const found = dbPipelines.find(p => p.id === pid)
+              return found ? found.nombre : pid
+            })
+
+            return {
+              id: inv.id,
+              name: inv.invited_nombre || inv.invited_email,
+              email: inv.invited_email,
+              role: inv.invited_titulo_trabajo || 'Pending',
+              pipelines: resolvedPipelines,
+              avatar: '',
+              status: 'pending',
+              permissionRole: inv.permission_role || 'viewer'
+            }
+          })
 
           const mapped = await Promise.all(personas.map(async p => {
             let memberPipelines: string[] = []
@@ -121,22 +141,20 @@ export function TeamView({ companyId }: { companyId?: string }) {
               const { data: pPipelines } = await getPipelinesForPersona(p.id)
               if (pPipelines) {
                 memberPipelines = pPipelines.map((pp: any) => {
-                  // Intentamos encontrar el pipeline en los cargados de BD
                   const found = dbPipelines.find(dbp => dbp.id === pp.pipeline_id)
-                  // Si lo encontramos, devolvemos su nombre (o ID si prefieres manejarlo así)
-                  // Para mantener compatibilidad con 'sales', 'support', etc., si el nombre coincide, usamos el slug?
-                  // Por ahora devolvemos el nombre si es custom, o el ID si no se encuentra.
-                  // Pero espera, la UI espera 'sales', 'support' para los badges.
-                  // Si guardamos 'sales' como un pipeline real en BD, tendría un ID.
-                  // Si no guardamos 'sales' en BD, entonces no vendrá de getPipelinesForPersona.
-
-                  // Asumimos que lo que viene de BD es lo que se guardó.
                   return found ? found.nombre : pp.pipeline_id
                 })
               }
             } catch (err) {
               console.error('Error loading pipelines for persona', p.id, err)
             }
+
+            // Buscar rol en empresa_miembros
+            // Intentamos coincidir por usuario_id si existe, o por email
+            const memberInfo = companyMembers?.find((m: any) => 
+              (p.usuario_id && m.usuario_id === p.usuario_id) || 
+              (m.email && p.email && m.email.toLowerCase() === p.email.toLowerCase())
+            )
 
             return {
               id: p.id,
@@ -145,7 +163,8 @@ export function TeamView({ companyId }: { companyId?: string }) {
               avatar: '',
               role: p.titulo_trabajo || '',
               teamId: p.equipo_id || undefined,
-              pipelines: memberPipelines
+              pipelines: memberPipelines,
+              permissionRole: memberInfo?.role || 'viewer'
             }
           }))
           const mappedMembers = mapped.map((m: any) => ({
@@ -237,6 +256,10 @@ export function TeamView({ companyId }: { companyId?: string }) {
   }
 
   const handleDeleteMember = async (memberId: string) => {
+    if (!isAdminOrOwner) {
+      toast.error('No tienes permisos para eliminar miembros')
+      return
+    }
     try {
       await deletePersona(memberId)
       setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
@@ -287,11 +310,15 @@ export function TeamView({ companyId }: { companyId?: string }) {
 
         </div>
         <div className="flex items-center gap-2">
-          <AddTeamMemberDialog
-            onAdd={handleAddMember}
-            companyId={companyId}
-            onInvitationCreated={() => setRefreshTrigger(prev => prev + 1)}
-          />
+          <div className="flex items-center gap-2">
+            {isAdminOrOwner && (
+              <AddTeamMemberDialog
+                onAdd={handleAddMember}
+                companyId={companyId}
+                onInvitationCreated={() => setRefreshTrigger(prev => prev + 1)}
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -317,8 +344,12 @@ export function TeamView({ companyId }: { companyId?: string }) {
           </div>
         </div>
         <div className="flex gap-2">
-          <Input placeholder="Nombre del equipo" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} className="max-w-xs" />
-          <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
+          {isAdminOrOwner && (
+            <>
+              <Input placeholder="Nombre del equipo" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} className="max-w-xs" />
+              <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
+            </>
+          )}
         </div>
         <div className="grid gap-2">
           {(equipos || []).length === 0 && <p className="text-sm text-muted-foreground">Sin equipos aún</p>}
@@ -338,9 +369,11 @@ export function TeamView({ companyId }: { companyId?: string }) {
                   <Funnel size={14} className="mr-1" />
                   {selectedTeamFilter === eq.id ? "Filtrando" : "Filtrar"}
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => handleDeleteEquipo(eq.id)}>
-                  <Trash size={14} />
-                </Button>
+                {isAdminOrOwner && (
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteEquipo(eq.id)}>
+                    <Trash size={14} />
+                  </Button>
+                )}
               </div>
             </div>
           ))}
@@ -366,6 +399,11 @@ export function TeamView({ companyId }: { companyId?: string }) {
                           Pendiente
                         </Badge>
                       )}
+                      {member.permissionRole && (
+                        <Badge variant="secondary" className="text-xs">
+                          {member.permissionRole === 'admin' ? 'Admin' : 'Viewer'}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-1">
                       <p className="text-sm text-muted-foreground">{member.role}</p>
@@ -380,15 +418,17 @@ export function TeamView({ companyId }: { companyId?: string }) {
                       )}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive hover:bg-destructive/10"
-                    onClick={() => handleDeleteMember(member.id)}
-                    title="Eliminar miembro"
-                  >
-                    <Trash size={16} />
-                  </Button>
+                  {isAdminOrOwner && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive hover:bg-destructive/10"
+                      onClick={() => handleDeleteMember(member.id)}
+                      title="Eliminar miembro"
+                    >
+                      <Trash size={16} />
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>

@@ -28,7 +28,7 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('Sales Rep')
-  const [selectedRoleId, setSelectedRoleId] = useState<string>('none')
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('viewer')
   const [selectedTeamId, setSelectedTeamId] = useState<string>('none')
   const [teams, setTeams] = useState<{ id: string; nombre_equipo: string }[]>([])
   const [roles] = usePersistentState<Role[]>('roles', [])
@@ -89,7 +89,18 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
     }
 
     try {
+      // Force import of the TS file if possible, or just rely on the build system
       const { createInvitation } = await import('@/supabase/services/invitations')
+
+      console.log('[AddTeamMemberDialog] Enviando invitación con payload:', {
+        equipo_id: selectedTeamId,
+        empresa_id: companyId,
+        invited_email: email.trim(),
+        invited_nombre: name.trim(),
+        invited_titulo_trabajo: role,
+        pipeline_ids: selectedPipelines,
+        permission_role: selectedRoleId
+      })
 
       await createInvitation({
         equipo_id: selectedTeamId,
@@ -97,9 +108,13 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
         invited_email: email.trim(),
         invited_nombre: name.trim(),
         invited_titulo_trabajo: role,
-        pipeline_ids: selectedPipelines
+        pipeline_ids: selectedPipelines,
+        permission_role: selectedRoleId
       })
 
+      // No llamamos a onAdd para evitar crear una persona duplicada/dummy.
+      // Confiamos en que la invitación se creó y recargamos la lista.
+      /*
       onAdd({
         id: 'temp-' + Date.now(),
         name: name.trim(),
@@ -110,11 +125,12 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
         // @ts-ignore
         status: 'pending'
       })
+      */
 
       setName('')
       setEmail('')
       setRole('Sales Rep')
-      setSelectedRoleId('none')
+      setSelectedRoleId('viewer')
       setSelectedTeamId('none')
       setMemberPipelines(new Set())
       setOpen(false)
@@ -184,21 +200,11 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
             <Label htmlFor="permission-role">Permission Role (Opcional)</Label>
             <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
               <SelectTrigger id="permission-role">
-                <SelectValue placeholder="Sin rol de permisos" />
+                <SelectValue placeholder="Selecciona un rol" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sin rol de permisos</SelectItem>
-                {(roles || []).map(r => (
-                  <SelectItem key={r.id} value={r.id}>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: r.color }}
-                      />
-                      {r.name}
-                    </div>
-                  </SelectItem>
-                ))}
+                <SelectItem value="viewer">Viewer (Lectura)</SelectItem>
+                <SelectItem value="admin">Admin (Control Total)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground mt-1">

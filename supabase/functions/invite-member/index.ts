@@ -13,7 +13,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { email, teamId, companyId, name, role, pipelineIds } = await req.json();
+    const { email, teamId, companyId, name, role, pipelineIds, permissionRole } = await req.json();
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -43,7 +43,9 @@ serve(async (req) => {
         token: token,
         invited_nombre: name,
         invited_titulo_trabajo: role,
-      }
+        permission_role: permissionRole || 'viewer',
+        pipeline_ids: pipelineIds
+      });
 
     return new Response(JSON.stringify({ message: "Invitación enviada exitosamente" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

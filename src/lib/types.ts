@@ -123,6 +123,7 @@ export interface TeamMember {
   roleId?: string
   pipelines?: PipelineType[]
   teamId?: string
+  permissionRole?: 'admin' | 'viewer' | 'owner'
 }
 
 export interface Appointment {

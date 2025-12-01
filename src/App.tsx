@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Toaster } from '@/components/ui/sonner'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Sidebar } from '@/components/crm/Sidebar'
 import { Dashboard } from '@/components/crm/Dashboard'
 import { PipelineView } from '@/components/crm/PipelineView'
@@ -78,7 +79,8 @@ function App() {
         id: e.id,
         name: e.nombre_empresa,
         ownerId: e.usuario_id,
-        createdAt: new Date(e.created_at)
+        createdAt: new Date(e.created_at),
+        role: e.role // Pass the role to the UI
       }))
       setCompanies(uiCompanies)
 
@@ -125,7 +127,8 @@ function App() {
         id: e.id,
         name: e.nombre_empresa,
         ownerId: e.usuario_id,
-        createdAt: new Date(e.created_at)
+        createdAt: new Date(e.created_at),
+        role: e.role
       }))
       setCompanies(uiCompanies)
       if (uiCompanies.length > 0) {
@@ -141,7 +144,8 @@ function App() {
             id: empresaCreada.id,
             name: empresaCreada.nombre_empresa,
             ownerId: empresaCreada.usuario_id,
-            createdAt: new Date(empresaCreada.created_at)
+            createdAt: new Date(empresaCreada.created_at),
+            role: 'owner'
           }
           setCompanies([nuevaCompany])
           setCurrentCompanyId(nuevaCompany.id)
@@ -226,10 +230,13 @@ function App() {
           <JoinTeam
             token={inviteToken}
             user={user}
-            onSuccess={() => {
+            onSuccess={async () => {
+              // Recargar empresas para mostrar la nueva empresa invitada
+              await fetchCompanies()
               setInviteToken(null)
               window.history.replaceState({}, document.title, window.location.pathname)
               setCurrentView('dashboard')
+              toast.success('¡Te has unido exitosamente! Ahora puedes ver la empresa desde el selector.')
             }}
             onLoginRequest={() => { }}
           />
@@ -348,7 +355,21 @@ function App() {
               />
             </div>
             <div className="leading-none">
-              <div className="text-sm font-medium text-foreground">{user.businessName}</div>
+              <div className="text-sm font-medium text-foreground flex items-center gap-2">
+                {user.businessName}
+                {(() => {
+                  const currentCompany = companies.find(c => c.id === currentCompanyId)
+                  const role = currentCompany?.ownerId === user.id ? 'Owner' : (currentCompany?.role || 'Viewer')
+                  const displayRole = role === 'admin' ? 'Admin' : (role === 'owner' || role === 'Owner') ? 'Owner' : 'Viewer'
+                  const badgeColor = displayRole === 'Owner' ? 'border-primary text-primary' : displayRole === 'Admin' ? 'border-blue-500 text-blue-500' : 'border-muted-foreground text-muted-foreground'
+                  
+                  return (
+                    <Badge variant="outline" className={`text-[10px] h-4 px-1 py-0 ${badgeColor}`}>
+                      {displayRole}
+                    </Badge>
+                  )
+                })()}
+              </div>
               <div className="text-[11px] text-muted-foreground">{user.email}</div>
             </div>
           </div>
@@ -358,7 +379,7 @@ function App() {
         {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} />}
         {currentView === 'analytics' && <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
-        {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} />}
+        {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} companies={companies} currentUserId={user.id} />}
         {currentView === 'settings' && (
           <SettingsView
             key={currentCompanyId}

@@ -18,6 +18,7 @@ export interface Company {
   logo?: string
   ownerId: string
   createdAt: Date
+  role?: string // 'owner' | 'admin' | 'viewer'
 }
 
 interface CompanyManagementProps {
@@ -223,14 +224,16 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
                       className="hidden"
                       id={`logo-upload-${company.id}`}
                     />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0"
-                      onClick={() => document.getElementById(`logo-upload-${company.id}`)?.click()}
-                    >
-                      <Upload size={14} />
-                    </Button>
+                    {(company.role === 'owner' || company.role === 'admin') && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0"
+                        onClick={() => document.getElementById(`logo-upload-${company.id}`)?.click()}
+                      >
+                        <Upload size={14} />
+                      </Button>
+                    )}
                   </div>
 
                   <div className="flex-1">
@@ -261,13 +264,15 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
                         Activar
                       </Button>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDeleteCompany(company.id)}
-                    >
-                      <Trash size={16} />
-                    </Button>
+                    {company.role === 'owner' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteCompany(company.id)}
+                      >
+                        <Trash size={16} />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
