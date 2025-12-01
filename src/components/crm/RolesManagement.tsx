@@ -28,21 +28,15 @@ export function RolesManagement() {
   const [roles, setRoles] = useKV<Role[]>('roles', [
     {
       id: 'admin',
-      name: 'Administrador',
+      name: 'Admin',
       permissions: ALL_PERMISSIONS.map(p => p.id),
       color: '#8b5cf6'
     },
     {
-      id: 'sales',
-      name: 'Ventas',
-      permissions: ['view_dashboard', 'view_pipeline', 'edit_leads', 'view_calendar', 'view_budgets', 'edit_budgets'],
+      id: 'viewer',
+      name: 'Viewer',
+      permissions: ['view_dashboard', 'view_pipeline', 'edit_leads', 'view_analytics', 'view_calendar', 'view_budgets'],
       color: '#3b82f6'
-    },
-    {
-      id: 'support',
-      name: 'Soporte',
-      permissions: ['view_dashboard', 'view_pipeline', 'edit_leads', 'view_calendar'],
-      color: '#10b981'
     }
   ])
   
@@ -97,8 +91,8 @@ export function RolesManagement() {
   }
 
   const handleDeleteRole = (roleId: string) => {
-    if (['admin', 'sales', 'support'].includes(roleId)) {
-      toast.error('No se pueden eliminar los roles predeterminados')
+    if (['admin', 'viewer'].includes(roleId)) {
+      toast.error('No se pueden eliminar los roles del sistema')
       return
     }
 

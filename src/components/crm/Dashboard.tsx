@@ -3,13 +3,14 @@ import { Task, Lead, Appointment, Notification as NotificationType } from '@/lib
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone } from '@phosphor-icons/react'
+import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone, Users, CalendarBlank, Funnel } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getLeads } from '@/supabase/services/leads'
+import { getPipelines } from '@/supabase/helpers/pipeline'
 
 interface DashboardProps {
   companyId?: string
@@ -22,9 +23,11 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
   const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [pipelinesCount, setPipelinesCount] = useState(0)
 
   useEffect(() => {
     if (companyId) {
+      // Cargar leads
       getLeads(companyId)
         .then((data: any) => {
           const mappedLeads = data.map((l: any) => ({
@@ -45,6 +48,13 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           setLeads(mappedLeads)
         })
         .catch(err => console.error('Error fetching leads in Dashboard:', err))
+
+      // Cargar pipelines para contar
+      getPipelines(companyId)
+        .then(({ data }) => {
+          if (data) setPipelinesCount(data.length)
+        })
+        .catch(err => console.error('Error fetching pipelines in Dashboard:', err))
     }
   }, [companyId])
 
@@ -103,6 +113,17 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Pipelines</CardTitle>
+            <Funnel className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{pipelinesCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active pipelines</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -131,17 +152,6 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{overdueTasks.length}</div>
             <p className="text-xs text-muted-foreground mt-1">Need attention</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Appointments</CardTitle>
-            <CalendarBlank className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{todayAppointments.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Scheduled today</p>
           </CardContent>
         </Card>
       </div>

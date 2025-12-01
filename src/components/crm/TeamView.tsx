@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { AddTeamMemberDialog } from './AddTeamMemberDialog'
 import { Button } from '@/components/ui/button'
-import { Trash, Building, Info, Funnel, Users } from '@phosphor-icons/react'
+import { Trash, Building, Info, Funnel, Users, XCircle } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useEffect, useState } from 'react'
@@ -261,6 +261,16 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
       return
     }
     try {
+      // Detectar si es una invitación pendiente
+      const member: any = (teamMembers || []).find(m => m.id === memberId)
+      if (member && member.status === 'pending') {
+        const { cancelInvitation } = await import('@/supabase/services/invitations')
+        await cancelInvitation(memberId)
+        setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
+        toast.success('Invitación cancelada y eliminada del CRM del invitado')
+        return
+      }
+
       await deletePersona(memberId)
       setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
       toast.success('Miembro eliminado de la base de datos')
@@ -426,15 +436,27 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
                     </div>
                   </div>
                   {isAdminOrOwner && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:bg-destructive/10"
-                      onClick={() => handleDeleteMember(member.id)}
-                      title="Eliminar miembro"
-                    >
-                      <Trash size={16} />
-                    </Button>
+                    (member as any).status === 'pending' ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteMember(member.id)}
+                        title="Cancelar invitación"
+                      >
+                        <XCircle size={16} />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteMember(member.id)}
+                        title="Eliminar miembro"
+                      >
+                        <Trash size={16} />
+                      </Button>
+                    )
                   )}
                 </div>
               </CardHeader>

@@ -173,6 +173,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   }
   
   const updateField = (field: keyof Lead, value: string | number) => {
+    if (field === 'budget' && typeof value === 'number' && value < 0) {
+      toast.error('El presupuesto no puede ser negativo')
+      return
+    }
+    if (field === 'budget' && typeof value === 'string' && parseFloat(value) < 0) {
+      toast.error('El presupuesto no puede ser negativo')
+      return
+    }
+    
     onUpdate({ ...lead, [field]: value })
     toast.success('Campo actualizado correctamente')
   }
@@ -341,6 +350,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     value={lead.budget}
                     onSave={(value) => updateField('budget', value)}
                     type="number"
+                    min={0}
                     prefix="$"
                     displayClassName="font-medium text-primary"
                     disabled={!canEdit}

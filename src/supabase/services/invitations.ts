@@ -122,3 +122,15 @@ export async function rejectInvitation(invitationId: string) {
 
   return data
 }
+
+export async function cancelInvitation(invitationId: string) {
+  const { data, error } = await supabase
+    .from('equipo_invitaciones')
+    .update({ status: 'cancelled', responded_at: new Date() })
+    .eq('id', invitationId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}

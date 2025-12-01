@@ -98,6 +98,41 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
     }
 
     try {
+      if (!companyId) {
+        toast.error('No hay empresa seleccionada')
+        return
+      }
+
+      const normalizedEmail = email.trim().toLowerCase()
+
+      // Validación: evitar invitar correos ya miembros o ya invitados (pendientes)
+      try {
+        const [{ getCompanyMembers }, { getPendingInvitationsByCompany }] = await Promise.all([
+          import('@/supabase/services/empresa'),
+          import('@/supabase/services/invitations')
+        ])
+
+        const [members, pendingInvites] = await Promise.all([
+          getCompanyMembers(companyId),
+          getPendingInvitationsByCompany(companyId)
+        ])
+
+        const isAlreadyMember = (members || []).some((m: any) => (m.email || '').toLowerCase() === normalizedEmail)
+        if (isAlreadyMember) {
+          toast.error('Esa persona ya es miembro de la empresa')
+          return
+        }
+
+        const alreadyInvited = (pendingInvites || []).some((inv: any) => (inv.invited_email || '').toLowerCase() === normalizedEmail)
+        if (alreadyInvited) {
+          toast.error('Ya existe una invitación pendiente para este correo')
+          return
+        }
+      } catch (dupErr) {
+        console.warn('[AddTeamMemberDialog] Advertencia al validar duplicados:', dupErr)
+        // No bloqueamos si la validación previa falla; el backend reforzará la restricción
+      }
+
       // Force import of the TS file if possible, or just rely on the build system
       const { createInvitation } = await import('@/supabase/services/invitations')
 
@@ -114,7 +149,7 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
       await createInvitation({
         equipo_id: selectedTeamId,
         empresa_id: companyId,
-        invited_email: email.trim(),
+        invited_email: normalizedEmail,
         invited_nombre: name.trim(),
         invited_titulo_trabajo: role,
         pipeline_ids: selectedPipelines,

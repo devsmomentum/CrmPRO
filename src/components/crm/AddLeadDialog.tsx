@@ -43,6 +43,11 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
       return
     }
 
+    if (!assignedTo || assignedTo === 'Sin asignar') {
+      toast.error('Debes asignar el lead a un miembro del equipo')
+      return
+    }
+
     if (!stageId) {
       toast.error(t.pipeline.noStages)
       return
@@ -160,8 +165,13 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             <Input
               id="lead-budget"
               type="number"
+              min="0"
               value={budget}
-              onChange={(e) => setBudget(e.target.value)}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value)
+                if (val < 0) return
+                setBudget(e.target.value)
+              }}
               placeholder="10000"
             />
           </div>
@@ -194,14 +204,14 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             </Select>
           </div>
           <div>
-            <Label htmlFor="lead-assigned">{t.lead.assignTo}</Label>
+            <Label htmlFor="lead-assigned">{t.lead.assignTo} *</Label>
             <Select value={assignedTo} onValueChange={setAssignedTo}>
               <SelectTrigger id="lead-assigned">
-                <SelectValue />
+                <SelectValue placeholder="Seleccionar miembro" />
               </SelectTrigger>
               <SelectContent>
                 {teamMembers.length === 0 ? (
-                  <SelectItem value="Sin asignar">Sin asignar</SelectItem>
+                  <SelectItem value="Sin asignar" disabled>Sin miembros disponibles</SelectItem>
                 ) : (
                   teamMembers.map(member => (
                     <SelectItem key={member} value={member}>{member}</SelectItem>

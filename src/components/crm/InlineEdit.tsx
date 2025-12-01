@@ -15,6 +15,7 @@ interface InlineEditProps {
   suffix?: string
   multiline?: boolean
   disabled?: boolean
+  min?: number
 }
 
 export function InlineEdit({ 
@@ -26,7 +27,8 @@ export function InlineEdit({
   prefix = '',
   suffix = '',
   multiline = false,
-  disabled = false
+  disabled = false,
+  min
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editValue, setEditValue] = useState(value.toString())
@@ -43,11 +45,15 @@ export function InlineEdit({
 
   const handleSave = () => {
     const finalValue = type === 'number' ? Number(editValue) : editValue
+    if (type === 'number' && min !== undefined && Number(finalValue) < min) {
+      return // Do not save if below min
+    }
     if (finalValue !== value) {
       onSave(finalValue)
     }
     setIsEditing(false)
   }
+
 
   const handleCancel = () => {
     setEditValue(value.toString())
@@ -100,8 +106,15 @@ export function InlineEdit({
         <Input
           ref={inputRef as React.RefObject<HTMLInputElement>}
           type={type}
+          min={min}
           value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
+          onChange={(e) => {
+            if (type === 'number' && min !== undefined) {
+               const val = parseFloat(e.target.value)
+               if (!isNaN(val) && val < min) return
+            }
+            setEditValue(e.target.value)
+          }}
           onKeyDown={handleKeyDown}
           className={className}
         />
