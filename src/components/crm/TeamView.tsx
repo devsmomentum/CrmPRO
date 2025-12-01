@@ -346,7 +346,14 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
         <div className="flex gap-2">
           {isAdminOrOwner && (
             <>
-              <Input placeholder="Nombre del equipo" value={newTeamName} onChange={e => setNewTeamName(e.target.value)} className="max-w-xs" />
+              <Input 
+                placeholder="Nombre del equipo" 
+                value={newTeamName} 
+                onChange={e => {
+                  if (e.target.value.length <= 30) setNewTeamName(e.target.value)
+                }} 
+                className="max-w-xs" 
+              />
               <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
             </>
           )}

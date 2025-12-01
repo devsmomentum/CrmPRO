@@ -66,6 +66,8 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
+  // Viewers ahora pueden crear y editar leads, pero no eliminar ni gestionar pipelines
+  const canEditLeads = true 
 
   // Sincronización en tiempo real de leads
   useLeadsRealtime({
@@ -442,7 +444,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   }
 
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
-    if (!isAdminOrOwner) {
+    if (!canEditLeads) {
       e.preventDefault()
       return
     }
@@ -458,7 +460,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   const handleDrop = (e: React.DragEvent, targetStageId: string) => {
     e.preventDefault()
 
-    if (!isAdminOrOwner) {
+    if (!canEditLeads) {
       toast.error('No tienes permisos para mover leads')
       return
     }
@@ -504,8 +506,9 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
           <div className="flex gap-2">
             {currentPipeline && (
               <>
-            {isAdminOrOwner && (
+            {canEditLeads && (
               <>
+                {isAdminOrOwner && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button variant="destructive" size="sm">
@@ -529,6 +532,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                     </AlertDialogFooter>
                   </AlertDialogContent>
                 </AlertDialog>
+                )}
                 <AddStageDialog
                   pipelineType={activePipeline}
                   currentStagesCount={currentPipeline?.stages.length || 0}
@@ -542,7 +546,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                 />
               </>
             )}
-            {isAdminOrOwner && (
+            {canEditLeads && (
             <AddLeadDialog
               pipelineType={activePipeline}
               stages={currentPipeline?.stages || []}
@@ -772,7 +776,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
               </div>
             )}
 
-            {(currentPipeline?.stages || []).length > 0 && isAdminOrOwner && (
+            {(currentPipeline?.stages || []).length > 0 && canEditLeads && (
               <div className="w-72 md:w-80 flex flex-col shrink-0 min-h-0">
                 <AddStageDialog
                   pipelineType={activePipeline}
@@ -797,7 +801,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
           open={!!selectedLead}
           onClose={() => setSelectedLead(null)}
           onUpdate={async (updated) => {
-            if (!isAdminOrOwner) {
+            if (!canEditLeads) {
               toast.error('No tienes permisos para editar leads')
               return
             }
@@ -823,7 +827,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             }
           }}
           teamMembers={teamMembers}
-          canEdit={isAdminOrOwner}
+          canEdit={canEditLeads}
         />
       )}
     </div>

@@ -28,6 +28,15 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [role, setRole] = useState('Sales Rep')
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    // No permitir números
+    if (/\d/.test(value)) return
+    // Máximo 30 caracteres
+    if (value.length > 30) return
+    setName(value)
+  }
   const [selectedRoleId, setSelectedRoleId] = useState<string>('viewer')
   const [selectedTeamId, setSelectedTeamId] = useState<string>('none')
   const [teams, setTeams] = useState<{ id: string; nombre_equipo: string }[]>([])
@@ -169,7 +178,12 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
             <Input
               id="name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val.length <= 30 && !/\d/.test(val)) {
+                  setName(val)
+                }
+              }}
               placeholder="John Doe"
             />
           </div>

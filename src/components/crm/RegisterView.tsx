@@ -53,8 +53,10 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
               <Input
                 id="register-business"
                 value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-                placeholder="Juan Pérez"
+                onChange={(e) => {
+                  if (e.target.value.length <= 30) setBusinessName(e.target.value)
+                }}
+                placeholder="Nombre de la empresa"
               />
             </div>
             <div>

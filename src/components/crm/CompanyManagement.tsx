@@ -49,7 +49,8 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
         name: inserted.nombre_empresa,
         logo: newCompanyLogo || undefined,
         ownerId: inserted.usuario_id,
-        createdAt: new Date(inserted.created_at)
+        createdAt: new Date(inserted.created_at),
+        role: 'owner'
       }
       setCompanies((current) => [...(current || []), newCompany])
       onCompanyChange(newCompany.id)
@@ -137,7 +138,9 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
                 <Input
                   id="company-name"
                   value={newCompanyName}
-                  onChange={(e) => setNewCompanyName(e.target.value)}
+                  onChange={(e) => {
+                    if (e.target.value.length <= 30) setNewCompanyName(e.target.value)
+                  }}
                   placeholder="Mi Empresa S.A."
                 />
               </div>

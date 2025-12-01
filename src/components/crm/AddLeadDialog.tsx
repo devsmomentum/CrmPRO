@@ -101,8 +101,10 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             <Input
               id="lead-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Juan Pérez"
+              onChange={(e) => {
+                if (e.target.value.length <= 30) setName(e.target.value)
+              }}
+              placeholder="Nombre del Lead"
             />
           </div>
           <div>
@@ -120,7 +122,12 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             <Input
               id="lead-phone"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                if (val.length <= 15 && !/[a-zA-Z]/.test(val)) {
+                  setPhone(val)
+                }
+              }}
               placeholder="+1 (555) 000-0000"
             />
           </div>

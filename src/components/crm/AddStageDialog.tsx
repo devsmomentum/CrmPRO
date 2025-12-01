@@ -66,7 +66,9 @@ export function AddStageDialog({ pipelineType, currentStagesCount, onAdd, trigge
             <Input
               id="stage-name"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                if (e.target.value.length <= 30) setName(e.target.value)
+              }}
               placeholder="ej: Calificado, Negociación"
             />
           </div>
