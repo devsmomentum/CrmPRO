@@ -676,25 +676,6 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                         }
                       />
                       )}
-                      {isAdminOrOwner && (
-                        <AddStageDialog
-                          pipelineType={activePipeline}
-                          currentStagesCount={currentPipeline?.stages.length || 0}
-                          onAdd={handleAddStage}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 text-muted-foreground"
-                              type="button"
-                              title={t.pipeline.addStage}
-                            >
-                              <Plus size={16} />
-                              <span className="sr-only">{t.pipeline.addStage}</span>
-                            </Button>
-                          }
-                        />
-                      )}
                     </div>
                   </div>
 
