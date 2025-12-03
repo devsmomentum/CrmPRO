@@ -80,7 +80,8 @@ function App() {
         name: e.nombre_empresa,
         ownerId: e.usuario_id,
         createdAt: new Date(e.created_at),
-        role: e.role // Pass the role to the UI
+        role: e.role, // Pass the role to the UI
+        logo: e.logo_url || undefined
       }))
       setCompanies(uiCompanies)
 
@@ -128,7 +129,8 @@ function App() {
         name: e.nombre_empresa,
         ownerId: e.usuario_id,
         createdAt: new Date(e.created_at),
-        role: e.role
+        role: e.role,
+        logo: e.logo_url || undefined
       }))
       setCompanies(uiCompanies)
       if (uiCompanies.length > 0) {
@@ -376,7 +378,7 @@ function App() {
           <div className="ml-auto text-[11px] text-muted-foreground">ID: <span className="font-mono text-[11px] text-foreground">{user.id}</span></div>
         </div>
         {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
-        {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} />}
+        {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} user={user} />}
         {currentView === 'analytics' && <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} companies={companies} currentUserId={user.id} />}
@@ -396,6 +398,14 @@ function App() {
               await fetchCompanies()
               if (newCompanyId) {
                 setCurrentCompanyId(newCompanyId)
+              }
+              if (user?.email) {
+                try {
+                  const invites = await getPendingInvitations(user.email)
+                  setPendingInvitationsCount(invites?.length || 0)
+                } catch (err) {
+                  console.error('Error refreshing invitations count:', err)
+                }
               }
               setCurrentView('dashboard')
             }}

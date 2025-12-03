@@ -36,6 +36,12 @@ import { EditBudgetDialog } from './EditBudgetDialog'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
 
+interface User {
+  id: string
+  email: string
+  businessName: string
+}
+
 interface LeadDetailSheetProps {
   lead: Lead
   open: boolean
@@ -43,9 +49,10 @@ interface LeadDetailSheetProps {
   onUpdate: (lead: Lead) => void
   teamMembers?: TeamMember[]
   canEdit?: boolean
+  currentUser?: User | null
 }
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useKV<Message[]>('messages', [])
   const [notes, setNotes] = useKV<Note[]>('notes', [])
@@ -340,7 +347,22 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
                 <p className="font-medium mt-1">
-                  {teamMembers.find(m => m.id === lead.assignedTo)?.name || lead.assignedTo || 'Sin asignar'}
+                  {(() => {
+                    const member = teamMembers.find(m => m.id === lead.assignedTo)
+                    if (member) return member.name
+                    if (currentUser && currentUser.id === lead.assignedTo) {
+                      // Intentar resolver nombre de empresa activa si está disponible en lead.customFields o similar
+                      const companyName = (lead as any).companyName || (lead as any).empresaNombre || currentUser.businessName || currentUser.email
+                      return `${companyName} (Yo)`
+                    }
+                    // Si el asignado es el dueño/owner de la empresa actual, mostrar nombre de la empresa
+                    const currentCompanyName = (lead as any).companyName || (lead as any).empresaNombre
+                    const currentCompanyOwnerId = (lead as any).companyOwnerId
+                    if (currentCompanyOwnerId && currentCompanyOwnerId === lead.assignedTo && currentCompanyName) {
+                      return `${currentCompanyName} (Owner)`
+                    }
+                    return 'Sin asignar'
+                  })()}
                 </p>
               </div>
               <div>
