@@ -15,7 +15,7 @@ import LoginView from '@/components/crm/LoginView'
 import { RegisterView } from '@/components/crm/RegisterView'
 import { register, login, logout } from '@/supabase/auth'
 import { createUsuario, getUsuarioById } from '@/supabase/services/usuarios'
-import { createEmpresa, getEmpresasByUsuario } from '@/supabase/services/empresa'
+import { createEmpresa, getEmpresasByUsuario, leaveCompany } from '@/supabase/services/empresa'
 import { supabase } from '@/supabase/client'
 import { verifyEmpresaTable, testInsertEmpresa, listEmpresasCurrentUser, testRLSViolation } from '@/supabase/diagnostics/empresaDebug'
 import { getPendingInvitations } from '@/supabase/services/invitations'
@@ -323,24 +323,51 @@ function App() {
                   <span className="font-medium">Modo Invitado:</span>
                   <span>Estás viendo la empresa <strong>{currentCompany.name}</strong>. Tienes acceso de lectura/escritura limitado según tu rol.</span>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 bg-white border-amber-300 hover:bg-amber-50 text-amber-900"
-                  onClick={() => {
-                    console.log('[GUEST_MODE] Saliendo del modo invitado...')
-                    const myCompany = companies.find(c => c.ownerId === user.id)
-                    if (myCompany) {
-                      setCurrentCompanyId(myCompany.id)
-                      setCurrentView('dashboard')
-                      toast.info('Has vuelto a tu empresa')
-                    } else {
-                      toast.error('No se encontró tu empresa personal')
-                    }
-                  }}
-                >
-                  Salir del Modo Invitado
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 bg-white border-red-300 hover:bg-red-50 text-red-900"
+                    onClick={async () => {
+                      if (confirm('¿Estás seguro de que quieres abandonar esta empresa? Perderás el acceso inmediatamente.')) {
+                        try {
+                          await leaveCompany(currentCompany.id, user.email, user.id)
+                          toast.success('Has abandonado la empresa correctamente')
+                          
+                          const myCompany = companies.find(c => c.ownerId === user.id)
+                          if (myCompany) {
+                            setCurrentCompanyId(myCompany.id)
+                            setCurrentView('dashboard')
+                          }
+                          fetchCompanies()
+                        } catch (error) {
+                          console.error('Error leaving company:', error)
+                          toast.error('Error al abandonar la empresa')
+                        }
+                      }
+                    }}
+                  >
+                    Abandonar Empresa
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 bg-white border-amber-300 hover:bg-amber-50 text-amber-900"
+                    onClick={() => {
+                      console.log('[GUEST_MODE] Saliendo del modo invitado...')
+                      const myCompany = companies.find(c => c.ownerId === user.id)
+                      if (myCompany) {
+                        setCurrentCompanyId(myCompany.id)
+                        setCurrentView('dashboard')
+                        toast.info('Has vuelto a tu empresa')
+                      } else {
+                        toast.error('No se encontró tu empresa personal')
+                      }
+                    }}
+                  >
+                    Salir del Modo Invitado
+                  </Button>
+                </div>
               </div>
             )
           }
@@ -381,7 +408,7 @@ function App() {
         {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} user={user} />}
         {currentView === 'analytics' && <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
-        {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} companies={companies} currentUserId={user.id} />}
+        {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} companies={companies} currentUserId={user.id} currentUserEmail={user.email} />}
         {currentView === 'settings' && (
           <SettingsView
             key={currentCompanyId}

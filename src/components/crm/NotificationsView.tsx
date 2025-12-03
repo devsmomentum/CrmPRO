@@ -57,33 +57,43 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                 const { data: { user } } = await supabase.auth.getUser()
                 if (user && user.email) {
                     // Cargar invitaciones pendientes
+                    // getPendingInvitations ya incluye el join con empresa y equipo
                     const invitationsData = await getPendingInvitations(user.email)
-                    // Rellenar nombres faltantes de empresa/equipo si la relación no vino
-                    const enriched = await Promise.all((invitationsData || []).map(async (inv) => {
-                        const enrichedInv = { ...inv }
-                        try {
-                            if (!enrichedInv.empresa?.nombre_empresa && enrichedInv.empresa_id) {
+                    
+                    // Mapeamos para asegurar que la estructura sea la esperada
+                    // Si el join falla (por RLS), intentamos usar invite-details como fallback
+                    const mappedInvitations = await Promise.all((invitationsData || []).map(async (inv: any) => {
+                        let empresa = inv.empresa
+                        let equipo = inv.equipo
+                        
+                        // Si falta información (probablemente por RLS), intentamos recuperarla vía Edge Function
+                        if (!empresa?.nombre_empresa || !equipo?.nombre_equipo) {
+                             try {
                                 const { data: details } = await supabase.functions.invoke('invite-details', {
-                                    body: { empresa_id: enrichedInv.empresa_id }
+                                    body: { empresa_id: inv.empresa_id, equipo_id: inv.equipo_id }
                                 })
-                                if (details?.empresa_nombre) {
-                                    enrichedInv.empresa = { nombre_empresa: details.empresa_nombre }
+                                if (details) {
+                                    if (!empresa?.nombre_empresa && details.empresa_nombre) {
+                                        empresa = { nombre_empresa: details.empresa_nombre }
+                                    }
+                                    if (!equipo?.nombre_equipo && details.equipo_nombre) {
+                                        equipo = { nombre_equipo: details.equipo_nombre }
+                                    }
                                 }
-                            }
-                            if (!enrichedInv.equipo?.nombre_equipo && (enrichedInv as any).equipo_id) {
-                                const { data: details2 } = await supabase.functions.invoke('invite-details', {
-                                    body: { equipo_id: (enrichedInv as any).equipo_id }
-                                })
-                                if (details2?.equipo_nombre) {
-                                    enrichedInv.equipo = { nombre_equipo: details2.equipo_nombre }
-                                }
-                            }
-                        } catch (e) {
-                            console.warn('[NotificationsView] no se pudo enriquecer invitación', e)
+                             } catch (e) {
+                                 // Si falla la función (no desplegada), nos quedamos con lo que tenemos
+                                 console.warn('Could not fetch invite details', e)
+                             }
                         }
-                        return enrichedInv
+
+                        return {
+                            ...inv,
+                            empresa: empresa || { nombre_empresa: 'Empresa' },
+                            equipo: equipo || { nombre_equipo: 'General' }
+                        }
                     }))
-                    setInvitations(enriched)
+                    
+                    setInvitations(mappedInvitations)
 
                     // Cargar notificaciones de respuesta
                     const { data: notifications } = await supabase

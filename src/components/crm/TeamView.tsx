@@ -21,7 +21,7 @@ type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_a
 import { Company } from './CompanyManagement'
 import { EditTeamMemberDialog } from './EditTeamMemberDialog'
 
-export function TeamView({ companyId, companies = [], currentUserId }: { companyId?: string; companies?: Company[]; currentUserId?: string }) {
+export function TeamView({ companyId, companies = [], currentUserId, currentUserEmail }: { companyId?: string; companies?: Company[]; currentUserId?: string; currentUserEmail?: string }) {
   if (!companyId) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
@@ -165,7 +165,8 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
               role: p.titulo_trabajo || '',
               teamId: p.equipo_id || undefined,
               pipelines: memberPipelines,
-              permissionRole: memberInfo?.role || 'viewer'
+              permissionRole: memberInfo?.role || 'viewer',
+              userId: p.usuario_id
             }
           }))
           const mappedMembers = mapped.map((m: any) => ({
@@ -261,10 +262,18 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
       toast.error('No tienes permisos para eliminar miembros')
       return
     }
+    
+    const member: any = (teamMembers || []).find(m => m.id === memberId)
+    if (!member) return
+
+    // Confirmación antes de eliminar
+    if (!confirm(`¿Estás seguro de que quieres eliminar a ${member.name || 'este usuario'} de la empresa? Esta acción eliminará su acceso y membresía.`)) {
+      return
+    }
+
     try {
       // Detectar si es una invitación pendiente
-      const member: any = (teamMembers || []).find(m => m.id === memberId)
-      if (member && member.status === 'pending') {
+      if (member.status === 'pending') {
         const { cancelInvitation } = await import('@/supabase/services/invitations')
         await cancelInvitation(memberId)
         setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
@@ -272,9 +281,18 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
         return
       }
 
-      await deletePersona(memberId)
+      // Eliminar de empresa_miembros y persona
+      const { removeMemberFromCompany } = await import('@/supabase/services/empresa')
+      if (member.email && companyId) {
+        await removeMemberFromCompany(companyId, member.email)
+        toast.success('Miembro eliminado de la empresa y equipos')
+      } else {
+        // Fallback
+        await deletePersona(memberId)
+        toast.success('Miembro eliminado de la base de datos')
+      }
+      
       setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
-      toast.success('Miembro eliminado de la base de datos')
     } catch (e: any) {
       console.error('[TeamView] error eliminando persona', e)
       toast.error(e.message || 'No se pudo eliminar el miembro')
@@ -448,23 +466,28 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
                         <XCircle size={16} />
                       </Button>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        <EditTeamMemberDialog
-                          member={member}
-                          companyId={companyId!}
-                          onUpdated={() => setRefreshTrigger(prev => prev + 1)}
-                          canEditRole={isAdminOrOwner}
-                        />
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDeleteMember(member.id)}
-                          title="Eliminar miembro"
-                        >
-                          <Trash size={16} />
-                        </Button>
-                      </div>
+                      // Hide delete button for self
+                      // We check if the member being rendered is the current user (by ID or Email)
+                      // Note: currentUserId is passed as prop. We also check against the user's email if available.
+                      (member.userId !== currentUserId && member.email !== currentUserEmail) && (
+                        <div className="flex items-center gap-2">
+                          <EditTeamMemberDialog
+                            member={member}
+                            companyId={companyId!}
+                            onUpdated={() => setRefreshTrigger(prev => prev + 1)}
+                            canEditRole={isAdminOrOwner}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDeleteMember(member.id)}
+                            title="Eliminar miembro"
+                          >
+                            <Trash size={16} />
+                          </Button>
+                        </div>
+                      )
                     )
                   )}
                 </div>

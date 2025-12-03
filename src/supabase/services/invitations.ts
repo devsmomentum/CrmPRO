@@ -29,9 +29,18 @@ export async function createInvitation(payload: CreateInvitationPayload) {
 }
 
 export async function getPendingInvitations(email: string) {
+  // Standard select (will lack names if RLS blocks, but we handle that in the view with Edge Function)
   const { data, error } = await supabase
     .from('equipo_invitaciones')
-    .select('*')
+    .select(`
+      *,
+      empresa (
+        nombre_empresa
+      ),
+      equipo:equipos (
+        nombre_equipo
+      )
+    `)
     .eq('invited_email', email)
     .eq('status', 'pending')
 

@@ -57,13 +57,13 @@ export async function updateEmpresaLogo(empresa_id, logo_url) {
 
 export async function getEmpresasByUsuario(usuario_id) {
   console.log('[EMPRESA] getEmpresasByUsuario', usuario_id)
-  
+
   // 1. Empresas propias
   const { data: owned, error: ownedError } = await supabase
     .from('empresa')
     .select('*')
     .eq('usuario_id', usuario_id)
-  
+
   if (ownedError) {
     console.error('[EMPRESA] error getEmpresasByUsuario (owned)', ownedError)
     throw ownedError
@@ -90,21 +90,21 @@ export async function getEmpresasByUsuario(usuario_id) {
     // No lanzamos error fatal, solo logueamos
   }
 
-  const memberCompanies = memberData 
+  const memberCompanies = memberData
     ? memberData
-        .map(m => {
-          if (!m.empresa) return null
-          return {
-            ...m.empresa,
-            role: m.role || 'viewer' // Asignar rol obtenido o default
-          }
-        }) 
-        .filter(Boolean)
-        .filter((emp, index, self) => 
-          index === self.findIndex((t) => (
-            t.id === emp.id
-          ))
-        )
+      .map(m => {
+        if (!m.empresa) return null
+        return {
+          ...m.empresa,
+          role: m.role || 'viewer' // Asignar rol obtenido o default
+        }
+      })
+      .filter(Boolean)
+      .filter((emp, index, self) =>
+        index === self.findIndex((t) => (
+          t.id === emp.id
+        ))
+      )
     : []
 
   // Marcar las empresas propias con rol 'owner'
@@ -139,7 +139,7 @@ export async function getCompanyMembers(companyId) {
     .from('empresa_miembros')
     .select('usuario_id, email, role')
     .eq('empresa_id', companyId)
-  
+
   if (error) throw error
   return data
 }
@@ -234,4 +234,141 @@ export async function upsertCompanyMemberRole(companyId, { email, usuario_id, ro
     if (error) throw error
     return data
   }
+}
+
+export async function leaveCompany(companyId, userEmail, userId) {
+  console.log('[EMPRESA] leaveCompany', { companyId, userEmail, userId })
+  
+  // 1. Get company owner to notify
+  let ownerEmail = null
+  let companyName = 'la empresa'
+  try {
+    const { data: companyData } = await supabase
+      .from('empresa')
+      .select('nombre_empresa, usuario_id')
+      .eq('id', companyId)
+      .single()
+      
+    if (companyData) {
+      companyName = companyData.nombre_empresa
+      const { data: ownerData } = await supabase
+        .from('usuarios')
+        .select('email')
+        .eq('id', companyData.usuario_id)
+        .single()
+      if (ownerData) ownerEmail = ownerData.email
+    }
+  } catch (e) {
+    console.warn('[EMPRESA] could not fetch owner info for notification', e)
+  }
+
+  // 2. Delete from persona (team members) - MUST BE DONE BEFORE REMOVING MEMBERSHIP
+  // because RLS policies for persona usually depend on being a member of the company.
+  
+  // First get all teams in this company
+  const { data: teams, error: teamsError } = await supabase
+    .from('equipos')
+    .select('id')
+    .eq('empresa_id', companyId)
+  
+  if (!teamsError && teams && teams.length > 0) {
+    const teamIds = teams.map(t => t.id)
+    
+    // Try deleting by usuario_id first (more reliable)
+    const { error: personaErrorId } = await supabase
+      .from('persona')
+      .delete()
+      .in('equipo_id', teamIds)
+      .eq('usuario_id', userId)
+      
+    if (personaErrorId) {
+       console.warn('[EMPRESA] error deleting personas by ID, trying email', personaErrorId)
+       // Fallback to email
+       const { error: personaErrorEmail } = await supabase
+        .from('persona')
+        .delete()
+        .in('equipo_id', teamIds)
+        .eq('email', userEmail)
+        
+       if (personaErrorEmail) console.error('[EMPRESA] error deleting personas by email', personaErrorEmail)
+    }
+  }
+
+  // 3. Delete from empresa_miembros
+  // We use count: 'exact' to verify if the row was actually deleted.
+  // If RLS denies the delete, no error is thrown but count will be 0.
+  const { error: memberError, count } = await supabase
+    .from('empresa_miembros')
+    .delete({ count: 'exact' })
+    .eq('empresa_id', companyId)
+    .eq('usuario_id', userId)
+  
+  if (memberError) {
+    console.error('[EMPRESA] error deleting member', memberError)
+    throw memberError
+  }
+  
+  // If count is 0, it means the user couldn't delete the row (likely permission denied by RLS)
+  // or the row didn't exist. We should probably warn or throw if we expected it to exist.
+  if (count === 0) {
+    console.warn('[EMPRESA] Warning: No empresa_miembros row deleted. Possible RLS permission issue.')
+  }
+  
+  // 4. Send notification to owner
+  if (ownerEmail) {
+    try {
+      await supabase
+        .from('notificaciones')
+        .insert({
+          usuario_email: ownerEmail,
+          type: 'message',
+          title: 'Usuario abandonó la empresa',
+          message: `El usuario ${userEmail} ha abandonado la empresa ${companyName}`
+        })
+    } catch (e) {
+      console.error('[EMPRESA] error sending notification', e)
+    }
+  }
+  
+  return true
+}
+
+export async function removeMemberFromCompany(companyId, email) {
+  console.log('[EMPRESA] removeMemberFromCompany', { companyId, email })
+  
+  // 1. Remove from empresa_miembros
+  // We try to delete by email since we might not have the user_id handy, 
+  // and email should be unique enough within the context of membership invites
+  const { error: memberError } = await supabase
+    .from('empresa_miembros')
+    .delete()
+    .eq('empresa_id', companyId)
+    .ilike('email', email) 
+    
+  if (memberError) {
+    console.error('[EMPRESA] error removing member from company', memberError)
+    throw memberError
+  }
+
+  // 2. Remove from persona (all teams in this company)
+  // First get all teams
+  const { data: teams } = await supabase
+    .from('equipos')
+    .select('id')
+    .eq('empresa_id', companyId)
+    
+  if (teams && teams.length > 0) {
+    const teamIds = teams.map(t => t.id)
+    const { error: personaError } = await supabase
+      .from('persona')
+      .delete()
+      .in('equipo_id', teamIds)
+      .ilike('email', email)
+      
+    if (personaError) {
+      console.error('[EMPRESA] error removing persona', personaError)
+    }
+  }
+  
+  return true
 }
