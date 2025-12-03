@@ -10,7 +10,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Plus, Upload, Trash, Building, Check } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
-import { createEmpresa, deleteEmpresa } from '@/supabase/services/empresa'
+import { createEmpresa, deleteEmpresa, updateEmpresaLogo } from '@/supabase/services/empresa'
+import { supabase } from '@/supabase/client'
 
 export interface Company {
   id: string
@@ -43,11 +44,30 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
       return
     }
     try {
-      const inserted = await createEmpresa({ nombre_empresa: newCompanyName.trim(), usuario_id: currentUserId })
+      // Si hay logo cargado previo (data URL), subirlo a Storage primero
+      let uploadedLogoUrl: string | undefined
+      if (newCompanyLogo?.startsWith('data:image')) {
+        const fileName = `company-${currentUserId}-${Date.now()}.png`
+        const arrayBuffer = await (await fetch(newCompanyLogo)).arrayBuffer()
+        const { error: uploadError } = await supabase.storage
+          .from('company-logos')
+          .upload(fileName, new Blob([arrayBuffer], { type: 'image/png' }), { upsert: true })
+        if (uploadError) {
+          console.error('[CompanyManagement] Error subiendo logo', uploadError)
+          toast.error('No se pudo subir el logo')
+        } else {
+          const { data: publicUrlData } = supabase.storage
+            .from('company-logos')
+            .getPublicUrl(fileName)
+          uploadedLogoUrl = publicUrlData?.publicUrl
+        }
+      }
+
+      const inserted = await createEmpresa({ nombre_empresa: newCompanyName.trim(), usuario_id: currentUserId, logo_url: uploadedLogoUrl })
       const newCompany: Company = {
         id: inserted.id,
         name: inserted.nombre_empresa,
-        logo: newCompanyLogo || undefined,
+        logo: uploadedLogoUrl || newCompanyLogo || undefined,
         ownerId: inserted.usuario_id,
         createdAt: new Date(inserted.created_at),
         role: 'owner'
@@ -64,7 +84,7 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
     }
   }
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>, companyId?: string) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>, companyId?: string) => {
     const file = e.target.files?.[0]
     if (!file) return
 
@@ -78,22 +98,44 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
       return
     }
 
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const result = reader.result as string
-      if (companyId) {
+    // Subir a Storage y luego persistir URL en empresa
+    const ext = file.type.includes('png') ? 'png' : file.type.includes('jpeg') ? 'jpg' : 'img'
+    const fileName = `company-${companyId || currentUserId}-${Date.now()}.${ext}`
+    const { error: uploadError } = await supabase.storage
+      .from('company-logos')
+      .upload(fileName, file, { upsert: true })
+    if (uploadError) {
+      console.error('[CompanyManagement] Error subiendo logo', uploadError)
+      toast.error('No se pudo subir el logo')
+      return
+    }
+    const { data: publicUrlData } = supabase.storage
+      .from('company-logos')
+      .getPublicUrl(fileName)
+    const publicUrl = publicUrlData?.publicUrl
+    if (!publicUrl) {
+      toast.error('No se pudo obtener la URL pública del logo')
+      return
+    }
+
+    if (companyId) {
+      try {
+        await updateEmpresaLogo(companyId, publicUrl)
         setCompanies((current) =>
           (current || []).map(c =>
-            c.id === companyId ? { ...c, logo: result } : c
+            c.id === companyId ? { ...c, logo: publicUrl } : c
           )
         )
         setEditingLogoCompanyId(null)
-        toast.success('Logo actualizado')
-      } else {
-        setNewCompanyLogo(result)
+        toast.success('Logo actualizado y guardado')
+      } catch (err:any) {
+        console.error('[CompanyManagement] Error guardando logo en empresa', err)
+        toast.error(err.message || 'No se pudo guardar el logo')
       }
+    } else {
+      setNewCompanyLogo(publicUrl)
+      toast.success('Logo listo para crear la empresa')
     }
-    reader.readAsDataURL(file)
   }
 
   const handleDeleteCompany = async (companyId: string) => {

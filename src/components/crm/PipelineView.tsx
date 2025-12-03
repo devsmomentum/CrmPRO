@@ -38,7 +38,13 @@ import { createEtapa, deleteEtapa } from '@/supabase/helpers/etapas'
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
 
-export function PipelineView({ companyId, companies = [] }: { companyId?: string; companies?: Company[] }) {
+interface User {
+  id: string
+  email: string
+  businessName: string
+}
+
+export function PipelineView({ companyId, companies = [], user }: { companyId?: string; companies?: Company[]; user?: User | null }) {
   const t = useTranslation('es')
 
   if (!companyId) {
@@ -217,16 +223,19 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
   const pipelineLeads = filterByMember === 'all'
     ? allPipelineLeads
     : allPipelineLeads.filter(l => {
+      if (filterByMember === 'me') {
+        if (user && (l.assignedTo === user.id || l.assignedTo === user.businessName || l.assignedTo === user.email)) return true
+        return false
+      }
       if (l.assignedTo === filterByMember) return true
-      // Soporte para datos legacy donde assignedTo podría ser el nombre
       const member = teamMembers.find(m => m.id === filterByMember)
       if (member && l.assignedTo === member.name) return true
       return false
     })
 
   useEffect(() => {
-    // Si el miembro filtrado ya no existe en eligibleMembers, resetear
-    if (filterByMember !== 'all' && !eligibleMembers.find(m => m.id === filterByMember)) {
+    if (['all', 'me'].includes(filterByMember)) return
+    if (!eligibleMembers.find(m => m.id === filterByMember)) {
       setFilterByMember('all')
     }
   }, [activePipeline, teamMembers, filterByMember, eligibleMembers])
@@ -330,10 +339,20 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
         empresa_id: companyId
       }
 
-      // Mapear nombre de asignado a UUID
-      const assignedMember = teamMembers?.find(m => m.name === lead.assignedTo)
-      if (assignedMember) {
-        payload.asignado_a = assignedMember.id
+      // Antes el formulario usaba nombre; ahora usa ID. Soportar ambos.
+      // 1. Si lead.assignedTo coincide con un ID directo.
+      const byId = teamMembers.find(m => m.id === lead.assignedTo)
+      if (byId) {
+        payload.asignado_a = byId.id
+      } else {
+        // 2. Intentar por nombre (legacy)
+        const byName = teamMembers.find(m => m.name === lead.assignedTo)
+        if (byName) {
+          payload.asignado_a = byName.id
+        } else if (user && user.id === lead.assignedTo) {
+          // 3. Asignado al usuario efectivo
+          payload.asignado_a = user.id
+        }
       }
 
       // Si el pipeline es custom (tiene UUID), intentamos guardar
@@ -549,10 +568,13 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             {canEditLeads && (
             <AddLeadDialog
               pipelineType={activePipeline}
+              pipelineId={currentPipeline?.id}
               stages={currentPipeline?.stages || []}
-              teamMembers={teamMemberNames}
+              teamMembers={teamMembers}
               onAdd={handleAddLead}
               companies={companies}
+              currentUser={user}
+              companyName={currentCompany?.name}
             />
             )}
               </>
@@ -578,6 +600,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los miembros</SelectItem>
+              {user && <SelectItem value="me">{currentCompany ? `${currentCompany.name} (Yo)` : 'Yo'}</SelectItem>}
               {eligibleMembers.map(member => (
                 <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
               ))}
@@ -628,13 +651,17 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                           <Trash size={16} />
                         </Button>
                       )}
-                      {isAdminOrOwner && (
+                      {canEditLeads && (
                       <AddLeadDialog
                         pipelineType={activePipeline}
+                        pipelineId={currentPipeline?.id}
                         stages={currentPipeline?.stages || []}
-                        teamMembers={teamMemberNames}
+                        teamMembers={teamMembers} // Pasar objetos TeamMember
                         onAdd={handleAddLead}
                         defaultStageId={stage.id}
+                        companies={companies}
+                        currentUser={user} // Pasar objeto User
+                        companyName={currentCompany?.name}
                         trigger={
                           <Button
                             variant="ghost"
@@ -740,7 +767,18 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
                         </div>
 
                         <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
-                          {t.lead.assignedTo}: {teamMembers.find(m => m.id === lead.assignedTo)?.name || lead.assignedTo || 'Sin asignar'}
+                          {t.lead.assignedTo}: {(() => {
+                            const member = teamMembers.find(m => m.id === lead.assignedTo)
+                            if (member) return member.name
+                            if (user && user.id === lead.assignedTo) {
+                              return `${currentCompany?.name || user.businessName || user.email} (Yo)`
+                            }
+                            // Si el asignado es el dueño/owner de la empresa, mostrar nombre de la empresa
+                            if (currentCompany && currentCompany.ownerId === lead.assignedTo) {
+                              return `${currentCompany.name} (Owner)`
+                            }
+                            return 'Sin asignar'
+                          })()}
                         </div>
                       </Card>
                     ))}
@@ -828,6 +866,7 @@ export function PipelineView({ companyId, companies = [] }: { companyId?: string
           }}
           teamMembers={teamMembers}
           canEdit={canEditLeads}
+          currentUser={user}
         />
       )}
     </div>

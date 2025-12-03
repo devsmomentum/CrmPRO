@@ -1,44 +1,108 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from '@phosphor-icons/react'
-import { Lead, PipelineType, Stage } from '@/lib/types'
+import { Lead, PipelineType, Stage, TeamMember } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { Company } from './CompanyManagement'
+import { usePersistentState } from '@/hooks/usePersistentState'
+
+interface User {
+  id: string
+  email: string
+  businessName: string
+}
 
 interface AddLeadDialogProps {
   pipelineType: PipelineType
+  pipelineId?: string
   stages: Stage[]
-  teamMembers: string[]
+  teamMembers: TeamMember[]
   onAdd: (lead: Lead) => void
   trigger?: React.ReactNode
   defaultStageId?: string
   companies?: Company[]
+  currentUser?: User | null
+  companyName?: string // nombre de la empresa activa
 }
 
-export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigger, defaultStageId, companies = [] }: AddLeadDialogProps) {
+export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, onAdd, trigger, defaultStageId, companies = [], currentUser, companyName }: AddLeadDialogProps) {
   const t = useTranslation('es')
   const [open, setOpen] = useState(false)
+  const [localUser] = usePersistentState<User | null>('current-user', null)
+  
+  // Priorizar currentUser prop, luego localUser.
+  // Si no hay usuario, usar un objeto dummy (aunque idealmente siempre debería haber usuario)
+  const effectiveUser = currentUser || localUser
+  
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [company, setCompany] = useState('')
   const [budget, setBudget] = useState('')
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
-  const [assignedTo, setAssignedTo] = useState(teamMembers[0] || 'Sin asignar')
+  
+  // Usar ID para assignedTo
+  const [assignedTo, setAssignedTo] = useState(teamMembers[0]?.id || effectiveUser?.id || '')
+  
   const firstStageId = stages[0]?.id || ''
   const [stageId, setStageId] = useState(defaultStageId || firstStageId)
+
+  // Miembros elegibles: aquellos cuyo array pipelines incluye el pipeline actual (o no tienen restricción)
+  // Siempre incluir "Yo" (effectiveUser) como primera opción, evitando duplicados.
+  const eligibleMembers = useMemo(() => {
+    const filtered = teamMembers.filter(m => {
+      const ps = m.pipelines || []
+      if (ps.length === 0) return false
+      // Coincidencia por ID de pipeline, por slug/type o por nombre
+      if (pipelineId && ps.includes(pipelineId)) return true
+      if (ps.includes(pipelineType)) return true
+      if (companyName && ps.includes(companyName)) return true
+      return false
+    })
+    if (effectiveUser) {
+      const labelBase = companyName || effectiveUser.businessName || effectiveUser.email || 'Yo'
+      const userAsMember: TeamMember = {
+        id: effectiveUser.id,
+        name: `${labelBase} (Yo)`,
+        email: effectiveUser.email,
+        avatar: '',
+        role: 'self',
+        pipelines: [],
+        permissionRole: 'viewer'
+      }
+      const withoutUser = filtered.filter(m => m.id !== effectiveUser.id)
+      return [userAsMember, ...withoutUser]
+    }
+    return filtered
+  }, [teamMembers, pipelineType, effectiveUser, companyName])
 
   useEffect(() => {
     setStageId(defaultStageId || firstStageId)
   }, [defaultStageId, firstStageId])
 
+  useEffect(() => {
+    if (open) {
+      // Si no hay asignado, intentar poner al effectiveUser (ID) o el primer miembro (ID)
+      if (!assignedTo) {
+        setAssignedTo(teamMembers[0]?.id || effectiveUser?.id || '')
+      }
+    }
+  }, [open, teamMembers, effectiveUser])
+
+  // Asegurar que el asignado actual pertenece a la lista elegible; si no, reasignar.
+  useEffect(() => {
+    if (eligibleMembers.length && !eligibleMembers.find(m => m.id === assignedTo)) {
+      setAssignedTo(eligibleMembers[0].id)
+    }
+  }, [eligibleMembers, assignedTo])
+
   const handleSubmit = () => {
-    if (!name.trim() || !email.trim() || !phone.trim()) {
+    if (!name.trim()) {
       toast.error(t.messages.fillRequired)
       return
     }
@@ -82,7 +146,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
     setCompany('')
     setBudget('')
     setPriority('medium')
-    setAssignedTo(teamMembers[0] || 'Sin asignar')
+    setAssignedTo(teamMembers[0]?.id || effectiveUser?.id || '')
     setStageId(defaultStageId || firstStageId)
   }
 
@@ -113,7 +177,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             />
           </div>
           <div>
-            <Label htmlFor="lead-email">{t.lead.email} *</Label>
+            <Label htmlFor="lead-email">{t.lead.email}</Label>
             <Input
               id="lead-email"
               type="email"
@@ -123,7 +187,7 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
             />
           </div>
           <div>
-            <Label htmlFor="lead-phone">{t.lead.phone} *</Label>
+            <Label htmlFor="lead-phone">{t.lead.phone}</Label>
             <Input
               id="lead-phone"
               value={phone}
@@ -138,27 +202,12 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
           </div>
           <div>
             <Label htmlFor="lead-company">{t.lead.company}</Label>
-            {companies.length > 0 ? (
-              <Select value={company} onValueChange={setCompany}>
-                <SelectTrigger id="lead-company">
-                  <SelectValue placeholder="Seleccionar empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companies.map((c) => (
-                    <SelectItem key={c.id} value={c.name}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                id="lead-company"
-                value={company}
-                onChange={(e) => setCompany(e.target.value)}
-                placeholder="Acme Corp"
-              />
-            )}
+            <Input
+              id="lead-company"
+              value={company}
+              onChange={(e) => setCompany(e.target.value)}
+              placeholder="Nombre de la empresa"
+            />
           </div>
           <div>
             <Label htmlFor="lead-budget">{t.lead.budget}</Label>
@@ -210,12 +259,11 @@ export function AddLeadDialog({ pipelineType, stages, teamMembers, onAdd, trigge
                 <SelectValue placeholder="Seleccionar miembro" />
               </SelectTrigger>
               <SelectContent>
-                {teamMembers.length === 0 ? (
-                  <SelectItem value="Sin asignar" disabled>Sin miembros disponibles</SelectItem>
-                ) : (
-                  teamMembers.map(member => (
-                    <SelectItem key={member} value={member}>{member}</SelectItem>
-                  ))
+                {eligibleMembers.map(member => (
+                  <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
+                ))}
+                {eligibleMembers.length === 0 && (
+                  <SelectItem value="none" disabled>Sin miembros disponibles</SelectItem>
                 )}
               </SelectContent>
             </Select>

@@ -58,7 +58,32 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                 if (user && user.email) {
                     // Cargar invitaciones pendientes
                     const invitationsData = await getPendingInvitations(user.email)
-                    setInvitations(invitationsData)
+                    // Rellenar nombres faltantes de empresa/equipo si la relación no vino
+                    const enriched = await Promise.all((invitationsData || []).map(async (inv) => {
+                        const enrichedInv = { ...inv }
+                        try {
+                            if (!enrichedInv.empresa?.nombre_empresa && enrichedInv.empresa_id) {
+                                const { data: details } = await supabase.functions.invoke('invite-details', {
+                                    body: { empresa_id: enrichedInv.empresa_id }
+                                })
+                                if (details?.empresa_nombre) {
+                                    enrichedInv.empresa = { nombre_empresa: details.empresa_nombre }
+                                }
+                            }
+                            if (!enrichedInv.equipo?.nombre_equipo && (enrichedInv as any).equipo_id) {
+                                const { data: details2 } = await supabase.functions.invoke('invite-details', {
+                                    body: { equipo_id: (enrichedInv as any).equipo_id }
+                                })
+                                if (details2?.equipo_nombre) {
+                                    enrichedInv.equipo = { nombre_equipo: details2.equipo_nombre }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('[NotificationsView] no se pudo enriquecer invitación', e)
+                        }
+                        return enrichedInv
+                    }))
+                    setInvitations(enriched)
 
                     // Cargar notificaciones de respuesta
                     const { data: notifications } = await supabase
@@ -284,6 +309,16 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                                                             <span>{format(new Date(notification.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
                                                         </div>
                                                     </div>
+                                                    {(notification.data.empresa_nombre || notification.data.equipo_nombre) && (
+                                                        <div className="mt-2 text-xs text-muted-foreground flex items-center gap-3">
+                                                            {notification.data.empresa_nombre && (
+                                                                <span>Empresa: {notification.data.empresa_nombre}</span>
+                                                            )}
+                                                            {notification.data.equipo_nombre && (
+                                                                <span>Equipo: {notification.data.equipo_nombre}</span>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>

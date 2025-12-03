@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input'
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
 
 import { Company } from './CompanyManagement'
+import { EditTeamMemberDialog } from './EditTeamMemberDialog'
 
 export function TeamView({ companyId, companies = [], currentUserId }: { companyId?: string; companies?: Company[]; currentUserId?: string }) {
   if (!companyId) {
@@ -447,15 +448,23 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
                         <XCircle size={16} />
                       </Button>
                     ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteMember(member.id)}
-                        title="Eliminar miembro"
-                      >
-                        <Trash size={16} />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <EditTeamMemberDialog
+                          member={member}
+                          companyId={companyId!}
+                          onUpdated={() => setRefreshTrigger(prev => prev + 1)}
+                          canEditRole={isAdminOrOwner}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteMember(member.id)}
+                          title="Eliminar miembro"
+                        >
+                          <Trash size={16} />
+                        </Button>
+                      </div>
                     )
                   )}
                 </div>
