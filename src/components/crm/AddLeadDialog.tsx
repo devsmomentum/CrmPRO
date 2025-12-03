@@ -96,6 +96,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
   // Asegurar que el asignado actual pertenece a la lista elegible; si no, reasignar.
   useEffect(() => {
+    if (assignedTo === 'todos') return
     if (eligibleMembers.length && !eligibleMembers.find(m => m.id === assignedTo)) {
       setAssignedTo(eligibleMembers[0].id)
     }
@@ -262,6 +263,8 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                 {eligibleMembers.map(member => (
                   <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
                 ))}
+                {/* Opción para asignar a todos */}
+                <SelectItem value="todos">Todos</SelectItem>
                 {eligibleMembers.length === 0 && (
                   <SelectItem value="none" disabled>Sin miembros disponibles</SelectItem>
                 )}

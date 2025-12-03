@@ -1,10 +1,17 @@
 import { supabase } from '../client'
 
-export async function getLeads(empresaId) {
-  const { data, error } = await supabase
+export async function getLeads(empresaId, currentUserId, isAdminOrOwner = false) {
+  let query = supabase
     .from('lead')
     .select('*')
     .eq('empresa_id', empresaId)
+
+  if (!isAdminOrOwner && currentUserId) {
+    // Mostrar solo mis leads y los asignados a todos (UUID nulo y también NULL por compatibilidad)
+    query = query.or(`asignado_a.eq.${currentUserId},asignado_a.eq.00000000-0000-0000-0000-000000000000,asignado_a.is.null`)
+  }
+
+  const { data, error } = await query
 
   if (error) throw error
   return data

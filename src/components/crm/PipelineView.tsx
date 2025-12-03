@@ -138,7 +138,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   useEffect(() => {
     if (companyId) {
       // Cargar leads
-      getLeads(companyId)
+      getLeads(companyId, user?.id, isAdminOrOwner)
         .then((data: any) => {
           const mappedLeads = data.map((l: any) => ({
             id: l.id,
@@ -220,12 +220,21 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   })
 
   const teamMemberNames = eligibleMembers.map(m => m.name)
+  const NIL_UUID = '00000000-0000-0000-0000-000000000000'
   const pipelineLeads = filterByMember === 'all'
     ? allPipelineLeads
     : allPipelineLeads.filter(l => {
       if (filterByMember === 'me') {
         if (user && (l.assignedTo === user.id || l.assignedTo === user.businessName || l.assignedTo === user.email)) return true
         return false
+      }
+      if (filterByMember === 'me+todos') {
+        if (user && (l.assignedTo === user.id || l.assignedTo === user.businessName || l.assignedTo === user.email)) return true
+        if (l.assignedTo === NIL_UUID || l.assignedTo == null) return true
+        return false
+      }
+      if (filterByMember === 'todos') {
+        return l.assignedTo === NIL_UUID || l.assignedTo == null
       }
       if (l.assignedTo === filterByMember) return true
       const member = teamMembers.find(m => m.id === filterByMember)
@@ -234,7 +243,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     })
 
   useEffect(() => {
-    if (['all', 'me'].includes(filterByMember)) return
+    const allowed = ['all', 'me', 'me+todos', 'todos']
+    if (allowed.includes(filterByMember)) return
     if (!eligibleMembers.find(m => m.id === filterByMember)) {
       setFilterByMember('all')
     }
@@ -349,6 +359,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         const byName = teamMembers.find(m => m.name === lead.assignedTo)
         if (byName) {
           payload.asignado_a = byName.id
+        } else if (lead.assignedTo === 'todos') {
+          // 3. Asignar a todos: usar UUID nulo estándar en BD
+          payload.asignado_a = '00000000-0000-0000-0000-000000000000'
         } else if (user && user.id === lead.assignedTo) {
           // 3. Asignado al usuario efectivo
           payload.asignado_a = user.id
@@ -601,6 +614,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             <SelectContent>
               <SelectItem value="all">Todos los miembros</SelectItem>
               {user && <SelectItem value="me">{currentCompany ? `${currentCompany.name} (Yo)` : 'Yo'}</SelectItem>}
+              {user && <SelectItem value="me+todos">Yo + Todos</SelectItem>}
+              <SelectItem value="todos">Solo Todos</SelectItem>
               {eligibleMembers.map(member => (
                 <SelectItem key={member.id} value={member.id}>{member.name}</SelectItem>
               ))}
@@ -749,8 +764,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
                         <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
                           {t.lead.assignedTo}: {(() => {
+                            const NIL_UUID = '00000000-0000-0000-0000-000000000000'
                             const member = teamMembers.find(m => m.id === lead.assignedTo)
                             if (member) return member.name
+                            if (lead.assignedTo === NIL_UUID || lead.assignedTo == null) {
+                              return 'Todos'
+                            }
                             if (user && user.id === lead.assignedTo) {
                               return `${currentCompany?.name || user.businessName || user.email} (Yo)`
                             }
@@ -825,13 +844,15 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               return
             }
             try {
+              const NIL_UUID = '00000000-0000-0000-0000-000000000000'
               await updateLead(updated.id, {
                 nombre_completo: updated.name,
                 empresa: updated.company,
                 correo_electronico: updated.email,
                 telefono: updated.phone,
                 prioridad: updated.priority,
-                presupuesto: updated.budget
+                presupuesto: updated.budget,
+                asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
               })
               
               // Actualizamos estado local (aunque el realtime debería hacerlo también)
