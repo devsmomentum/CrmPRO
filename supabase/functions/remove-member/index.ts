@@ -41,7 +41,7 @@ serve(async (req) => {
 
     const { data: memberData, error: memberError } = await supabaseAdmin
       .from('empresa_miembros')
-      .select('role, empresa(owner_id)')
+      .select('role, empresa(usuario_id)')
       .eq('empresa_id', companyId)
       .eq('usuario_id', user.id)
       .single();
@@ -50,7 +50,7 @@ serve(async (req) => {
       throw new Error('Requester is not a member of this company');
     }
 
-    const isOwner = memberData.empresa.owner_id === user.id;
+    const isOwner = memberData.empresa.usuario_id === user.id;
     const isAdmin = memberData.role === 'admin';
 
     if (!isOwner && !isAdmin) {

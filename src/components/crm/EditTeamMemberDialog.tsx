@@ -100,22 +100,29 @@ export function EditTeamMemberDialog({ member, companyId, onUpdated, canEditRole
 
       // actualizar permission role en empresa_miembros si cambió
       if (canEditRole && (permissionRole || 'viewer') !== (member.permissionRole || 'viewer')) {
-        const { updateCompanyMemberRole, getCompanyMembers, upsertCompanyMemberRole } = await import('@/supabase/services/empresa')
-        // 1) Intentar por email (case-insensitive)
-        const updatedByEmail = await updateCompanyMemberRole(companyId, { email: member.email, role: permissionRole })
-        if (!updatedByEmail || updatedByEmail.length === 0) {
-          // 2) Si no actualizó, buscar usuario_id por email y actualizar por usuario_id
-          const companyMembers = await getCompanyMembers(companyId)
-          const match = (companyMembers || []).find((m: any) => (m.email || '').toLowerCase() === (member.email || '').toLowerCase())
-          if (match?.usuario_id) {
-            await updateCompanyMemberRole(companyId, { usuario_id: match.usuario_id, role: permissionRole })
-          } else {
-            // Crear/actualizar registro por email
-            const upserted = await upsertCompanyMemberRole(companyId, { email: member.email, role: permissionRole })
-            if (!upserted || upserted.length === 0) {
-              toast.error('No se pudo crear/actualizar el rol del miembro')
-            }
+        const { updateCompanyMemberRole, getCompanyMembers } = await import('@/supabase/services/empresa')
+
+        // Primero verificar si el miembro existe en empresa_miembros
+        const companyMembers = await getCompanyMembers(companyId)
+        const match = (companyMembers || []).find((m: any) => (m.email || '').toLowerCase() === (member.email || '').toLowerCase())
+
+        if (!match) {
+          // El miembro no existe en empresa_miembros (probablemente solo está en persona)
+          // Solo podemos cambiar el rol si tiene cuenta de usuario (usuario_id)
+          if (!member.userId) {
+            throw new Error('Este miembro aún no ha aceptado la invitación. Solo se pueden cambiar roles de miembros activos con cuenta de usuario.')
           }
+          // Si tiene userId pero no está en empresa_miembros, algo está mal
+          throw new Error('El miembro no tiene registro de permisos en la empresa. Por favor, contacta al soporte.')
+        }
+
+        // Actualizar usando el método apropiado
+        if (match.email) {
+          await updateCompanyMemberRole(companyId, { email: match.email, role: permissionRole })
+        } else if (match.usuario_id) {
+          await updateCompanyMemberRole(companyId, { usuario_id: match.usuario_id, role: permissionRole })
+        } else {
+          throw new Error('No se puede actualizar el rol: falta información del miembro')
         }
       }
 
