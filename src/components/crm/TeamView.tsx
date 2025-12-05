@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { AddTeamMemberDialog } from './AddTeamMemberDialog'
 import { Button } from '@/components/ui/button'
-import { Trash, Building, Info, Funnel, Users, XCircle } from '@phosphor-icons/react'
+import { Trash, Building, Info, Funnel, Users, XCircle, CaretDown, CaretUp, MagnifyingGlass } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useEffect, useState } from 'react'
@@ -50,6 +50,9 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
   const [newTeamName, setNewTeamName] = useState('')
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string | null>(null) // null = all, 'no-team' = unassigned, uuid = specific team
   const [refreshTrigger, setRefreshTrigger] = useState(0) // Disparar recarga de invitaciones
+  const [teamSearch, setTeamSearch] = useState('')
+  const [memberSearch, setMemberSearch] = useState('')
+  const [showAllTeams, setShowAllTeams] = useState(false)
 
   useEffect(() => {
     if (!companyId) return
@@ -325,10 +328,31 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
     }
   }
 
+  const filteredTeams = (equipos || []).filter(eq => 
+    eq.nombre_equipo.toLowerCase().includes(teamSearch.toLowerCase())
+  )
+  const visibleTeams = showAllTeams ? filteredTeams : filteredTeams.slice(0, 5)
+
   const filteredMembers = (teamMembers || []).filter(member => {
-    if (selectedTeamFilter === null) return true
-    if (selectedTeamFilter === 'no-team') return !member.teamId
-    return member.teamId === selectedTeamFilter
+    // Filter by team
+    if (selectedTeamFilter !== null) {
+      if (selectedTeamFilter === 'no-team') {
+        if (member.teamId) return false
+      } else {
+        if (member.teamId !== selectedTeamFilter) return false
+      }
+    }
+    
+    // Filter by search
+    if (memberSearch) {
+      const searchLower = memberSearch.toLowerCase()
+      return (
+        member.name.toLowerCase().includes(searchLower) ||
+        member.email.toLowerCase().includes(searchLower)
+      )
+    }
+
+    return true
   })
 
   return (
@@ -373,6 +397,17 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
             </Button>
           </div>
         </div>
+
+        <div className="relative">
+          <MagnifyingGlass className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar equipos..."
+            value={teamSearch}
+            onChange={(e) => setTeamSearch(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+
         <div className="flex gap-2">
           {isAdminOrOwner && (
             <>
@@ -389,8 +424,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
           )}
         </div>
         <div className="grid gap-2">
-          {(equipos || []).length === 0 && <p className="text-sm text-muted-foreground">Sin equipos aún</p>}
-          {(equipos || []).map(eq => (
+          {(filteredTeams || []).length === 0 && <p className="text-sm text-muted-foreground">No se encontraron equipos</p>}
+          {visibleTeams.map(eq => (
             <div key={eq.id} className={`flex items-center justify-between border rounded-md p-2 ${selectedTeamFilter === eq.id ? 'bg-muted/50 border-primary' : ''}`}>
               <div>
                 <div className="font-medium">{eq.nombre_equipo}</div>
@@ -415,6 +450,33 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
             </div>
           ))}
         </div>
+        {filteredTeams.length > 5 && (
+          <Button 
+            variant="ghost" 
+            className="w-full text-muted-foreground text-sm h-8" 
+            onClick={() => setShowAllTeams(!showAllTeams)}
+          >
+            {showAllTeams ? (
+              <>
+                <CaretUp className="mr-2" /> Ver menos
+              </>
+            ) : (
+              <>
+                <CaretDown className="mr-2" /> Ver {filteredTeams.length - 5} más
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+
+      <div className="relative max-w-md">
+        <MagnifyingGlass className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Buscar miembros por nombre o email..."
+          value={memberSearch}
+          onChange={(e) => setMemberSearch(e.target.value)}
+          className="pl-8"
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
