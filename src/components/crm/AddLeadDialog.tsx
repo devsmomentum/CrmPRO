@@ -118,38 +118,109 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     let newPriority = priority
     let newAssignedTo = assignedTo
 
+    // Flags para saber si ya asignamos nombre/empresa en esta pasada (para evitar sobrescribir con basura)
+    let foundNameInText = false
+    let foundCompanyInText = false
+
     lines.forEach(line => {
-      const parts = line.split(':')
-      if (parts.length < 2) return
+      const trimmedLine = line.trim()
+      if (!trimmedLine) return
 
-      const key = parts[0].trim().toLowerCase()
-      const value = parts.slice(1).join(':').trim()
+      // 1. Intento de parseo Clave: Valor (Prioridad Alta)
+      if (trimmedLine.includes(':')) {
+        const parts = trimmedLine.split(':')
+        const key = parts[0].trim().toLowerCase()
+        const value = parts.slice(1).join(':').trim()
 
-      if (!value) return
+        if (!value) return
 
-      if (['cliente', 'nombre', 'name'].some(k => key.includes(k))) {
-        newName = value.replace(/[\[\]]/g, '') // Remove brackets if present
-      } else if (['email', 'correo'].some(k => key.includes(k))) {
-        newEmail = value
-      } else if (['telefono', 'teléfono', 'celular', 'movil', 'phone'].some(k => key.includes(k))) {
-        newPhone = value
-      } else if (['empresa', 'compañia', 'negocio', 'company'].some(k => key.includes(k))) {
-        newCompany = value
-      } else if (['presupuesto', 'costo', 'valor', 'precio', 'budget'].some(k => key.includes(k))) {
-        const num = value.replace(/[^0-9.]/g, '')
-        if (num) newBudget = num
-      } else if (['prioridad', 'priority'].some(k => key.includes(k))) {
-        const lowerVal = value.toLowerCase()
-        if (lowerVal.includes('alta') || lowerVal.includes('high')) newPriority = 'high'
-        else if (lowerVal.includes('media') || lowerVal.includes('medium')) newPriority = 'medium'
-        else if (lowerVal.includes('baja') || lowerVal.includes('low')) newPriority = 'low'
-      } else if (['vendedor', 'assigned', 'responsable'].some(k => key.includes(k))) {
-        const memberName = value.replace(/[\[\]]/g, '').toLowerCase()
-        const foundMember = teamMembers.find(m => m.name.toLowerCase().includes(memberName))
-        if (foundMember) newAssignedTo = foundMember.id
-      } else if (key.includes('contacto')) {
-        if (value.includes('@')) newEmail = value
-        else newPhone = value
+        if (['cliente', 'nombre', 'name'].some(k => key.includes(k))) {
+          newName = value.replace(/[\[\]]/g, '')
+          foundNameInText = true
+        } else if (['email', 'correo'].some(k => key.includes(k))) {
+          newEmail = value
+        } else if (['telefono', 'teléfono', 'celular', 'movil', 'phone'].some(k => key.includes(k))) {
+          newPhone = value
+        } else if (['empresa', 'compañia', 'negocio', 'company'].some(k => key.includes(k))) {
+          newCompany = value
+          foundCompanyInText = true
+        } else if (['presupuesto', 'costo', 'valor', 'precio', 'budget'].some(k => key.includes(k))) {
+          const num = value.replace(/[^0-9.]/g, '')
+          if (num) newBudget = num
+        } else if (['prioridad', 'priority'].some(k => key.includes(k))) {
+          const lowerVal = value.toLowerCase()
+          if (lowerVal.includes('alta') || lowerVal.includes('high')) newPriority = 'high'
+          else if (lowerVal.includes('media') || lowerVal.includes('medium')) newPriority = 'medium'
+          else if (lowerVal.includes('baja') || lowerVal.includes('low')) newPriority = 'low'
+        } else if (['vendedor', 'assigned', 'responsable'].some(k => key.includes(k))) {
+          const memberName = value.replace(/[\[\]]/g, '').toLowerCase()
+          const foundMember = teamMembers.find(m => m.name.toLowerCase().includes(memberName))
+          if (foundMember) newAssignedTo = foundMember.id
+        } else if (key.includes('contacto')) {
+          if (value.includes('@')) newEmail = value
+          else newPhone = value
+        }
+        return
+      }
+
+      // 2. Heurísticas para líneas sin formato (Prioridad Baja)
+      
+      // Email (contiene @ y .)
+      if (trimmedLine.includes('@') && trimmedLine.includes('.')) {
+        newEmail = trimmedLine
+        return
+      }
+
+      // Prioridad (palabras exactas)
+      const lowerLine = trimmedLine.toLowerCase()
+      if (['alta', 'high', 'urgent'].some(p => lowerLine === p)) {
+        newPriority = 'high'
+        return
+      }
+      if (['media', 'medium', 'normal'].some(p => lowerLine === p)) {
+        newPriority = 'medium'
+        return
+      }
+      if (['baja', 'low'].some(p => lowerLine === p)) {
+        newPriority = 'low'
+        return
+      }
+
+      // Teléfono vs Presupuesto
+      const digitsOnly = trimmedLine.replace(/[^0-9]/g, '')
+      const isCurrencyOrNumber = /^[0-9.,$]+$/.test(trimmedLine)
+      
+      // Si parece teléfono (tiene +, -, () o empieza con 0/3/5/6 y es largo)
+      if (/^[+\d\s()-]+$/.test(trimmedLine) && digitsOnly.length >= 7) {
+        // Si tiene formato explícito de teléfono o es muy largo para ser presupuesto simple sin contexto
+        if (trimmedLine.includes('-') || trimmedLine.includes('(') || trimmedLine.startsWith('+') || digitsOnly.length > 8) {
+           newPhone = trimmedLine
+           return
+        }
+      }
+
+      // Si es solo números (y no lo capturó el teléfono arriba), asumimos presupuesto
+      if (isCurrencyOrNumber) {
+        const num = trimmedLine.replace(/[^0-9.]/g, '')
+        if (num && !isNaN(parseFloat(num))) {
+          newBudget = num
+          return
+        }
+      }
+
+      // Nombre y Empresa (Fallback)
+      // Si no hemos encontrado nombre en este texto y el campo actual está vacío (o queremos priorizar el texto pegado)
+      // Asumimos que la primera línea de texto libre es el Nombre
+      if (!foundNameInText && !newName) {
+        newName = trimmedLine
+        foundNameInText = true
+        return
+      }
+      // La segunda línea de texto libre sería la Empresa
+      if (!foundCompanyInText && !newCompany) {
+        newCompany = trimmedLine
+        foundCompanyInText = true
+        return
       }
     })
 
