@@ -20,46 +20,49 @@ serve(async (req) => {
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // 1. Buscar si el usuario existe en la tabla usuarios (o auth.users)
-    // Asumimos que la tabla 'usuarios' tiene el email, o buscamos en auth.users si tenemos acceso
-    // Vamos a buscar en la tabla 'usuarios' pública que debería estar sincronizada
+    // Usamos maybeSingle para no lanzar error si no existe
     const { data: existingUser, error: userError } = await supabaseAdmin
       .from("usuarios")
       .select("id, email")
       .eq("email", normalizedEmail)
-      .single();
-
-    if (userError || !existingUser) {
-      throw new Error("El usuario no está registrado en el sistema. Solo se pueden invitar usuarios existentes.");
-    }
-
-    // 1.1.a Validar duplicados: ya miembro de la empresa (por usuario_id para evitar diferencias de mayúsculas en email)
-    const { data: existingMember, error: memberError } = await supabaseAdmin
-      .from('empresa_miembros')
-      .select('id')
-      .eq('empresa_id', companyId)
-      .eq('usuario_id', existingUser.id)
       .maybeSingle();
 
-    if (memberError) {
-      throw new Error(memberError.message || 'Error verificando miembros existentes');
-    }
-    if (existingMember) {
-      throw new Error('Esa persona ya es miembro de la empresa');
+    if (userError) {
+      console.error("Error checking user:", userError);
+      // No lanzamos error, simplemente asumimos que no existe
     }
 
-    // 1.1.b Validar si es el dueño (owner) de la empresa
-    const { data: empresaOwner, error: ownerError } = await supabaseAdmin
-      .from('empresa')
-      .select('id')
-      .eq('id', companyId)
-      .eq('usuario_id', existingUser.id)
-      .maybeSingle();
+    // Si el usuario existe, validamos que no sea ya miembro
+    if (existingUser) {
+      // 1.1.a Validar duplicados: ya miembro de la empresa
+      const { data: existingMember, error: memberError } = await supabaseAdmin
+        .from('empresa_miembros')
+        .select('id')
+        .eq('empresa_id', companyId)
+        .eq('usuario_id', existingUser.id)
+        .maybeSingle();
 
-    if (ownerError) {
-      throw new Error(ownerError.message || 'Error verificando dueño de la empresa');
-    }
-    if (empresaOwner) {
-      throw new Error('Esa persona ya es miembro (owner) de la empresa');
+      if (memberError) {
+        throw new Error(memberError.message || 'Error verificando miembros existentes');
+      }
+      if (existingMember) {
+        throw new Error('Esa persona ya es miembro de la empresa');
+      }
+
+      // 1.1.b Validar si es el dueño (owner) de la empresa
+      const { data: empresaOwner, error: ownerError } = await supabaseAdmin
+        .from('empresa')
+        .select('id')
+        .eq('id', companyId)
+        .eq('usuario_id', existingUser.id)
+        .maybeSingle();
+
+      if (ownerError) {
+        throw new Error(ownerError.message || 'Error verificando dueño de la empresa');
+      }
+      if (empresaOwner) {
+        throw new Error('Esa persona ya es miembro (owner) de la empresa');
+      }
     }
 
     // 1.2 Validar duplicados: invitación pendiente existente
@@ -81,21 +84,19 @@ serve(async (req) => {
     const token = crypto.randomUUID();
 
     // 2. Insertar en equipo_invitaciones
-    const { data: insertedInvite, error: dbError } = await supabaseAdmin
+    const { error: dbError } = await supabaseAdmin
       .from("equipo_invitaciones")
       .insert({
         equipo_id: teamId,
         empresa_id: companyId,
         invited_email: normalizedEmail,
-        invited_usuario_id: existingUser.id, // Vinculamos directamente
+        invited_usuario_id: existingUser ? existingUser.id : null, // Vinculamos si existe, sino null
         token: token,
         invited_nombre: name,
         invited_titulo_trabajo: role,
         permission_role: permissionRole || 'viewer',
         pipeline_ids: pipelineIds
-      })
-      .select('id, token')
-      .single();
+      });
 
     if (dbError) throw dbError;
 
@@ -104,7 +105,12 @@ serve(async (req) => {
     const RESEND_DOMAIN = Deno.env.get('RESEND_DOMAIN');
     const RESEND_FROM = Deno.env.get('RESEND_FROM') || (RESEND_DOMAIN ? `no-reply@${RESEND_DOMAIN}` : undefined);
     const ENABLE_EMAILS = (Deno.env.get('ENABLE_EMAILS') || 'true').toLowerCase();
-    const APP_URL = Deno.env.get('APP_URL') || 'https://example.com';
+
+    // Usar el origen de la petición (navegador) para construir el link correcto, 
+    // útil para desarrollo local en puertos dinámicos.
+    const origin = req.headers.get("origin");
+    const APP_URL = Deno.env.get('APP_URL');
+    const baseUrl = origin || APP_URL || 'https://example.com';
 
     let emailResult: { sent: boolean; reason?: string } = { sent: false };
 
@@ -118,19 +124,119 @@ serve(async (req) => {
       console.warn('[invite-member] Falta RESEND_FROM o RESEND_DOMAIN para construir el remitente verificado');
       emailResult = { sent: false, reason: 'Missing RESEND_FROM/RESEND_DOMAIN' };
     } else {
-      const acceptUrl = `${APP_URL}/accept-invite?token=${insertedInvite?.token || token}`;
+      const acceptUrl = `${baseUrl}/?token=${token}`;
       const html = `
-        <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; max-width: 600px; margin: 0 auto;">
-          <h2>Has recibido una invitación</h2>
-          <p>Hola ${name || ''}, te han invitado a un equipo en nuestra plataforma.</p>
-          <p>
-            <a href="${acceptUrl}" style="display:inline-block;padding:10px 16px;background:#3b82f6;color:#fff;border-radius:6px;text-decoration:none">
-              Aceptar invitación
-            </a>
-          </p>
-          <p>Si no ves el botón, copia y pega este enlace en tu navegador:</p>
-          <p><a href="${acceptUrl}">${acceptUrl}</a></p>
-        </div>
+        <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitación al equipo</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      line-height: 1.6;
+      color: #333333;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .card {
+      background-color: #ffffff;
+      border-radius: 8px;
+      padding: 40px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .logo img {
+      height: 40px;
+      width: auto;
+    }
+    h1 {
+      color: #1a1a1a;
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    p {
+      margin-bottom: 16px;
+      font-size: 16px;
+    }
+    .role-badge {
+      background-color: #f3f4f6;
+      padding: 12px;
+      border-radius: 6px;
+      text-align: center;
+      margin: 24px 0;
+      font-weight: 500;
+    }
+    .button-container {
+      text-align: center;
+      margin-top: 32px;
+      margin-bottom: 32px;
+    }
+    .button {
+      background-color: #000000;
+      color: #ffffff;
+      padding: 14px 28px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      display: inline-block;
+      transition: background-color 0.2s;
+    }
+    .footer {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="logo">
+        <!-- Puedes reemplazar esto con tu logo real -->
+        <span style="font-size: 24px; font-weight: bold;">CRM Pro</span>
+      </div>
+      
+      <h1>¡Hola ${name}!</h1>
+      
+      <p>Has sido invitado a formar parte del equipo en <strong>CRM Pro</strong>.</p>
+      
+      <div class="role-badge">
+        Rol asignado: <strong>${role}</strong>
+      </div>
+      
+      <p>Para comenzar a colaborar con tu equipo, por favor acepta la invitación haciendo clic en el botón de abajo:</p>
+      
+      <div class="button-container">
+        <a href="${acceptUrl}" class="button">Aceptar Invitación</a>
+      </div>
+      
+      <p style="font-size: 14px; color: #666;">
+        Si el botón no funciona, copia y pega el siguiente enlace en tu navegador:<br>
+        <a href="${acceptUrl}" style="color: #000000;">${acceptUrl}</a>
+      </p>
+    </div>
+    
+    <div class="footer">
+      <p>Si no esperabas esta invitación, puedes ignorar este correo.</p>
+      <p>&copy; ${new Date().getFullYear()} CRM Pro. Todos los derechos reservados.</p>
+    </div>
+  </div>
+</body>
+</html>
       `;
 
       // Log remitente y destinatario para diagnóstico
@@ -146,7 +252,7 @@ serve(async (req) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: `Invitaciones <${RESEND_FROM}>`,
+          from: `CRM Pro <${RESEND_FROM}>`,
           to: normalizedEmail,
           subject: 'Invitación a un equipo',
           html
@@ -157,7 +263,7 @@ serve(async (req) => {
         let errText = await sendRes.text();
         // Intentar parsear JSON si es válido para obtener message y name
         let parsed: any = null;
-        try { parsed = JSON.parse(errText); } catch (_) {}
+        try { parsed = JSON.parse(errText); } catch (_) { }
         const statusCode = sendRes.status;
         const baseReason = parsed?.message || parsed?.error || errText || 'Unknown Resend error';
         const validationHint = (statusCode === 403 && /testing emails|verify a domain/i.test(baseReason))
@@ -171,8 +277,8 @@ serve(async (req) => {
     }
 
     return new Response(JSON.stringify({ message: "Invitación enviada exitosamente", email: emailResult }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   } catch (error: any) {
     return new Response(JSON.stringify({ error: error.message }), {

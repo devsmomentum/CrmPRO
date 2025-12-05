@@ -57,8 +57,43 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                 const { data: { user } } = await supabase.auth.getUser()
                 if (user && user.email) {
                     // Cargar invitaciones pendientes
+                    // getPendingInvitations ya incluye el join con empresa y equipo
                     const invitationsData = await getPendingInvitations(user.email)
-                    setInvitations(invitationsData)
+                    
+                    // Mapeamos para asegurar que la estructura sea la esperada
+                    // Si el join falla (por RLS), intentamos usar invite-details como fallback
+                    const mappedInvitations = await Promise.all((invitationsData || []).map(async (inv: any) => {
+                        let empresa = inv.empresa
+                        let equipo = inv.equipo
+                        
+                        // Si falta información (probablemente por RLS), intentamos recuperarla vía Edge Function
+                        if (!empresa?.nombre_empresa || !equipo?.nombre_equipo) {
+                             try {
+                                const { data: details } = await supabase.functions.invoke('invite-details', {
+                                    body: { empresa_id: inv.empresa_id, equipo_id: inv.equipo_id }
+                                })
+                                if (details) {
+                                    if (!empresa?.nombre_empresa && details.empresa_nombre) {
+                                        empresa = { nombre_empresa: details.empresa_nombre }
+                                    }
+                                    if (!equipo?.nombre_equipo && details.equipo_nombre) {
+                                        equipo = { nombre_equipo: details.equipo_nombre }
+                                    }
+                                }
+                             } catch (e) {
+                                 // Si falla la función (no desplegada), nos quedamos con lo que tenemos
+                                 console.warn('Could not fetch invite details', e)
+                             }
+                        }
+
+                        return {
+                            ...inv,
+                            empresa: empresa || { nombre_empresa: 'Empresa' },
+                            equipo: equipo || { nombre_equipo: 'General' }
+                        }
+                    }))
+                    
+                    setInvitations(mappedInvitations)
 
                     // Cargar notificaciones de respuesta
                     const { data: notifications } = await supabase
@@ -284,6 +319,16 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                                                             <span>{format(new Date(notification.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
                                                         </div>
                                                     </div>
+                                                    {(notification.data.empresa_nombre || notification.data.equipo_nombre) && (
+                                                        <div className="mt-2 text-xs text-muted-foreground flex items-center gap-3">
+                                                            {notification.data.empresa_nombre && (
+                                                                <span>Empresa: {notification.data.empresa_nombre}</span>
+                                                            )}
+                                                            {notification.data.equipo_nombre && (
+                                                                <span>Equipo: {notification.data.equipo_nombre}</span>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>

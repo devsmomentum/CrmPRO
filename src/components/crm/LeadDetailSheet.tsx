@@ -36,6 +36,12 @@ import { EditBudgetDialog } from './EditBudgetDialog'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
 
+interface User {
+  id: string
+  email: string
+  businessName: string
+}
+
 interface LeadDetailSheetProps {
   lead: Lead
   open: boolean
@@ -43,9 +49,10 @@ interface LeadDetailSheetProps {
   onUpdate: (lead: Lead) => void
   teamMembers?: TeamMember[]
   canEdit?: boolean
+  currentUser?: User | null
 }
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useKV<Message[]>('messages', [])
   const [notes, setNotes] = useKV<Note[]>('notes', [])
@@ -56,6 +63,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<Channel>('whatsapp')
+  const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+  const [assignedTo, setAssignedTo] = useState<string | null>(lead.assignedTo || null)
+
+  const handleUpdateAssignedTo = (value: string) => {
+    // Mapear 'todos' a UUID nulo; miembros específicos pasan su id
+    const newAssigned = value === 'todos' ? NIL_UUID : value
+    setAssignedTo(newAssigned)
+    onUpdate({ ...lead, assignedTo: newAssigned })
+  }
   const [noteInput, setNoteInput] = useState('')
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [showBudgetDialog, setShowBudgetDialog] = useState(false)
@@ -339,9 +355,22 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
-                <p className="font-medium mt-1">
-                  {teamMembers.find(m => m.id === lead.assignedTo)?.name || lead.assignedTo || 'Sin asignar'}
-                </p>
+                <div className="mt-1">
+                  <Select value={assignedTo || 'todos'} onValueChange={handleUpdateAssignedTo} disabled={!canEdit}>
+                    <SelectTrigger className="w-56">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      {currentUser && (
+                        <SelectItem value={currentUser.id}>{`${currentUser.businessName || currentUser.email || 'Yo'} (Yo)`}</SelectItem>
+                      )}
+                      {teamMembers.map(m => (
+                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.budget}</Label>

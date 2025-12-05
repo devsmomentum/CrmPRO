@@ -92,10 +92,6 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
     }
 
     const selectedPipelines = Array.from(memberPipelines)
-    if (selectedPipelines.length === 0) {
-      toast.error('Selecciona al menos un pipeline')
-      return
-    }
 
     try {
       if (!companyId) {
@@ -332,7 +328,7 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
                 </Command>
               </PopoverContent>
             </Popover>
-            <p className="text-xs text-muted-foreground mt-1">Selecciona los pipelines que este miembro utilizará (puede ser más de uno).</p>
+            <p className="text-xs text-muted-foreground mt-1">Opcional: podrás asignar pipelines después desde “Editar miembro”.</p>
           </div>
           <Button onClick={handleSubmit} className="w-full">Add Team Member</Button>
         </div>

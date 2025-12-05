@@ -84,6 +84,20 @@ export function NotificationPanel({ open, onClose }: NotificationPanelProps) {
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">{notification.message}</p>
+                        {(notification as any).data && (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {((notification as any).data.empresa_nombre || (notification as any).data.equipo_nombre) && (
+                              <div className="flex items-center gap-2">
+                                {(notification as any).data.empresa_nombre && (
+                                  <span>Empresa: {(notification as any).data.empresa_nombre}</span>
+                                )}
+                                {(notification as any).data.equipo_nombre && (
+                                  <span>Equipo: {(notification as any).data.equipo_nombre}</span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <p className="text-xs text-muted-foreground mt-2">
                           {format(new Date(notification.timestamp), 'MMM d, h:mm a')}
                         </p>

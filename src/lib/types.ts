@@ -124,6 +124,7 @@ export interface TeamMember {
   pipelines?: PipelineType[]
   teamId?: string
   permissionRole?: 'admin' | 'viewer' | 'owner'
+  userId?: string
 }
 
 export interface Appointment {

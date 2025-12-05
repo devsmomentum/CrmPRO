@@ -19,8 +19,9 @@ import { Input } from '@/components/ui/input'
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
 
 import { Company } from './CompanyManagement'
+import { EditTeamMemberDialog } from './EditTeamMemberDialog'
 
-export function TeamView({ companyId, companies = [], currentUserId }: { companyId?: string; companies?: Company[]; currentUserId?: string }) {
+export function TeamView({ companyId, companies = [], currentUserId, currentUserEmail }: { companyId?: string; companies?: Company[]; currentUserId?: string; currentUserEmail?: string }) {
   if (!companyId) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
@@ -71,7 +72,7 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
 
   useEffect(() => {
     if (!companyId) return
-    getLeads(companyId)
+    getLeads(companyId, currentUserId, isAdminOrOwner)
       .then((data: any) => {
         const mappedLeads = data.map((l: any) => ({
           id: l.id,
@@ -90,7 +91,7 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
         }))
         setLeads(mappedLeads)
       })
-      .catch(err => console.error('[TeamView] Error loading leads:', err))
+        .catch(err => console.error('[TeamView] Error loading leads:', err))
   }, [companyId])
 
   useEffect(() => {
@@ -164,7 +165,8 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
               role: p.titulo_trabajo || '',
               teamId: p.equipo_id || undefined,
               pipelines: memberPipelines,
-              permissionRole: memberInfo?.role || 'viewer'
+              permissionRole: memberInfo?.role || 'viewer',
+              userId: p.usuario_id
             }
           }))
           const mappedMembers = mapped.map((m: any) => ({
@@ -181,8 +183,9 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
 
 
   // Si necesitas cargar leads y roles desde la BD, agrega aquí los efectos y servicios
+  const NIL_UUID = '00000000-0000-0000-0000-000000000000'
   const getAssignedLeadsCount = (memberId: string) => {
-    return leads.filter(l => l.assignedTo === memberId).length
+    return leads.filter(l => l.assignedTo === memberId || l.assignedTo === NIL_UUID).length
   }
 
   const getRoleInfo = (roleId?: string) => {
@@ -260,10 +263,18 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
       toast.error('No tienes permisos para eliminar miembros')
       return
     }
+    
+    const member: any = (teamMembers || []).find(m => m.id === memberId)
+    if (!member) return
+
+    // Confirmación antes de eliminar
+    if (!confirm(`¿Estás seguro de que quieres eliminar a ${member.name || 'este usuario'} de la empresa? Esta acción eliminará su acceso y membresía.`)) {
+      return
+    }
+
     try {
       // Detectar si es una invitación pendiente
-      const member: any = (teamMembers || []).find(m => m.id === memberId)
-      if (member && member.status === 'pending') {
+      if (member.status === 'pending') {
         const { cancelInvitation } = await import('@/supabase/services/invitations')
         await cancelInvitation(memberId)
         setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
@@ -271,9 +282,18 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
         return
       }
 
-      await deletePersona(memberId)
+      // Eliminar de empresa_miembros y persona
+      const { removeMemberFromCompany } = await import('@/supabase/services/empresa')
+      if (member.email && companyId) {
+        await removeMemberFromCompany(companyId, member.email)
+        toast.success('Miembro eliminado de la empresa y equipos')
+      } else {
+        // Fallback
+        await deletePersona(memberId)
+        toast.success('Miembro eliminado de la base de datos')
+      }
+      
       setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
-      toast.success('Miembro eliminado de la base de datos')
     } catch (e: any) {
       console.error('[TeamView] error eliminando persona', e)
       toast.error(e.message || 'No se pudo eliminar el miembro')
@@ -401,38 +421,40 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
         {filteredMembers.map(member => {
           const roleInfo = getRoleInfo(member.roleId)
           return (
-            <Card key={member.id}>
+            <Card key={member.id} className="overflow-hidden">
               <CardHeader>
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src={member.avatar} />
-                    <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="text-base">{member.name}</CardTitle>
-                      {(member as any).status === 'pending' && (
-                        <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300">
-                          Pendiente
-                        </Badge>
-                      )}
-                      {member.permissionRole && (
-                        <Badge variant="secondary" className="text-xs">
-                          {member.permissionRole === 'admin' ? 'Admin' : 'Viewer'}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-sm text-muted-foreground">{member.role}</p>
-                      {roleInfo && (
-                        <Badge
-                          variant="outline"
-                          className="text-xs"
-                          style={{ borderColor: roleInfo.color, color: roleInfo.color }}
-                        >
-                          {roleInfo.name}
-                        </Badge>
-                      )}
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start max-w-full">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar className="h-12 w-12 shrink-0">
+                      <AvatarImage src={member.avatar} />
+                      <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <CardTitle className="text-base truncate">{member.name}</CardTitle>
+                        {(member as any).status === 'pending' && (
+                          <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300 shrink-0">
+                            Pendiente
+                          </Badge>
+                        )}
+                        {member.permissionRole && (
+                          <Badge variant="secondary" className="text-xs shrink-0">
+                            {member.permissionRole === 'admin' ? 'Admin' : 'Viewer'}
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 min-w-0">
+                        <p className="text-sm text-muted-foreground truncate">{member.role}</p>
+                        {roleInfo && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs shrink-0"
+                            style={{ borderColor: roleInfo.color, color: roleInfo.color }}
+                          >
+                            {roleInfo.name}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {isAdminOrOwner && (
@@ -440,22 +462,35 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-destructive hover:bg-destructive/10"
+                        className="text-destructive hover:bg-destructive/10 sm:self-auto self-start sm:ml-auto"
                         onClick={() => handleDeleteMember(member.id)}
                         title="Cancelar invitación"
                       >
                         <XCircle size={16} />
                       </Button>
                     ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteMember(member.id)}
-                        title="Eliminar miembro"
-                      >
-                        <Trash size={16} />
-                      </Button>
+                      // Hide delete button for self
+                      // We check if the member being rendered is the current user (by ID or Email)
+                      // Note: currentUserId is passed as prop. We also check against the user's email if available.
+                      (member.userId !== currentUserId && member.email !== currentUserEmail) && (
+                        <div className="flex items-center gap-2 sm:self-auto self-start sm:ml-auto">
+                          <EditTeamMemberDialog
+                            member={member}
+                            companyId={companyId!}
+                            onUpdated={() => setRefreshTrigger(prev => prev + 1)}
+                            canEditRole={isAdminOrOwner}
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDeleteMember(member.id)}
+                            title="Eliminar miembro"
+                          >
+                            <Trash size={16} />
+                          </Button>
+                        </div>
+                      )
                     )
                   )}
                 </div>
@@ -489,7 +524,7 @@ export function TeamView({ companyId, companies = [], currentUserId }: { company
                             <div className="space-y-2">
                               <h4 className="font-medium text-sm">Leads Asignados</h4>
                               <div className="grid gap-1">
-                                {(leads || []).filter(l => l.assignedTo === member.id).map(lead => (
+                                {(leads || []).filter(l => l.assignedTo === member.id || l.assignedTo === NIL_UUID).map(lead => (
                                   <div key={lead.id} className="text-sm flex items-center gap-2">
                                     <div className={`w-2 h-2 rounded-full ${lead.priority === 'high' ? 'bg-red-500' :
                                       lead.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'

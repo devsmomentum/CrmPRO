@@ -124,8 +124,14 @@ serve(async (req) => {
         usuario_email: invitedUser.data.user?.email,
         type: 'invitation_accepted',
         title: '¡Bienvenido al equipo!',
-        message: 'Has aceptado la invitación exitosamente.',
-        data: { memberId }
+        message: `Has aceptado la invitación a ${invite.equipo?.nombre_equipo || 'tu equipo'}.`,
+        data: { 
+          memberId,
+          empresa_nombre: invite.empresa?.nombre_empresa,
+          equipo_nombre: invite.equipo?.nombre_equipo,
+          invited_nombre: invite.invited_nombre,
+          invited_email: invite.invited_email
+        }
       });
 
     // 5. Obtener email del dueño de la empresa y crear notificación
