@@ -187,8 +187,13 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
 
   // Si necesitas cargar leads y roles desde la BD, agrega aquí los efectos y servicios
   const NIL_UUID = '00000000-0000-0000-0000-000000000000'
-  const getAssignedLeadsCount = (memberId: string) => {
-    return leads.filter(l => l.assignedTo === memberId || l.assignedTo === NIL_UUID).length
+  const getAssignedLeadsCount = (memberId: string, status?: string) => {
+    const ownLeads = leads.filter(l => l.assignedTo === memberId).length
+    // Si el miembro está pendiente, no contar los leads asignados a "todos"
+    if (status === 'pending') return ownLeads
+
+    const allLeads = leads.filter(l => l.assignedTo === NIL_UUID || l.assignedTo === 'todos').length
+    return ownLeads + allLeads
   }
 
   const getRoleInfo = (roleId?: string) => {
@@ -574,8 +579,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Active Tasks</span>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{getAssignedLeadsCount(member.id)}</Badge>
-                      {getAssignedLeadsCount(member.id) > 0 && (
+                      <Badge variant="secondary">{getAssignedLeadsCount(member.id, (member as any).status)}</Badge>
+                      {getAssignedLeadsCount(member.id, (member as any).status) > 0 && (
                         <Popover>
                           <PopoverTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-muted">
@@ -586,7 +591,11 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                             <div className="space-y-2">
                               <h4 className="font-medium text-sm">Leads Asignados</h4>
                               <div className="grid gap-1">
-                                {(leads || []).filter(l => l.assignedTo === member.id || l.assignedTo === NIL_UUID).map(lead => (
+                                {(leads || []).filter(l => {
+                                  if (l.assignedTo === member.id) return true
+                                  if ((member as any).status !== 'pending' && (l.assignedTo === NIL_UUID || l.assignedTo === 'todos')) return true
+                                  return false
+                                }).map(lead => (
                                   <div key={lead.id} className="text-sm flex items-center gap-2">
                                     <div className={`w-2 h-2 rounded-full ${lead.priority === 'high' ? 'bg-red-500' :
                                       lead.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
