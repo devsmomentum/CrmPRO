@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Lead, Message, Note, Budget, Meeting, Channel, Tag, TeamMember } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useKV } from '@github/spark/hooks'
+// Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
+import { getMessages, sendMessage as sendDbMessage, subscribeToMessages } from '@/supabase/services/mensajes'
 import { 
   PaperPlaneRight, 
   Tag as TagIcon, 
@@ -54,17 +55,69 @@ interface LeadDetailSheetProps {
 
 export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser }: LeadDetailSheetProps) {
   const t = useTranslation('es')
-  const [messages, setMessages] = useKV<Message[]>('messages', [])
-  const [notes, setNotes] = useKV<Note[]>('notes', [])
-  const [budgets, setBudgets] = useKV<Budget[]>('budgets', [])
-  const [meetings, setMeetings] = useKV<Meeting[]>('meetings', [])
-  const [allTags, setAllTags] = useKV<Tag[]>('all-tags', [])
+  const [messages, setMessages] = useState<Message[]>([])
+  // Estados locales para evitar errores de autenticación del KV.
+  // Nos enfocamos en el chat; estos estados se mantienen locales.
+  const [notes, setNotes] = useState<Note[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [allTags, setAllTags] = useState<Tag[]>([])
   
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<Channel>('whatsapp')
   const NIL_UUID = '00000000-0000-0000-0000-000000000000'
   const [assignedTo, setAssignedTo] = useState<string | null>(lead.assignedTo || null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!lead.id || !open) return
+
+    // Fetch initial messages
+    getMessages(lead.id).then(dbMessages => {
+      const mapped = dbMessages.map(m => ({
+        id: m.id,
+        leadId: m.lead_id,
+        channel: m.channel as Channel,
+        content: m.content,
+        timestamp: new Date(m.created_at),
+        sender: m.sender as 'team' | 'lead',
+        read: m.read
+      }))
+      setMessages(mapped)
+      console.log('[Chat] mensajes iniciales cargados:', mapped.length)
+    })
+
+    // Subscribe to new messages
+    const subscription = subscribeToMessages(lead.id, (newMsg) => {
+       const mapped = {
+        id: newMsg.id,
+        leadId: newMsg.lead_id,
+        channel: newMsg.channel as Channel,
+        content: newMsg.content,
+        timestamp: new Date(newMsg.created_at),
+        sender: newMsg.sender as 'team' | 'lead',
+        read: newMsg.read
+      }
+      console.log('[Chat] nuevo mensaje realtime:', mapped)
+      setMessages(prev => {
+        // Avoid duplicates just in case
+        if (prev.find(p => p.id === mapped.id)) return prev
+        return [...prev, mapped]
+      })
+    })
+
+    return () => {
+      subscription.unsubscribe()
+      console.log('[Chat] suscripción realtime cancelada')
+    }
+  }, [lead.id, open])
+
+  // Auto-scroll al último mensaje cuando cambian los mensajes
+  useEffect(() => {
+    if (!messagesEndRef.current) return
+    messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages])
 
   const handleUpdateAssignedTo = (value: string) => {
     // Mapear 'todos' a UUID nulo; miembros específicos pasan su id
@@ -80,7 +133,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
 
-  const leadMessages = (messages || []).filter(m => m.leadId === lead.id)
+  const leadMessages = messages // Now we fetch specific messages for this lead
   const leadNotes = (notes || []).filter(n => n.leadId === lead.id)
   const leadBudgets = (budgets || []).filter(b => b.leadId === lead.id)
   const leadMeetings = (meetings || []).filter(m => m.leadId === lead.id)
@@ -97,22 +150,17 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     return channelIcons[channel] || EnvelopeSimple
   }
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!messageInput.trim()) return
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      leadId: lead.id,
-      channel: selectedChannel,
-      content: messageInput,
-      timestamp: new Date(),
-      sender: 'team',
-      read: true
+    try {
+      await sendDbMessage(lead.id, messageInput, 'team', selectedChannel)
+      setMessageInput('')
+      toast.success(t.messages.messageSent)
+    } catch (e) {
+      console.error(e)
+      toast.error('Error enviando mensaje')
     }
-
-    setMessages((current) => [...(current || []), newMessage])
-    setMessageInput('')
-    toast.success(t.messages.messageSent)
   }
 
   const addNote = () => {
@@ -342,7 +390,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </div>
         </SheetHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-6 mt-4">
             <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
             <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger>
@@ -421,7 +469,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="chat" className="flex-1 flex flex-col p-6">
+          <TabsContent value="chat" className="flex-1 flex flex-col p-6 min-h-0">
             <div className="flex gap-2 mb-4 flex-wrap">
               {(Object.keys(channelIcons) as Channel[]).map(channel => {
                 const Icon = getChannelIcon(channel)
@@ -439,7 +487,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               })}
             </div>
 
-            <ScrollArea className="flex-1 pr-4 mb-4">
+            <ScrollArea className="flex-1 pr-4 mb-4 min-h-0">
               <div className="space-y-3">
                 {leadMessages
                   .filter(m => m.channel === selectedChannel)
@@ -459,6 +507,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                       </p>
                     </div>
                   ))}
+                <div ref={messagesEndRef} />
                 {leadMessages.filter(m => m.channel === selectedChannel).length === 0 && (
                   <p className="text-center text-muted-foreground text-sm py-8">
                     {t.chat.noMessages}
