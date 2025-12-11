@@ -33,8 +33,6 @@ serve(async (req) => {
     const SUPER_API_URL = Deno.env.get('SUPER_API_URL') // Ej: https://api.superapi.com/v1/messages
     const SUPER_API_KEY = Deno.env.get('SUPER_API_KEY') 
 
-    let outboundMetadata: Record<string, unknown> | null = null
-
     if (SUPER_API_URL && SUPER_API_KEY) {
       // Normalizar teléfono al formato E.164: quitar espacios/guiones y asegurar prefijo '+'
       let phoneToSend = String(lead.telefono || '')
@@ -60,15 +58,6 @@ serve(async (req) => {
         })
 
       const respText = await response.text()
-      outboundMetadata = {
-        request: {
-          phone: phoneToSend,
-          message: content,
-          platform: channel || 'whatsapp'
-        },
-        response: respText,
-        status: response.status
-      }
       if (!response.ok) {
         console.error('Error enviando a Super API:', response.status, respText)
         throw new Error(`Error de Super API: ${response.status} ${respText}`)
@@ -87,8 +76,7 @@ serve(async (req) => {
         content: content,
         sender: 'team',
         channel: channel || 'whatsapp',
-        read: true,
-        metadata: outboundMetadata
+        read: true
       })
       .select()
       .single()
