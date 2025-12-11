@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
-import { getMessages, sendMessage as sendDbMessage, subscribeToMessages } from '@/supabase/services/mensajes'
+import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation } from '@/supabase/services/mensajes'
 import { 
   PaperPlaneRight, 
   Tag as TagIcon, 
@@ -22,7 +22,8 @@ import {
   Phone,
   X,
   Plus,
-  PencilSimple
+  PencilSimple,
+  Trash
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -31,6 +32,17 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { AddBudgetDialog } from './AddBudgetDialog'
 import { AddMeetingDialog } from './AddMeetingDialog'
 import { EditBudgetDialog } from './EditBudgetDialog'
@@ -148,6 +160,28 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   
   const getChannelIcon = (channel: Channel) => {
     return channelIcons[channel] || EnvelopeSimple
+  }
+
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await deleteMessage(messageId)
+      setMessages(prev => prev.filter(m => m.id !== messageId))
+      toast.success('Mensaje eliminado')
+    } catch (e) {
+      console.error(e)
+      toast.error('Error eliminando mensaje')
+    }
+  }
+
+  const handleDeleteConversation = async () => {
+    try {
+      await deleteConversation(lead.id)
+      setMessages([])
+      toast.success('Conversación eliminada')
+    } catch (e) {
+      console.error(e)
+      toast.error('Error eliminando conversación')
+    }
   }
 
   const sendMessage = async () => {
@@ -470,21 +504,48 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </TabsContent>
 
           <TabsContent value="chat" className="flex-1 flex flex-col p-6 min-h-0">
-            <div className="flex gap-2 mb-4 flex-wrap">
-              {(Object.keys(channelIcons) as Channel[]).map(channel => {
-                const Icon = getChannelIcon(channel)
-                return (
-                  <Button
-                    key={channel}
-                    variant={selectedChannel === channel ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedChannel(channel)}
-                  >
-                    <Icon size={16} className="mr-2" />
-                    {channel}
-                  </Button>
-                )
-              })}
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex gap-2 flex-wrap">
+                {(Object.keys(channelIcons) as Channel[]).map(channel => {
+                  const Icon = getChannelIcon(channel)
+                  return (
+                    <Button
+                      key={channel}
+                      variant={selectedChannel === channel ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setSelectedChannel(channel)}
+                    >
+                      <Icon size={16} className="mr-2" />
+                      {channel}
+                    </Button>
+                  )
+                })}
+              </div>
+
+              {canEdit && leadMessages.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                      <Trash size={16} className="mr-2" />
+                      Limpiar
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Eliminar conversación?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta acción eliminará todos los mensajes de este lead permanentemente.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteConversation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Eliminar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
 
             <ScrollArea className="flex-1 pr-4 mb-4 min-h-0">
@@ -495,12 +556,27 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     <div 
                       key={msg.id}
                       className={cn(
-                        'p-3 rounded-lg max-w-[80%]',
+                        'group relative p-3 rounded-lg max-w-[80%]',
                         msg.sender === 'team' 
                           ? 'ml-auto bg-primary text-primary-foreground'
                           : 'bg-muted'
                       )}
                     >
+                      {canEdit && (
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteMessage(msg.id)
+                          }}
+                          className={cn(
+                            "absolute -top-2 p-1 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10",
+                            msg.sender === 'team' ? "-left-2" : "-right-2"
+                          )}
+                          title="Eliminar mensaje"
+                        >
+                          <Trash size={12} weight="bold" />
+                        </button>
+                      )}
                       <p className="text-sm">{msg.content}</p>
                       <p className="text-xs opacity-70 mt-1">
                         {format(new Date(msg.timestamp), 'h:mm a')}

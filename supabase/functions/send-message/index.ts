@@ -34,15 +34,21 @@ serve(async (req) => {
     const SUPER_API_KEY = Deno.env.get('SUPER_API_KEY') 
 
     if (SUPER_API_URL && SUPER_API_KEY) {
-      // Normalizar teléfono al formato E.164: quitar espacios/guiones y asegurar prefijo '+'
-      let phoneToSend = String(lead.telefono || '')
-        .replace(/\s+/g, '')
-        .replace(/-/g, '')
-      if (!phoneToSend.startsWith('+')) {
-        // Intento mínimo: si no tiene '+', asumimos que ya viene con código país correcto
-        // Si tu API requiere estrictamente '+', lo añadimos manualmente no-op
-        phoneToSend = '+' + phoneToSend
+      // Normalizar teléfono: quitar todo lo que no sea números
+      const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
+      
+      // Mapear canal a plataforma de SuperAPI
+      // 'whatsapp' en tu DB -> 'wws' en SuperAPI
+      let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
+      
+      // Construir chatId
+      // Para WhatsApp (wws), se requiere formato numero@c.us
+      let chatId = cleanPhone
+      if (platform === 'wws' && !chatId.includes('@c.us')) {
+        chatId = `${chatId}@c.us`
       }
+
+      console.log(`Enviando a SuperAPI (${platform}):`, { chatId, message: content })
 
       const response = await fetch(SUPER_API_URL, {
             method: 'POST',
@@ -51,9 +57,9 @@ serve(async (req) => {
                 'Authorization': `Bearer ${SUPER_API_KEY}`
             },
             body: JSON.stringify({
-          phone: phoneToSend,
+                chatId: chatId,
                 message: content,
-                platform: channel || 'whatsapp'
+                platform: platform
             })
         })
 

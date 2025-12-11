@@ -88,3 +88,21 @@ export function subscribeToMessages(leadId: string, onMessage: (msg: Message) =>
     )
     .subscribe()
 }
+
+export async function deleteMessage(messageId: string) {
+  const { error } = await supabase
+    .from('mensajes')
+    .delete()
+    .eq('id', messageId)
+
+  if (error) throw error
+}
+
+export async function deleteConversation(leadId: string) {
+  const { error } = await supabase
+    .from('mensajes')
+    .delete()
+    .eq('lead_id', leadId)
+
+  if (error) throw error
+}
