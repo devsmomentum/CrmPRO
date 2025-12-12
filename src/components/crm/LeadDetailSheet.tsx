@@ -9,10 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
 import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation } from '@/supabase/services/mensajes'
-import { 
-  PaperPlaneRight, 
-  Tag as TagIcon, 
-  Note as NoteIcon, 
+import {
+  PaperPlaneRight,
+  Tag as TagIcon,
+  Note as NoteIcon,
   CurrencyDollar,
   CalendarBlank,
   WhatsappLogo,
@@ -23,7 +23,10 @@ import {
   X,
   Plus,
   PencilSimple,
-  Trash
+  Trash,
+  DownloadSimple,
+  FilePdf,
+  File
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -65,6 +68,14 @@ interface LeadDetailSheetProps {
   currentUser?: User | null
 }
 
+// Helper function to safely format dates
+const formatSafeDate = (date: Date | string | null | undefined, formatStr: string): string => {
+  if (!date) return 'Invalid date'
+  const dateObj = date instanceof Date ? date : new Date(date)
+  if (isNaN(dateObj.getTime())) return 'Invalid date'
+  return format(dateObj, formatStr)
+}
+
 export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
@@ -74,7 +85,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
-  
+
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<Channel>('whatsapp')
@@ -102,7 +113,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
     // Subscribe to new messages
     const subscription = subscribeToMessages(lead.id, (newMsg) => {
-       const mapped = {
+      const mapped = {
         id: newMsg.id,
         leadId: newMsg.lead_id,
         channel: newMsg.channel as Channel,
@@ -125,11 +136,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     }
   }, [lead.id, open])
 
-  // Auto-scroll al último mensaje cuando cambian los mensajes
+  // Auto-scroll al último mensaje cuando cambian los mensajes, se abre el chat o se cambia de canal
   useEffect(() => {
     if (!messagesEndRef.current) return
-    messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages])
+    if (activeTab === 'chat') {
+      // Pequeño timeout para asegurar que el DOM se actualizó con los mensajes del nuevo canal
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 100)
+    }
+  }, [messages, activeTab, selectedChannel])
 
   const handleUpdateAssignedTo = (value: string) => {
     // Mapear 'todos' a UUID nulo; miembros específicos pasan su id
@@ -157,7 +173,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     email: EnvelopeSimple,
     phone: Phone
   } as const
-  
+
   const getChannelIcon = (channel: Channel) => {
     return channelIcons[channel] || EnvelopeSimple
   }
@@ -189,12 +205,22 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
     try {
       const sentMsg = await sendDbMessage(lead.id, messageInput, 'team', selectedChannel)
-      
+
       // Actualización optimista: Agregamos el mensaje a la lista inmediatamente
       if (sentMsg) {
+        const mappedMsg = {
+          id: sentMsg.id,
+          leadId: sentMsg.lead_id,
+          channel: sentMsg.channel as Channel,
+          content: sentMsg.content,
+          timestamp: new Date(sentMsg.created_at),
+          sender: sentMsg.sender as 'team' | 'lead',
+          read: sentMsg.read || false
+        }
+
         setMessages(prev => {
-          if (prev.find(p => p.id === sentMsg.id)) return prev
-          return [...prev, sentMsg]
+          if (prev.find(p => p.id === mappedMsg.id)) return prev
+          return [...prev, mappedMsg]
         })
       }
 
@@ -250,18 +276,18 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     setShowTagDialog(false)
     toast.success(t.messages.tagAdded)
   }
-  
+
   const addExistingTag = (tag: Tag) => {
     if (lead.tags.find(t => t.id === tag.id)) {
       toast.error('Esta etiqueta ya está agregada')
       return
     }
-    
+
     const updatedLead = {
       ...lead,
       tags: [...lead.tags, tag]
     }
-    
+
     onUpdate(updatedLead)
     toast.success(t.messages.tagAdded)
   }
@@ -278,7 +304,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     onUpdate({ ...lead, priority: priority as Lead['priority'] })
     toast.success(t.messages.priorityUpdated)
   }
-  
+
   const updateField = (field: keyof Lead, value: string | number) => {
     if (field === 'budget' && typeof value === 'number' && value < 0) {
       toast.error('El presupuesto no puede ser negativo')
@@ -288,26 +314,26 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       toast.error('El presupuesto no puede ser negativo')
       return
     }
-    
+
     onUpdate({ ...lead, [field]: value })
     toast.success('Campo actualizado correctamente')
   }
-  
+
   const handleAddBudget = (budget: Budget) => {
     setBudgets((current) => [...(current || []), budget])
   }
-  
+
   const handleAddMeeting = (meeting: Meeting) => {
     setMeetings((current) => [...(current || []), meeting])
   }
-  
+
   const handleUpdateBudget = (updatedBudget: Budget) => {
-    setBudgets((current) => 
+    setBudgets((current) =>
       (current || []).map(b => b.id === updatedBudget.id ? updatedBudget : b)
     )
     setEditingBudget(null)
   }
-  
+
   const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
 
   return (
@@ -365,7 +391,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
           <div className="flex flex-wrap gap-2 mt-4">
             {lead.tags.map(tag => (
-              <Badge 
+              <Badge
                 key={tag.id}
                 className="gap-1"
                 style={{ backgroundColor: tag.color, color: 'white' }}
@@ -411,7 +437,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   )}
                   <div>
                     <Label>Nueva Etiqueta</Label>
-                    <Input 
+                    <Input
                       value={newTagName}
                       onChange={(e) => setNewTagName(e.target.value)}
                       placeholder="Nombre de etiqueta"
@@ -420,7 +446,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   </div>
                   <div>
                     <Label>Color</Label>
-                    <Input 
+                    <Input
                       type="color"
                       value={newTagColor}
                       onChange={(e) => setNewTagColor(e.target.value)}
@@ -501,7 +527,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                           <Icon size={14} />
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
+                          {formatSafeDate(msg.timestamp, 'MMM d, h:mm a')}
                         </span>
                       </div>
                       <p>{msg.content}</p>
@@ -562,17 +588,17 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 {leadMessages
                   .filter(m => m.channel === selectedChannel)
                   .map(msg => (
-                    <div 
+                    <div
                       key={msg.id}
                       className={cn(
                         'group relative p-3 rounded-lg max-w-[80%]',
-                        msg.sender === 'team' 
+                        msg.sender === 'team'
                           ? 'ml-auto bg-primary text-primary-foreground'
                           : 'bg-muted'
                       )}
                     >
                       {canEdit && (
-                        <button 
+                        <button
                           onClick={(e) => {
                             e.stopPropagation()
                             handleDeleteMessage(msg.id)
@@ -587,32 +613,101 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                         </button>
                       )}
                       <p className="text-sm">{msg.content}</p>
-                      {/* Renderizado de imágenes si existen en metadata */}
+                      {/* Renderizado de imágenes si existen en metadata O en el contenido */}
                       {(() => {
                         const data = msg.metadata?.data || msg.metadata || {};
-                        // Posibles rutas donde Super API manda la imagen
-                        const mediaUrl = 
-                          data.media?.links?.download || 
-                          data.media?.url || 
+                        
+                        // 1. Buscar en metadata (lógica existente)
+                        let mediaUrl =
+                          data.media?.links?.download ||
+                          data.media?.url ||
                           data.mediaUrl ||
                           (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
 
+                        // 2. Si no hay en metadata, buscar en el contenido del mensaje
+                        if (!mediaUrl && msg.content) {
+                            // Regex simple para buscar URLs
+                            const urlRegex = /(https?:\/\/[^\s]+)/g;
+                            const matches = msg.content.match(urlRegex);
+                            if (matches) {
+                                // Tomamos la última URL encontrada, asumiendo que es la que adjuntamos al final
+                                // O buscamos una que parezca imagen
+                                const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp','.pdf','.csv' ];
+                                const foundUrl = matches.find(url => {
+                                    const lower = url.toLowerCase();
+                                    return imageExtensions.some(ext => lower.includes(ext));
+                                }) || matches[matches.length - 1]; // Fallback a la última URL si no hay extensión obvia
+                                
+                                if (foundUrl) mediaUrl = foundUrl;
+                            }
+                        }
+
                         if (mediaUrl) {
-                          return (
-                            <div className="mt-2 rounded-md overflow-hidden">
-                              <img 
-                                src={mediaUrl} 
-                                alt="Imagen adjunta" 
-                                className="max-w-full h-auto object-cover max-h-60" 
-                                loading="lazy"
-                              />
-                            </div>
-                          );
+                          const lowerUrl = mediaUrl.toLowerCase();
+                          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
+                          const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
+                          
+                          if (isImage) {
+                              return (
+                                <div className="mt-2 rounded-md overflow-hidden">
+                                  <img
+                                    src={mediaUrl}
+                                    alt="Imagen adjunta"
+                                    className="max-w-full h-auto object-cover max-h-60"
+                                    loading="lazy"
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                  />
+                                </div>
+                              );
+                          } else if (isVideo) {
+                              return (
+                                <div className="mt-2 rounded-md overflow-hidden">
+                                  <video 
+                                    src={mediaUrl} 
+                                    controls 
+                                    className="max-w-full h-auto max-h-60"
+                                  />
+                                </div>
+                              );
+                          } else {
+                              // Intentar adivinar el nombre del archivo
+                              const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
+                              const isPdf = lowerUrl.includes('.pdf');
+
+                              return (
+                                  <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
+                                      <div className="bg-background p-2 rounded-md text-primary shadow-sm">
+                                        {isPdf ? <FilePdf size={24} weight="duotone" /> : <File size={24} weight="duotone" />}
+                                      </div>
+                                      <div className="flex-1 min-w-0 overflow-hidden">
+                                        <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
+                                        <a 
+                                            href={mediaUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                                        >
+                                            Abrir en nueva pestaña
+                                        </a>
+                                      </div>
+                                      <a 
+                                        href={mediaUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
+                                        title="Descargar"
+                                        download
+                                      >
+                                          <DownloadSimple size={20} />
+                                      </a>
+                                  </div>
+                              )
+                          }
                         }
                         return null;
                       })()}
                       <p className="text-xs opacity-70 mt-1">
-                        {format(new Date(msg.timestamp), 'h:mm a')}
+                        {formatSafeDate(msg.timestamp, 'h:mm a')}
                       </p>
                     </div>
                   ))}
@@ -754,21 +849,21 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </TabsContent>
         </Tabs>
       </SheetContent>
-      
+
       <AddBudgetDialog
         leadId={lead.id}
         open={showBudgetDialog}
         onClose={() => setShowBudgetDialog(false)}
         onAdd={handleAddBudget}
       />
-      
+
       <AddMeetingDialog
         leadId={lead.id}
         open={showMeetingDialog}
         onClose={() => setShowMeetingDialog(false)}
         onAdd={handleAddMeeting}
       />
-      
+
       {editingBudget && (
         <EditBudgetDialog
           budget={editingBudget}

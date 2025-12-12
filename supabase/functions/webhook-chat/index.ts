@@ -134,15 +134,61 @@ serve(async (req) => {
 
       console.log("Event Data Keys:", Object.keys(eventData));
 
-      // Contenido del mensaje
-      let content = eventData.body ?? payload.body;
+      // 1. Intentamos sacar el texto normal
+      let content = eventData.body ?? payload.body ?? eventData.text ?? payload.text;
+      
       const externalId = eventData.id ?? payload.id;
       const media = eventData.media ?? payload.media;
-      const type = eventData.type ?? payload.type;
+      const type = eventData.type ?? payload.type; // image, video, audio, etc.
 
-      // Si no hay texto pero hay media, ponemos un placeholder
-      if (!content && (media || type === 'image' || type === 'video' || type === 'document')) {
-          content = "📷 [Imagen/Archivo Adjunto]";
+      // 2. Intentamos buscar la URL del archivo multimedia
+      // Nota: Diferentes APIs ponen la URL en sitios distintos. Probamos los más comunes.
+      let mediaUrl = null;
+
+      if (typeof media === 'string' && media.startsWith('http')) {
+          mediaUrl = media; // A veces 'media' es directamente la URL
+      } else if (typeof media === 'object') {
+          // Buscamos en todas las posibles ubicaciones conocidas
+          mediaUrl = media.url || 
+                     media.link || 
+                     media.file || 
+                     (media.links && media.links.download) || 
+                     null;
+      }
+      
+      // Si la API lo manda en el root (ej: payload.mediaUrl)
+      if (!mediaUrl) {
+          mediaUrl = eventData.mediaUrl || 
+                     payload.mediaUrl || 
+                     eventData.fileUrl || 
+                     payload.fileUrl ||
+                     eventData.url ||
+                     payload.url;
+      }
+
+      // Si el 'body' o 'content' es una URL y el tipo es media, úsalo como mediaUrl
+      if (!mediaUrl && content && typeof content === 'string' && content.startsWith('http')) {
+          const isMedia = type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt';
+          if (isMedia) {
+              mediaUrl = content;
+          }
+      }
+
+      // 3. Decidimos qué guardar en la base de datos
+      if (mediaUrl) {
+          // Si encontramos una URL, la guardamos.
+          // Si venía texto acompañado de foto (caption), lo juntamos.
+          if (content) {
+              content = `${content} \n ${mediaUrl}`;
+          } else {
+              content = mediaUrl; // Guardamos solo el link
+          }
+      } else {
+          // Si NO hay URL pero detectamos que es un archivo, mantenemos el placeholder
+          // para saber que llegó algo aunque no tengamos el link.
+          if (!content && (media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
+              content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
+          }
       }
 
       // Deduplicación: Verificar si ya existe el mensaje por external_id
