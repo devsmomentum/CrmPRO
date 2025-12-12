@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Lead, Message, Note, Budget, Meeting, Channel, Tag, TeamMember } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -7,11 +7,12 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useKV } from '@github/spark/hooks'
-import { 
-  PaperPlaneRight, 
-  Tag as TagIcon, 
-  Note as NoteIcon, 
+// Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
+import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation } from '@/supabase/services/mensajes'
+import {
+  PaperPlaneRight,
+  Tag as TagIcon,
+  Note as NoteIcon,
   CurrencyDollar,
   CalendarBlank,
   WhatsappLogo,
@@ -21,7 +22,11 @@ import {
   Phone,
   X,
   Plus,
-  PencilSimple
+  PencilSimple,
+  Trash,
+  DownloadSimple,
+  FilePdf,
+  File
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -30,6 +35,17 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { AddBudgetDialog } from './AddBudgetDialog'
 import { AddMeetingDialog } from './AddMeetingDialog'
 import { EditBudgetDialog } from './EditBudgetDialog'
@@ -52,19 +68,84 @@ interface LeadDetailSheetProps {
   currentUser?: User | null
 }
 
+// Helper function to safely format dates
+const formatSafeDate = (date: Date | string | null | undefined, formatStr: string): string => {
+  if (!date) return 'Invalid date'
+  const dateObj = date instanceof Date ? date : new Date(date)
+  if (isNaN(dateObj.getTime())) return 'Invalid date'
+  return format(dateObj, formatStr)
+}
+
 export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser }: LeadDetailSheetProps) {
   const t = useTranslation('es')
-  const [messages, setMessages] = useKV<Message[]>('messages', [])
-  const [notes, setNotes] = useKV<Note[]>('notes', [])
-  const [budgets, setBudgets] = useKV<Budget[]>('budgets', [])
-  const [meetings, setMeetings] = useKV<Meeting[]>('meetings', [])
-  const [allTags, setAllTags] = useKV<Tag[]>('all-tags', [])
-  
+  const [messages, setMessages] = useState<Message[]>([])
+  // Estados locales para evitar errores de autenticación del KV.
+  // Nos enfocamos en el chat; estos estados se mantienen locales.
+  const [notes, setNotes] = useState<Note[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [allTags, setAllTags] = useState<Tag[]>([])
+
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
   const [selectedChannel, setSelectedChannel] = useState<Channel>('whatsapp')
   const NIL_UUID = '00000000-0000-0000-0000-000000000000'
   const [assignedTo, setAssignedTo] = useState<string | null>(lead.assignedTo || null)
+  const messagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!lead.id || !open) return
+
+    // Fetch initial messages
+    getMessages(lead.id).then(dbMessages => {
+      const mapped = dbMessages.map(m => ({
+        id: m.id,
+        leadId: m.lead_id,
+        channel: m.channel as Channel,
+        content: m.content,
+        timestamp: new Date(m.created_at),
+        sender: m.sender as 'team' | 'lead',
+        read: m.read
+      }))
+      setMessages(mapped)
+      console.log('[Chat] mensajes iniciales cargados:', mapped.length)
+    })
+
+    // Subscribe to new messages
+    const subscription = subscribeToMessages(lead.id, (newMsg) => {
+      const mapped = {
+        id: newMsg.id,
+        leadId: newMsg.lead_id,
+        channel: newMsg.channel as Channel,
+        content: newMsg.content,
+        timestamp: new Date(newMsg.created_at),
+        sender: newMsg.sender as 'team' | 'lead',
+        read: newMsg.read
+      }
+      console.log('[Chat] nuevo mensaje realtime:', mapped)
+      setMessages(prev => {
+        // Avoid duplicates just in case
+        if (prev.find(p => p.id === mapped.id)) return prev
+        return [...prev, mapped]
+      })
+    })
+
+    return () => {
+      subscription.unsubscribe()
+      console.log('[Chat] suscripción realtime cancelada')
+    }
+  }, [lead.id, open])
+
+  // Auto-scroll al último mensaje cuando cambian los mensajes, se abre el chat o se cambia de canal
+  useEffect(() => {
+    if (!messagesEndRef.current) return
+    if (activeTab === 'chat') {
+      // Pequeño timeout para asegurar que el DOM se actualizó con los mensajes del nuevo canal
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      }, 100)
+    }
+  }, [messages, activeTab, selectedChannel])
 
   const handleUpdateAssignedTo = (value: string) => {
     // Mapear 'todos' a UUID nulo; miembros específicos pasan su id
@@ -80,7 +161,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
 
-  const leadMessages = (messages || []).filter(m => m.leadId === lead.id)
+  const leadMessages = messages // Now we fetch specific messages for this lead
   const leadNotes = (notes || []).filter(n => n.leadId === lead.id)
   const leadBudgets = (budgets || []).filter(b => b.leadId === lead.id)
   const leadMeetings = (meetings || []).filter(m => m.leadId === lead.id)
@@ -92,27 +173,63 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     email: EnvelopeSimple,
     phone: Phone
   } as const
-  
+
   const getChannelIcon = (channel: Channel) => {
     return channelIcons[channel] || EnvelopeSimple
   }
 
-  const sendMessage = () => {
+  const handleDeleteMessage = async (messageId: string) => {
+    try {
+      await deleteMessage(messageId)
+      setMessages(prev => prev.filter(m => m.id !== messageId))
+      toast.success('Mensaje eliminado')
+    } catch (e) {
+      console.error(e)
+      toast.error('Error eliminando mensaje')
+    }
+  }
+
+  const handleDeleteConversation = async () => {
+    try {
+      await deleteConversation(lead.id)
+      setMessages([])
+      toast.success('Conversación eliminada')
+    } catch (e) {
+      console.error(e)
+      toast.error('Error eliminando conversación')
+    }
+  }
+
+  const sendMessage = async () => {
     if (!messageInput.trim()) return
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      leadId: lead.id,
-      channel: selectedChannel,
-      content: messageInput,
-      timestamp: new Date(),
-      sender: 'team',
-      read: true
-    }
+    try {
+      const sentMsg = await sendDbMessage(lead.id, messageInput, 'team', selectedChannel)
 
-    setMessages((current) => [...(current || []), newMessage])
-    setMessageInput('')
-    toast.success(t.messages.messageSent)
+      // Actualización optimista: Agregamos el mensaje a la lista inmediatamente
+      if (sentMsg) {
+        const mappedMsg = {
+          id: sentMsg.id,
+          leadId: sentMsg.lead_id,
+          channel: sentMsg.channel as Channel,
+          content: sentMsg.content,
+          timestamp: new Date(sentMsg.created_at),
+          sender: sentMsg.sender as 'team' | 'lead',
+          read: sentMsg.read || false
+        }
+
+        setMessages(prev => {
+          if (prev.find(p => p.id === mappedMsg.id)) return prev
+          return [...prev, mappedMsg]
+        })
+      }
+
+      setMessageInput('')
+      toast.success(t.messages.messageSent)
+    } catch (e) {
+      console.error(e)
+      toast.error('Error enviando mensaje')
+    }
   }
 
   const addNote = () => {
@@ -159,18 +276,18 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     setShowTagDialog(false)
     toast.success(t.messages.tagAdded)
   }
-  
+
   const addExistingTag = (tag: Tag) => {
     if (lead.tags.find(t => t.id === tag.id)) {
       toast.error('Esta etiqueta ya está agregada')
       return
     }
-    
+
     const updatedLead = {
       ...lead,
       tags: [...lead.tags, tag]
     }
-    
+
     onUpdate(updatedLead)
     toast.success(t.messages.tagAdded)
   }
@@ -187,7 +304,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     onUpdate({ ...lead, priority: priority as Lead['priority'] })
     toast.success(t.messages.priorityUpdated)
   }
-  
+
   const updateField = (field: keyof Lead, value: string | number) => {
     if (field === 'budget' && typeof value === 'number' && value < 0) {
       toast.error('El presupuesto no puede ser negativo')
@@ -197,26 +314,26 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       toast.error('El presupuesto no puede ser negativo')
       return
     }
-    
+
     onUpdate({ ...lead, [field]: value })
     toast.success('Campo actualizado correctamente')
   }
-  
+
   const handleAddBudget = (budget: Budget) => {
     setBudgets((current) => [...(current || []), budget])
   }
-  
+
   const handleAddMeeting = (meeting: Meeting) => {
     setMeetings((current) => [...(current || []), meeting])
   }
-  
+
   const handleUpdateBudget = (updatedBudget: Budget) => {
-    setBudgets((current) => 
+    setBudgets((current) =>
       (current || []).map(b => b.id === updatedBudget.id ? updatedBudget : b)
     )
     setEditingBudget(null)
   }
-  
+
   const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
 
   return (
@@ -274,7 +391,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
           <div className="flex flex-wrap gap-2 mt-4">
             {lead.tags.map(tag => (
-              <Badge 
+              <Badge
                 key={tag.id}
                 className="gap-1"
                 style={{ backgroundColor: tag.color, color: 'white' }}
@@ -320,7 +437,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   )}
                   <div>
                     <Label>Nueva Etiqueta</Label>
-                    <Input 
+                    <Input
                       value={newTagName}
                       onChange={(e) => setNewTagName(e.target.value)}
                       placeholder="Nombre de etiqueta"
@@ -329,7 +446,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   </div>
                   <div>
                     <Label>Color</Label>
-                    <Input 
+                    <Input
                       type="color"
                       value={newTagColor}
                       onChange={(e) => setNewTagColor(e.target.value)}
@@ -342,7 +459,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </div>
         </SheetHeader>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-6 mt-4">
             <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
             <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger>
@@ -410,7 +527,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                           <Icon size={14} />
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
+                          {formatSafeDate(msg.timestamp, 'MMM d, h:mm a')}
                         </span>
                       </div>
                       <p>{msg.content}</p>
@@ -421,44 +538,180 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="chat" className="flex-1 flex flex-col p-6">
-            <div className="flex gap-2 mb-4 flex-wrap">
-              {(Object.keys(channelIcons) as Channel[]).map(channel => {
-                const Icon = getChannelIcon(channel)
-                return (
-                  <Button
-                    key={channel}
-                    variant={selectedChannel === channel ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedChannel(channel)}
-                  >
-                    <Icon size={16} className="mr-2" />
-                    {channel}
-                  </Button>
-                )
-              })}
+          <TabsContent value="chat" className="flex-1 flex flex-col p-6 min-h-0">
+            <div className="flex justify-between items-center mb-4">
+              <div className="flex gap-2 flex-wrap">
+                {(Object.keys(channelIcons) as Channel[]).map(channel => {
+                  const Icon = getChannelIcon(channel)
+                  return (
+                    <Button
+                      key={channel}
+                      variant={selectedChannel === channel ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setSelectedChannel(channel)}
+                    >
+                      <Icon size={16} className="mr-2" />
+                      {channel}
+                    </Button>
+                  )
+                })}
+              </div>
+
+              {canEdit && leadMessages.length > 0 && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                      <Trash size={16} className="mr-2" />
+                      Limpiar
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>¿Eliminar conversación?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Esta acción eliminará todos los mensajes de este lead permanentemente.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteConversation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        Eliminar
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
 
-            <ScrollArea className="flex-1 pr-4 mb-4">
+            <ScrollArea className="flex-1 pr-4 mb-4 min-h-0">
               <div className="space-y-3">
                 {leadMessages
                   .filter(m => m.channel === selectedChannel)
                   .map(msg => (
-                    <div 
+                    <div
                       key={msg.id}
                       className={cn(
-                        'p-3 rounded-lg max-w-[80%]',
-                        msg.sender === 'team' 
+                        'group relative p-3 rounded-lg max-w-[80%]',
+                        msg.sender === 'team'
                           ? 'ml-auto bg-primary text-primary-foreground'
                           : 'bg-muted'
                       )}
                     >
+                      {canEdit && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteMessage(msg.id)
+                          }}
+                          className={cn(
+                            "absolute -top-2 p-1 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10",
+                            msg.sender === 'team' ? "-left-2" : "-right-2"
+                          )}
+                          title="Eliminar mensaje"
+                        >
+                          <Trash size={12} weight="bold" />
+                        </button>
+                      )}
                       <p className="text-sm">{msg.content}</p>
+                      {/* Renderizado de imágenes si existen en metadata O en el contenido */}
+                      {(() => {
+                        const data = msg.metadata?.data || msg.metadata || {};
+                        
+                        // 1. Buscar en metadata (lógica existente)
+                        let mediaUrl =
+                          data.media?.links?.download ||
+                          data.media?.url ||
+                          data.mediaUrl ||
+                          (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
+
+                        // 2. Si no hay en metadata, buscar en el contenido del mensaje
+                        if (!mediaUrl && msg.content) {
+                            // Regex simple para buscar URLs
+                            const urlRegex = /(https?:\/\/[^\s]+)/g;
+                            const matches = msg.content.match(urlRegex);
+                            if (matches) {
+                                // Tomamos la última URL encontrada, asumiendo que es la que adjuntamos al final
+                                // O buscamos una que parezca imagen
+                                const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp','.pdf','.csv' ];
+                                const foundUrl = matches.find(url => {
+                                    const lower = url.toLowerCase();
+                                    return imageExtensions.some(ext => lower.includes(ext));
+                                }) || matches[matches.length - 1]; // Fallback a la última URL si no hay extensión obvia
+                                
+                                if (foundUrl) mediaUrl = foundUrl;
+                            }
+                        }
+
+                        if (mediaUrl) {
+                          const lowerUrl = mediaUrl.toLowerCase();
+                          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
+                          const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
+                          
+                          if (isImage) {
+                              return (
+                                <div className="mt-2 rounded-md overflow-hidden">
+                                  <img
+                                    src={mediaUrl}
+                                    alt="Imagen adjunta"
+                                    className="max-w-full h-auto object-cover max-h-60"
+                                    loading="lazy"
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                  />
+                                </div>
+                              );
+                          } else if (isVideo) {
+                              return (
+                                <div className="mt-2 rounded-md overflow-hidden">
+                                  <video 
+                                    src={mediaUrl} 
+                                    controls 
+                                    className="max-w-full h-auto max-h-60"
+                                  />
+                                </div>
+                              );
+                          } else {
+                              // Intentar adivinar el nombre del archivo
+                              const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
+                              const isPdf = lowerUrl.includes('.pdf');
+
+                              return (
+                                  <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
+                                      <div className="bg-background p-2 rounded-md text-primary shadow-sm">
+                                        {isPdf ? <FilePdf size={24} weight="duotone" /> : <File size={24} weight="duotone" />}
+                                      </div>
+                                      <div className="flex-1 min-w-0 overflow-hidden">
+                                        <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
+                                        <a 
+                                            href={mediaUrl} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                                        >
+                                            Abrir en nueva pestaña
+                                        </a>
+                                      </div>
+                                      <a 
+                                        href={mediaUrl} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer" 
+                                        className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
+                                        title="Descargar"
+                                        download
+                                      >
+                                          <DownloadSimple size={20} />
+                                      </a>
+                                  </div>
+                              )
+                          }
+                        }
+                        return null;
+                      })()}
                       <p className="text-xs opacity-70 mt-1">
-                        {format(new Date(msg.timestamp), 'h:mm a')}
+                        {formatSafeDate(msg.timestamp, 'h:mm a')}
                       </p>
                     </div>
                   ))}
+                <div ref={messagesEndRef} />
                 {leadMessages.filter(m => m.channel === selectedChannel).length === 0 && (
                   <p className="text-center text-muted-foreground text-sm py-8">
                     {t.chat.noMessages}
@@ -596,21 +849,21 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </TabsContent>
         </Tabs>
       </SheetContent>
-      
+
       <AddBudgetDialog
         leadId={lead.id}
         open={showBudgetDialog}
         onClose={() => setShowBudgetDialog(false)}
         onAdd={handleAddBudget}
       />
-      
+
       <AddMeetingDialog
         leadId={lead.id}
         open={showMeetingDialog}
         onClose={() => setShowMeetingDialog(false)}
         onAdd={handleAddMeeting}
       />
-      
+
       {editingBudget && (
         <EditBudgetDialog
           budget={editingBudget}
