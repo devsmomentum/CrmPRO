@@ -188,7 +188,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     if (!messageInput.trim()) return
 
     try {
-      await sendDbMessage(lead.id, messageInput, 'team', selectedChannel)
+      const sentMsg = await sendDbMessage(lead.id, messageInput, 'team', selectedChannel)
+      
+      // Actualización optimista: Agregamos el mensaje a la lista inmediatamente
+      if (sentMsg) {
+        setMessages(prev => {
+          if (prev.find(p => p.id === sentMsg.id)) return prev
+          return [...prev, sentMsg]
+        })
+      }
+
       setMessageInput('')
       toast.success(t.messages.messageSent)
     } catch (e) {
@@ -578,6 +587,30 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                         </button>
                       )}
                       <p className="text-sm">{msg.content}</p>
+                      {/* Renderizado de imágenes si existen en metadata */}
+                      {(() => {
+                        const data = msg.metadata?.data || msg.metadata || {};
+                        // Posibles rutas donde Super API manda la imagen
+                        const mediaUrl = 
+                          data.media?.links?.download || 
+                          data.media?.url || 
+                          data.mediaUrl ||
+                          (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
+
+                        if (mediaUrl) {
+                          return (
+                            <div className="mt-2 rounded-md overflow-hidden">
+                              <img 
+                                src={mediaUrl} 
+                                alt="Imagen adjunta" 
+                                className="max-w-full h-auto object-cover max-h-60" 
+                                loading="lazy"
+                              />
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
                       <p className="text-xs opacity-70 mt-1">
                         {format(new Date(msg.timestamp), 'h:mm a')}
                       </p>

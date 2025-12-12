@@ -17,6 +17,7 @@ export interface Message {
   timestamp: Date
   sender: 'team' | 'lead'
   read: boolean
+  metadata?: any
 }
 
 export interface Task {

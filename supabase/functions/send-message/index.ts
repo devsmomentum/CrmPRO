@@ -48,7 +48,15 @@ serve(async (req) => {
         chatId = `${chatId}@c.us`
       }
 
-      console.log(`Enviando a SuperAPI (${platform}):`, { chatId, message: content })
+      console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
+      console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
+      console.log(`[DEBUG] Final ChatId: '${chatId}'`);
+      console.log(`[DEBUG] Platform: '${platform}'`);
+      console.log(`[DEBUG] Payload:`, JSON.stringify({
+          chatId: chatId,
+          message: content,
+          platform: platform
+      }));
 
       const response = await fetch(SUPER_API_URL, {
             method: 'POST',

@@ -135,8 +135,15 @@ serve(async (req) => {
       console.log("Event Data Keys:", Object.keys(eventData));
 
       // Contenido del mensaje
-      const content = eventData.body ?? payload.body;
+      let content = eventData.body ?? payload.body;
       const externalId = eventData.id ?? payload.id;
+      const media = eventData.media ?? payload.media;
+      const type = eventData.type ?? payload.type;
+
+      // Si no hay texto pero hay media, ponemos un placeholder
+      if (!content && (media || type === 'image' || type === 'video' || type === 'document')) {
+          content = "📷 [Imagen/Archivo Adjunto]";
+      }
 
       // Deduplicación: Verificar si ya existe el mensaje por external_id
       if (externalId) {
