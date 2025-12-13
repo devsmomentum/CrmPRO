@@ -106,3 +106,69 @@ export async function deleteConversation(leadId: string) {
 
   if (error) throw error
 }
+
+// Obtener conteo de mensajes no leídos para múltiples leads
+export async function getUnreadMessagesCount(leadIds: string[]): Promise<Record<string, number>> {
+  if (leadIds.length === 0) return {}
+
+  const { data, error } = await supabase
+    .from('mensajes')
+    .select('lead_id')
+    .in('lead_id', leadIds)
+    .eq('sender', 'lead') // Solo mensajes del lead
+    .eq('read', false)
+
+  if (error) {
+    console.error('[getUnreadMessagesCount] error:', error)
+    return {}
+  }
+
+  // Contar mensajes por lead_id
+  const counts: Record<string, number> = {}
+  data.forEach((msg: any) => {
+    counts[msg.lead_id] = (counts[msg.lead_id] || 0) + 1
+  })
+
+  return counts
+}
+
+// Marcar todos los mensajes de un lead como leídos
+export async function markMessagesAsRead(leadId: string) {
+  const { error } = await supabase
+    .from('mensajes')
+    .update({ read: true })
+    .eq('lead_id', leadId)
+    .eq('sender', 'lead') // Solo marcar mensajes del lead como leídos
+    .eq('read', false)
+
+  if (error) {
+    console.error('[markMessagesAsRead] error:', error)
+    throw error
+  }
+}
+
+// Suscribirse a nuevos mensajes de lead (sender='lead') para toda la empresa
+export function subscribeToAllMessages(callback: (msg: Message) => void) {
+  return supabase
+    .channel('all-messages')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'mensajes'
+      },
+      (payload) => {
+        try {
+          const msg = payload.new as Message
+          // Solo notificar si es mensaje del lead (no del equipo)
+          if (msg.sender === 'lead') {
+            callback(msg)
+          }
+        } catch (e) {
+          console.error('[Realtime] error procesando payload de mensajes:', e, payload)
+        }
+      }
+    )
+    .subscribe()
+}

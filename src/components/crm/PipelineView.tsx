@@ -34,6 +34,7 @@ import { getEquipos } from '@/supabase/services/equipos'
 import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
 import { createEtapa, deleteEtapa } from '@/supabase/helpers/etapas'
+import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } from '@/supabase/services/mensajes'
 
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
@@ -68,12 +69,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
+  const [unreadLeads, setUnreadLeads] = useState<Set<string>>(new Set())
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
   // Viewers ahora pueden crear y editar leads, pero no eliminar ni gestionar pipelines
-  const canEditLeads = true 
+  const canEditLeads = true
 
   // Sincronización en tiempo real de leads
   useLeadsRealtime({
@@ -190,6 +192,40 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           }
         })
         .catch(err => console.error('Error loading pipelines:', err))
+    }
+  }, [companyId])
+
+  // Cargar mensajes no leídos
+  useEffect(() => {
+    if (!companyId || leads.length === 0) return
+
+    const leadIds = leads.map(l => l.id)
+    getUnreadMessagesCount(leadIds)
+      .then(counts => {
+        const unreadSet = new Set<string>()
+        Object.entries(counts).forEach(([leadId, count]) => {
+          if (count > 0) {
+            unreadSet.add(leadId)
+          }
+        })
+        setUnreadLeads(unreadSet)
+      })
+      .catch(err => console.error('Error loading unread messages:', err))
+  }, [companyId, leads])
+
+  // Suscribirse a mensajes nuevos en tiempo real
+  useEffect(() => {
+    if (!companyId) return
+
+    const subscription = subscribeToAllMessages((msg) => {
+      // Agregar lead a la lista de no leídos si el mensaje es del lead
+      if (msg.lead_id && msg.sender === 'lead') {
+        setUnreadLeads(prev => new Set([...prev, msg.lead_id]))
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
     }
   }, [companyId])
 
@@ -538,58 +574,58 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           <div className="flex gap-2">
             {currentPipeline && (
               <>
-            {canEditLeads && (
-              <>
-                {isAdminOrOwner && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="sm">
-                      <Trash className="mr-2" size={20} />
-                      <span className="hidden sm:inline">Eliminar Pipeline</span>
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
-                        Los leads asociados podrían dejar de ser visibles.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                        Eliminar
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                {canEditLeads && (
+                  <>
+                    {isAdminOrOwner && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="destructive" size="sm">
+                            <Trash className="mr-2" size={20} />
+                            <span className="hidden sm:inline">Eliminar Pipeline</span>
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
+                              Los leads asociados podrían dejar de ser visibles.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                            <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                              Eliminar
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                    <AddStageDialog
+                      pipelineType={activePipeline}
+                      currentStagesCount={currentPipeline?.stages.length || 0}
+                      onAdd={handleAddStage}
+                      trigger={
+                        <Button variant="outline" size="sm">
+                          <Plus className="mr-2" size={20} />
+                          <span className="hidden sm:inline">{t.pipeline.addStage}</span>
+                        </Button>
+                      }
+                    />
+                  </>
                 )}
-                <AddStageDialog
-                  pipelineType={activePipeline}
-                  currentStagesCount={currentPipeline?.stages.length || 0}
-                  onAdd={handleAddStage}
-                  trigger={
-                    <Button variant="outline" size="sm">
-                      <Plus className="mr-2" size={20} />
-                      <span className="hidden sm:inline">{t.pipeline.addStage}</span>
-                    </Button>
-                  }
-                />
-              </>
-            )}
-            {canEditLeads && (
-            <AddLeadDialog
-              pipelineType={activePipeline}
-              pipelineId={currentPipeline?.id}
-              stages={currentPipeline?.stages || []}
-              teamMembers={teamMembers}
-              onAdd={handleAddLead}
-              companies={companies}
-              currentUser={user}
-              companyName={currentCompany?.name}
-            />
-            )}
+                {canEditLeads && (
+                  <AddLeadDialog
+                    pipelineType={activePipeline}
+                    pipelineId={currentPipeline?.id}
+                    stages={currentPipeline?.stages || []}
+                    teamMembers={teamMembers}
+                    onAdd={handleAddLead}
+                    companies={companies}
+                    currentUser={user}
+                    companyName={currentCompany?.name}
+                  />
+                )}
               </>
             )}
           </div>
@@ -667,29 +703,29 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                         </Button>
                       )}
                       {canEditLeads && (
-                      <AddLeadDialog
-                        pipelineType={activePipeline}
-                        pipelineId={currentPipeline?.id}
-                        stages={currentPipeline?.stages || []}
-                        teamMembers={teamMembers} // Pasar objetos TeamMember
-                        onAdd={handleAddLead}
-                        defaultStageId={stage.id}
-                        companies={companies}
-                        currentUser={user} // Pasar objeto User
-                        companyName={currentCompany?.name}
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground"
-                            type="button"
-                            title={t.pipeline.addLead}
-                          >
-                            <Plus size={16} />
-                            <span className="sr-only">{t.pipeline.addLead}</span>
-                          </Button>
-                        }
-                      />
+                        <AddLeadDialog
+                          pipelineType={activePipeline}
+                          pipelineId={currentPipeline?.id}
+                          stages={currentPipeline?.stages || []}
+                          teamMembers={teamMembers} // Pasar objetos TeamMember
+                          onAdd={handleAddLead}
+                          defaultStageId={stage.id}
+                          companies={companies}
+                          currentUser={user} // Pasar objeto User
+                          companyName={currentCompany?.name}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground"
+                              type="button"
+                              title={t.pipeline.addLead}
+                            >
+                              <Plus size={16} />
+                              <span className="sr-only">{t.pipeline.addLead}</span>
+                            </Button>
+                          }
+                        />
                       )}
                     </div>
                   </div>
@@ -705,9 +741,14 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                         onClick={() => setSelectedLead(lead)}
                       >
                         <div className="flex items-start justify-between mb-1">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
-                            <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
+                          <div className="flex-1 min-w-0 flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
+                              <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
+                            </div>
+                            {unreadLeads.has(lead.id) && (
+                              <div className="w-2 h-2 rounded-full bg-destructive shrink-0 animate-pulse" title="Mensajes no leídos" />
+                            )}
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -854,7 +895,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 presupuesto: updated.budget,
                 asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
               })
-              
+
               // Actualizamos estado local (aunque el realtime debería hacerlo también)
               setLeads((current) =>
                 (current || []).map(l => l.id === updated.id ? updated : l)
@@ -865,6 +906,15 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               console.error('Error updating lead:', error)
               toast.error('Error al actualizar lead')
             }
+          }}
+          onMarkAsRead={(leadId) => {
+            // Marcar mensajes como leídos y actualizar UI localmente
+            // La actualización en BD se hace dentro de LeadDetailSheet o podríamos llamarla aquí
+            setUnreadLeads(prev => {
+              const newSet = new Set(prev)
+              newSet.delete(leadId)
+              return newSet
+            })
           }}
           teamMembers={teamMembers}
           canEdit={canEditLeads}
