@@ -9,9 +9,10 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   const [pipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
 
   // Generar pipelineData dinámicamente desde los pipelines reales del CRM
+  // Comparamos con pipeline.id ya que los leads almacenan el pipeline_id (UUID)
   const pipelineData = (pipelines || []).map(pipeline => ({
     name: pipeline.name,
-    count: (leads || []).filter(l => l.pipeline === pipeline.type).length
+    count: (leads || []).filter(l => l.pipeline === pipeline.id).length
   }))
 
   const priorityData = [
