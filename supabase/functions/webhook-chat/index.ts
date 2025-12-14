@@ -318,60 +318,103 @@ serve(async (req) => {
             const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
             const timestamp = Date.now().toString().slice(-6);
 
-            // 1. Resolver Empresa Objetivo (Estrategia: Variable de Entorno o Primera Empresa Encontrada)
-            let targetEmpresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
-            let ownerEmail = null;
+            // Leer parámetros de la URL (tienen prioridad sobre secrets)
+            const url = new URL(req.url);
+            const urlEmpresaId = url.searchParams.get("empresa_id");
+            const urlPipelineId = url.searchParams.get("pipeline_id");
+            const urlEtapaId = url.searchParams.get("etapa_id");
 
-            if (!targetEmpresaId) {
-              // Fallback: Buscar la primera empresa creada (útil para setups de un solo tenant)
-              const { data: company, error: companyError } = await supabase
+            // Leer configuración de múltiples empresas desde variable de entorno JSON
+            let empresasConfig: Array<{ empresa_id: string; pipeline_id?: string; etapa_id?: string }> = [];
+
+            // Prioridad 1: Parámetros en la URL
+            if (urlEmpresaId) {
+              console.log(`Usando parámetros de URL - Empresa: ${urlEmpresaId}, Pipeline: ${urlPipelineId || 'auto'}, Etapa: ${urlEtapaId || 'auto'}`);
+              empresasConfig = [{
+                empresa_id: urlEmpresaId,
+                pipeline_id: urlPipelineId || undefined,
+                etapa_id: urlEtapaId || undefined
+              }];
+            }
+            // Prioridad 2: WEBHOOK_EMPRESAS JSON
+            else {
+              try {
+                const configJson = Deno.env.get("WEBHOOK_EMPRESAS");
+                if (configJson) {
+                  empresasConfig = JSON.parse(configJson);
+                  console.log(`Configuradas ${empresasConfig.length} empresas para auto-leads desde WEBHOOK_EMPRESAS`);
+                } else {
+                  // Prioridad 3: Variables individuales (backward compatibility)
+                  const empresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+                  if (empresaId) {
+                    empresasConfig = [{
+                      empresa_id: empresaId,
+                      pipeline_id: Deno.env.get("DEFAULT_PIPELINE_ID") || undefined,
+                      etapa_id: Deno.env.get("DEFAULT_ETAPA_ID") || undefined
+                    }];
+                    console.log(`Usando variables DEFAULT_* - Empresa: ${empresaId}`);
+                  }
+                }
+              } catch (e) {
+                console.error("Error parseando WEBHOOK_EMPRESAS:", e);
+              }
+            }
+
+            // Prioridad 4: Fallback final - buscar primera empresa
+            if (empresasConfig.length === 0) {
+              console.log("No se encontró configuración, buscando primera empresa en BD...");
+              const { data: company } = await supabase
                 .from('empresa')
-                .select('id, usuario_id')
+                .select('id')
                 .limit(1)
                 .maybeSingle();
 
               if (company) {
-                targetEmpresaId = company.id;
-                // Buscar email del dueño para notificar
-                const { data: owner } = await supabase
-                  .from('usuarios')
-                  .select('email')
-                  .eq('id', company.usuario_id)
-                  .single();
-                if (owner) ownerEmail = owner.email;
-              } else {
-                console.error("No se pudo determinar una empresa para asignar el nuevo lead.", companyError);
+                empresasConfig = [{ empresa_id: company.id }];
+                console.log(`Usando empresa fallback: ${company.id}`);
               }
             }
 
-            if (targetEmpresaId) {
-              // 2. Resolver Pipeline y Etapa (prioridad: variables de entorno, luego búsqueda automática)
-              let targetPipelineId: string | null = Deno.env.get("DEFAULT_PIPELINE_ID") || null;
-              let targetEtapaId: string | null = Deno.env.get("DEFAULT_ETAPA_ID") || null;
+            // Iterar por cada empresa configurada
+            for (const config of empresasConfig) {
+              const { empresa_id, pipeline_id, etapa_id } = config;
 
-              console.log(`Variables de entorno - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
+              console.log(`[Empresa ${empresa_id}] Procesando auto-creación de lead...`);
 
-              // Si no hay pipeline configurado, buscar el primero de la empresa
+              // Verificar si ya existe el lead en esta empresa específica
+              const { data: existingLead } = await supabase
+                .from("lead")
+                .select("id")
+                .eq("empresa_id", empresa_id)
+                .ilike("telefono", `%${cleanPhone}%`)
+                .maybeSingle();
+
+              if (existingLead) {
+                console.log(`[Empresa ${empresa_id}] Lead ya existe: ${existingLead.id}`);
+                continue; // Saltar a la siguiente empresa
+              }
+
+              // Determinar pipeline y etapa
+              let targetPipelineId = pipeline_id || null;
+              let targetEtapaId = etapa_id || null;
+
+              // Si no están configurados, buscar automáticamente
               if (!targetPipelineId) {
                 const { data: pipeline } = await supabase
                   .from('pipeline')
                   .select('id')
-                  .eq('empresa_id', targetEmpresaId)
+                  .eq('empresa_id', empresa_id)
                   .order('created_at', { ascending: true })
                   .limit(1)
                   .maybeSingle();
 
                 if (pipeline) {
                   targetPipelineId = pipeline.id;
-                  console.log(`Pipeline encontrado automáticamente: ${targetPipelineId}`);
-                } else {
-                  console.log("No se encontró ningún pipeline para la empresa");
+                  console.log(`[Empresa ${empresa_id}] Pipeline auto-detectado: ${targetPipelineId}`);
                 }
               }
 
-              // Si no hay etapa configurada pero sí hay pipeline, buscar la primera etapa
               if (targetPipelineId && !targetEtapaId) {
-                // Primero intentar encontrar etapa "Inicial", "Nuevo", o "New"
                 const { data: etapa } = await supabase
                   .from('etapas')
                   .select('id, nombre')
@@ -383,9 +426,8 @@ serve(async (req) => {
 
                 if (etapa) {
                   targetEtapaId = etapa.id;
-                  console.log(`Etapa encontrada por nombre (${etapa.nombre}): ${targetEtapaId}`);
+                  console.log(`[Empresa ${empresa_id}] Etapa encontrada: ${etapa.nombre}`);
                 } else {
-                  // Fallback: usar la primera etapa del pipeline ordenada por 'orden'
                   const { data: firstEtapa } = await supabase
                     .from('etapas')
                     .select('id, nombre')
@@ -396,26 +438,24 @@ serve(async (req) => {
 
                   if (firstEtapa) {
                     targetEtapaId = firstEtapa.id;
-                    console.log(`Primera etapa encontrada (${firstEtapa.nombre}): ${targetEtapaId}`);
-                  } else {
-                    console.log("No se encontró ninguna etapa para el pipeline");
+                    console.log(`[Empresa ${empresa_id}] Primera etapa: ${firstEtapa.nombre}`);
                   }
                 }
               }
 
-              console.log(`Final - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
+              console.log(`[Empresa ${empresa_id}] Creando lead - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
 
-              // 3. Crear el Lead
+              // Crear el Lead
               const newLeadPayload = {
-                nombre_completo: `Mensaje Entrante #${timestamp}`,
+                nombre_completo: `Nuevo Lead WhatsApp ${cleanPhone}`,
                 telefono: cleanPhone,
-                empresa_id: targetEmpresaId,
+                empresa_id: empresa_id,
                 pipeline_id: targetPipelineId,
                 etapa_id: targetEtapaId,
                 prioridad: 'medium',
-                empresa: 'WhatsApp',
-                correo_electronico: `lead_${cleanPhone}@whatsapp.placeholder`,
-                asignado_a: '00000000-0000-0000-0000-000000000000' // Asignado a "Todos"
+                empresa: 'WhatsApp Contact',
+                correo_electronico: `${cleanPhone}@unknown.com`,
+                asignado_a: '00000000-0000-0000-0000-000000000000'
               };
 
               const { data: newLead, error: createError } = await supabase
@@ -425,9 +465,9 @@ serve(async (req) => {
                 .single();
 
               if (newLead && !createError) {
-                console.log(`Lead creado automáticamente: ${newLead.id}`);
+                console.log(`[Empresa ${empresa_id}] Lead creado: ${newLead.id}`);
 
-                // 3. Guardar el Mensaje
+                // Guardar el Mensaje
                 await supabase.from("mensajes").insert({
                   lead_id: newLead.id,
                   content: content,
@@ -436,22 +476,10 @@ serve(async (req) => {
                   external_id: externalId,
                   metadata: payload
                 });
-                console.log("Mensaje guardado para el nuevo lead.");
-
-                // 4. Crear Notificación (solo si tenemos email del dueño)
-                if (ownerEmail) {
-                  await supabase.from('notificaciones').insert({
-                    usuario_email: ownerEmail,
-                    type: 'message',
-                    title: 'Nuevo Lead por WhatsApp',
-                    message: `Se ha creado un nuevo lead desde el número +${cleanPhone}: ${content.substring(0, 50)}...`,
-                    data: { lead_id: newLead.id, phone: cleanPhone }
-                  });
-                  console.log(`Notificación enviada a ${ownerEmail}`);
-                }
+                console.log(`[Empresa ${empresa_id}] Mensaje guardado`);
 
               } else {
-                console.error("Error creando nuevo lead:", createError);
+                console.error(`[Empresa ${empresa_id}] Error creando lead:`, createError);
               }
             }
           }
