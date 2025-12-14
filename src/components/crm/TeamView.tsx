@@ -16,6 +16,8 @@ import { addPersonaToPipeline, getPipelinesForPersona } from '@/supabase/helpers
 import { getLeads } from '@/supabase/services/leads'
 import { Input } from '@/components/ui/input'
 import { AllLeadsDialog } from './AllLeadsDialog'
+import { MemberSearchDialog } from './MemberSearchDialog'
+import { TeamManagerDialog } from './TeamManagerDialog'
 
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
 
@@ -309,11 +311,12 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
     }
   }
 
-  const handleCreateEquipo = async () => {
-    if (!newTeamName.trim() || !companyId) return toast.error('Nombre requerido')
+  const handleCreateEquipo = async (nombre?: string) => {
+    const teamName = nombre || newTeamName.trim()
+    if (!teamName || !companyId) return toast.error('Nombre requerido')
     try {
       // Usamos "name" por posible ausencia de columna "nombre" en la tabla real
-      const inserted = await createEquipo({ nombre_equipo: newTeamName.trim(), empresa_id: companyId })
+      const inserted = await createEquipo({ nombre_equipo: teamName, empresa_id: companyId })
       setEquipos((curr) => [inserted as any, ...(curr || [])])
       setNewTeamName('')
       toast.success('Equipo creado y guardado')
@@ -363,31 +366,74 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
 
   return (
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      {/* Barra de herramientas superior */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold">Team</h1>
           <p className="text-muted-foreground text-sm">Manage team members and assignments</p>
-
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            {isAdminOrOwner && (
-              <AddTeamMemberDialog
-                onAdd={handleAddMember}
-                companyId={companyId}
-                onInvitationCreated={() => setRefreshTrigger(prev => prev + 1)}
-              />
-            )}
-          </div>
+
+        {/* Botones principales */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <MemberSearchDialog
+            members={teamMembers}
+            equipos={equipos}
+            onSelectMember={(member) => {
+              // Scroll to member card (podrías implementar esto si quieres)
+              console.log('Selected member:', member)
+            }}
+            onFilterByTeam={(teamId) => setSelectedTeamFilter(teamId)}
+          />
+
+          <TeamManagerDialog
+            equipos={equipos}
+            selectedTeamFilter={selectedTeamFilter}
+            onCreateTeam={async (nombre) => {
+              await handleCreateEquipo(nombre)
+            }}
+            onDeleteTeam={async (id) => {
+              await handleDeleteEquipo(id)
+            }}
+            onSelectFilter={setSelectedTeamFilter}
+            isAdminOrOwner={isAdminOrOwner}
+          />
+
+          {isAdminOrOwner && (
+            <AddTeamMemberDialog
+              onAdd={handleAddMember}
+              companyId={companyId}
+              onInvitationCreated={() => setRefreshTrigger(prev => prev + 1)}
+            />
+          )}
         </div>
       </div>
 
+      {/* Indicador de filtro activo */}
+      {selectedTeamFilter && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="gap-2">
+            <Funnel size={14} />
+            Filtrando por: {selectedTeamFilter === 'no-team' ? 'Sin Equipo' : equipos.find(e => e.id === selectedTeamFilter)?.nombre_equipo || 'Equipo'}
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedTeamFilter(null)}
+            className="h-7"
+          >
+            <XCircle size={14} className="mr-1" />
+            Limpiar filtro
+          </Button>
+        </div>
+      )}
+
+      {/* Vista de equipos mejorada */}
       <div className="rounded-lg border p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Equipos de la empresa</h2>
+          <h2 className="text-lg font-semibold">Equipos</h2>
           <div className="flex gap-2">
             <Button
-              variant={selectedTeamFilter === null ? "secondary" : "ghost"}
+              variant={selectedTeamFilter === null ? "default" : "outline"}
               size="sm"
               onClick={() => setSelectedTeamFilter(null)}
             >
@@ -395,7 +441,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
               Todos
             </Button>
             <Button
-              variant={selectedTeamFilter === 'no-team' ? "secondary" : "ghost"}
+              variant={selectedTeamFilter === 'no-team' ? "default" : "outline"}
               size="sm"
               onClick={() => setSelectedTeamFilter('no-team')}
             >
@@ -404,85 +450,55 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
           </div>
         </div>
 
-        <div className="relative">
-          <MagnifyingGlass className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar equipos..."
-            value={teamSearch}
-            onChange={(e) => setTeamSearch(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-
-        <div className="flex gap-2">
-          {isAdminOrOwner && (
-            <>
-              <Input
-                placeholder="Nombre del equipo"
-                value={newTeamName}
-                onChange={e => {
-                  if (e.target.value.length <= 30) setNewTeamName(e.target.value)
-                }}
-                className="max-w-xs"
-              />
-              <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
-            </>
-          )}
-        </div>
+        {/* Mostrar primeros 4 equipos */}
         <div className="grid gap-2">
-          {(filteredTeams || []).length === 0 && <p className="text-sm text-muted-foreground">No se encontraron equipos</p>}
-          {visibleTeams.map(eq => (
-            <div key={eq.id} className={`flex items-center justify-between border rounded-md p-2 ${selectedTeamFilter === eq.id ? 'bg-muted/50 border-primary' : ''}`}>
-              <div>
-                <div className="font-medium">{eq.nombre_equipo}</div>
-                <div className="text-xs text-muted-foreground">Creado: {new Date(eq.created_at).toLocaleString('es-ES')}</div>
+          {equipos.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No hay equipos creados
+            </p>
+          )}
+          {equipos.slice(0, 4).map(eq => (
+            <div
+              key={eq.id}
+              className={`flex items-center justify-between border rounded-lg p-3 transition-colors ${selectedTeamFilter === eq.id
+                  ? 'bg-muted/50 border-primary'
+                  : 'hover:bg-muted/30'
+                }`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">{eq.nombre_equipo}</div>
+                <div className="text-xs text-muted-foreground">
+                  Creado: {new Date(eq.created_at).toLocaleDateString('es-ES')}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-4">
                 <Button
-                  variant={selectedTeamFilter === eq.id ? "default" : "outline"}
+                  variant={selectedTeamFilter === eq.id ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setSelectedTeamFilter(selectedTeamFilter === eq.id ? null : eq.id)}
-                  title={selectedTeamFilter === eq.id ? "Mostrar todos" : "Ver miembros de este equipo"}
                 >
                   <Funnel size={14} className="mr-1" />
-                  {selectedTeamFilter === eq.id ? "Filtrando" : "Filtrar"}
+                  {selectedTeamFilter === eq.id ? 'Filtrando' : 'Filtrar'}
                 </Button>
-                {isAdminOrOwner && (
-                  <Button variant="outline" size="sm" onClick={() => handleDeleteEquipo(eq.id)}>
-                    <Trash size={14} />
-                  </Button>
-                )}
               </div>
             </div>
           ))}
         </div>
-        {filteredTeams.length > 5 && (
+
+        {/* Botón "Ver más" si hay más de 4 equipos */}
+        {equipos.length > 4 && (
           <Button
-            variant="ghost"
-            className="w-full text-muted-foreground text-sm h-8"
-            onClick={() => setShowAllTeams(!showAllTeams)}
+            variant="outline"
+            className="w-full"
+            onClick={() => {
+              // Trigger para abrir TeamManagerDialog
+              document.querySelector<HTMLButtonElement>('[data-team-manager-trigger]')?.click()
+            }}
           >
-            {showAllTeams ? (
-              <>
-                <CaretUp className="mr-2" /> Ver menos
-              </>
-            ) : (
-              <>
-                <CaretDown className="mr-2" /> Ver {filteredTeams.length - 5} más
-              </>
-            )}
+            <CaretDown className="mr-2" size={16} />
+            Ver {equipos.length - 4} equipos más
           </Button>
         )}
-      </div>
-
-      <div className="relative max-w-md">
-        <MagnifyingGlass className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar miembros por nombre o email..."
-          value={memberSearch}
-          onChange={(e) => setMemberSearch(e.target.value)}
-          className="pl-8"
-        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
