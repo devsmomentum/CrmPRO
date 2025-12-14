@@ -38,6 +38,7 @@ import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } fr
 
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
+import { LeadSearchDialog } from './LeadSearchDialog'
 
 interface User {
   id: string
@@ -572,6 +573,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
           <div className="flex gap-2">
+            {/* Botón de búsqueda de leads */}
+            <LeadSearchDialog
+              leads={leads}
+              onSelectLead={(lead) => setSelectedLead(lead)}
+            />
+
             {currentPipeline && (
               <>
                 {canEditLeads && (
