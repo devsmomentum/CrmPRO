@@ -14,6 +14,7 @@ import { AddPipelineDialog } from './AddPipelineDialog'
 import { RolesManagement } from './RolesManagement'
 import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
+import { IDsViewer } from './IDsViewer'
 
 interface SettingsViewProps {
   currentUserId?: string
@@ -37,7 +38,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
       (current || []).map(a => a.id === id ? { ...a, enabled: !a.enabled } : a)
     )
   }
-  
+
   const handleAddPipeline = (pipeline: Pipeline) => {
     setPipelines((current) => [...(current || []), pipeline])
   }
@@ -57,6 +58,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           {isAdminOrOwner && <TabsTrigger value="roles">Roles</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="automations">Automations</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="integrations">Integrations</TabsTrigger>}
+          {isAdminOrOwner && <TabsTrigger value="ids">IDs</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="companies" className="space-y-4 mt-6">
@@ -117,7 +119,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
                   <Label className="text-sm text-muted-foreground">Stages</Label>
                   <div className="flex flex-wrap gap-2">
                     {pipeline.stages.map(stage => (
-                      <Badge 
+                      <Badge
                         key={stage.id}
                         style={{ backgroundColor: stage.color, color: 'white' }}
                       >
@@ -133,10 +135,10 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           {(pipelines || []).length === 0 && (
             <p className="text-center text-muted-foreground py-12">No pipelines configured</p>
           )}
-          
+
           {isAdminOrOwner && (
-            <AddPipelineDialog 
-              open={showPipelineDialog} 
+            <AddPipelineDialog
+              open={showPipelineDialog}
               onOpenChange={setShowPipelineDialog}
               onAdd={handleAddPipeline}
             />
@@ -166,7 +168,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
                       Trigger: {automation.trigger.replace('_', ' ')}
                     </p>
                   </div>
-                  <Switch 
+                  <Switch
                     checked={automation.enabled}
                     onCheckedChange={() => toggleAutomation(automation.id)}
                   />
@@ -246,8 +248,19 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="ids" className="space-y-4 mt-6">
+          <h2 className="text-xl font-semibold">IDs del Sistema</h2>
+          <p className="text-muted-foreground text-sm">
+            Usa estos IDs para configurar las variables de entorno del webhook de WhatsApp.
+          </p>
+          <IDsViewer
+            empresaId={currentCompanyId}
+            empresaNombre={currentCompany?.name}
+          />
+        </TabsContent>
       </Tabs>
-      
+
       <AddPipelineDialog
         open={showPipelineDialog}
         onClose={() => setShowPipelineDialog(false)}

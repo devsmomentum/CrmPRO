@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Meeting, TeamMember } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
-import { useKV } from '@github/spark/hooks'
+// Eliminamos useKV de Spark para evitar errores 401 Unauthorized
+// import { useKV } from '@github/spark/hooks'
 import { Badge } from '@/components/ui/badge'
 import { X } from '@phosphor-icons/react'
 
@@ -20,8 +21,9 @@ interface AddMeetingDialogProps {
 
 export function AddMeetingDialog({ leadId, open, onClose, onAdd }: AddMeetingDialogProps) {
   const t = useTranslation('es')
-  const [teamMembers] = useKV<TeamMember[]>('team-members', [])
-  
+  // Usamos estado local en lugar de useKV para evitar errores 401
+  const [teamMembers] = useState<TeamMember[]>([])
+
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
   const [duration, setDuration] = useState(30)

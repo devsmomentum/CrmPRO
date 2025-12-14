@@ -94,7 +94,7 @@ serve(async (req) => {
         console.log(`Received: '${receivedSignature}'`);
         console.log(`Calculated: '${hashHex}'`);
         console.log(`Secret Token Length: ${secretToken.length}`);
-        
+
         // --- DEBUG MODE: IGNORAMOS EL ERROR DE FIRMA TEMPORALMENTE ---
         console.log("⚠️ IGNORING SIGNATURE ERROR FOR DEBUGGING TO TEST LOGIC ⚠️");
         /*
@@ -124,19 +124,19 @@ serve(async (req) => {
       const eventData =
         typeof eventDataRaw === "string"
           ? (() => {
-              try {
-                return JSON.parse(eventDataRaw);
-              } catch (_) {
-                return {};
-              }
-            })()
+            try {
+              return JSON.parse(eventDataRaw);
+            } catch (_) {
+              return {};
+            }
+          })()
           : eventDataRaw;
 
       console.log("Event Data Keys:", Object.keys(eventData));
 
       // 1. Intentamos sacar el texto normal
       let content = eventData.body ?? payload.body ?? eventData.text ?? payload.text;
-      
+
       const externalId = eventData.id ?? payload.id;
       const media = eventData.media ?? payload.media;
       const type = eventData.type ?? payload.type; // image, video, audio, etc.
@@ -146,49 +146,49 @@ serve(async (req) => {
       let mediaUrl = null;
 
       if (typeof media === 'string' && media.startsWith('http')) {
-          mediaUrl = media; // A veces 'media' es directamente la URL
+        mediaUrl = media; // A veces 'media' es directamente la URL
       } else if (typeof media === 'object') {
-          // Buscamos en todas las posibles ubicaciones conocidas
-          mediaUrl = media.url || 
-                     media.link || 
-                     media.file || 
-                     (media.links && media.links.download) || 
-                     null;
+        // Buscamos en todas las posibles ubicaciones conocidas
+        mediaUrl = media.url ||
+          media.link ||
+          media.file ||
+          (media.links && media.links.download) ||
+          null;
       }
-      
+
       // Si la API lo manda en el root (ej: payload.mediaUrl)
       if (!mediaUrl) {
-          mediaUrl = eventData.mediaUrl || 
-                     payload.mediaUrl || 
-                     eventData.fileUrl || 
-                     payload.fileUrl ||
-                     eventData.url ||
-                     payload.url;
+        mediaUrl = eventData.mediaUrl ||
+          payload.mediaUrl ||
+          eventData.fileUrl ||
+          payload.fileUrl ||
+          eventData.url ||
+          payload.url;
       }
 
       // Si el 'body' o 'content' es una URL y el tipo es media, úsalo como mediaUrl
       if (!mediaUrl && content && typeof content === 'string' && content.startsWith('http')) {
-          const isMedia = type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt';
-          if (isMedia) {
-              mediaUrl = content;
-          }
+        const isMedia = type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt';
+        if (isMedia) {
+          mediaUrl = content;
+        }
       }
 
       // 3. Decidimos qué guardar en la base de datos
       if (mediaUrl) {
-          // Si encontramos una URL, la guardamos.
-          // Si venía texto acompañado de foto (caption), lo juntamos.
-          if (content) {
-              content = `${content} \n ${mediaUrl}`;
-          } else {
-              content = mediaUrl; // Guardamos solo el link
-          }
+        // Si encontramos una URL, la guardamos.
+        // Si venía texto acompañado de foto (caption), lo juntamos.
+        if (content) {
+          content = `${content} \n ${mediaUrl}`;
+        } else {
+          content = mediaUrl; // Guardamos solo el link
+        }
       } else {
-          // Si NO hay URL pero detectamos que es un archivo, mantenemos el placeholder
-          // para saber que llegó algo aunque no tengamos el link.
-          if (!content && (media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
-              content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
-          }
+        // Si NO hay URL pero detectamos que es un archivo, mantenemos el placeholder
+        // para saber que llegó algo aunque no tengamos el link.
+        if (!content && (media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
+          content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
+        }
       }
 
       // Deduplicación: Verificar si ya existe el mensaje por external_id
@@ -198,7 +198,7 @@ serve(async (req) => {
           .select("id")
           .eq("external_id", externalId)
           .maybeSingle();
-        
+
         if (existing) {
           console.log(`Mensaje ${externalId} ya existe. Ignorando.`);
           return new Response(JSON.stringify({ success: true, message: "Duplicate" }), {
@@ -210,7 +210,7 @@ serve(async (req) => {
 
       // Candidatos para buscar el lead
       const phoneCandidates = [] as { phone?: string | null; senderRole: "lead" | "team" }[];
-      
+
       // Extraer posibles teléfonos
       const pTo = eventData.to ?? payload.to;
       const pFrom = eventData.from ?? payload.from;
@@ -232,12 +232,12 @@ serve(async (req) => {
         if (pConversationId) phoneCandidates.push({ phone: pConversationId, senderRole: "team" });
         // A veces en message_create (fromMe=true), el 'to' es el lead.
       }
-      
+
       // Mensaje entrante (Lead -> Team)
       // El lead es el remitente
       // Nota: Si es ai_response, 'from' suele ser el bot, así que no lo agregamos como candidato 'lead'
       if (payload.event !== "ai_response") {
-         if (pFrom) phoneCandidates.push({ phone: pFrom, senderRole: "lead" });
+        if (pFrom) phoneCandidates.push({ phone: pFrom, senderRole: "lead" });
       }
 
       console.log("Phone Candidates:", phoneCandidates);
@@ -256,41 +256,207 @@ serve(async (req) => {
             .trim();
           if (!cleanPhone) continue;
 
-          // Buscamos TODOS los leads que coincidan con el teléfono (para soportar múltiples empresas)
+          // 1. Primero determinamos la empresa target (igual lógica que después)
+          let targetEmpresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+
+          if (!targetEmpresaId) {
+            // Fallback: Buscar la primera empresa
+            const { data: company } = await supabase
+              .from('empresa')
+              .select('id')
+              .limit(1)
+              .maybeSingle();
+            if (company) targetEmpresaId = company.id;
+          }
+
+          // 2. Buscar lead SOLO en la empresa target (no en todas las empresas)
+          // Esto permite que el mismo número tenga leads independientes en diferentes empresas
           const { data: leads, error } = await supabase
             .from("lead")
             .select("id, empresa_id")
+            .eq("empresa_id", targetEmpresaId || "") // Filtrar por empresa específica
             .ilike("telefono", `%${cleanPhone}%`);
 
           if (!error && leads && leads.length > 0) {
-            console.log(`Encontrados ${leads.length} leads para el teléfono ${cleanPhone}`);
-            
+            console.log(`Lead encontrado en empresa ${targetEmpresaId}: ${leads.length} leads`);
+
             for (const lead of leads) {
-              // Insertamos el mensaje para CADA lead encontrado
-              // Así, si el mismo número está en varias empresas, todas reciben el mensaje
+              // Insertamos el mensaje para CADA lead encontrado en esta empresa
               await supabase.from("mensajes").insert({
                 lead_id: lead.id,
                 content: content,
                 sender: senderRole,
                 channel: "whatsapp",
-                external_id: externalId, // Nota: external_id se repetirá en la tabla, pero lead_id es distinto
-                metadata: payload 
+                external_id: externalId,
+                metadata: payload
               });
               console.log(`Mensaje guardado para lead ${lead.id} (Empresa: ${lead.empresa_id})`);
             }
-            
+
             matched = true;
-            break; 
+            break; // Encontramos y guardamos, salimos del loop
           } else {
-            console.log(`Lead no encontrado para teléfono: ${cleanPhone}`);
+            console.log(`Lead no encontrado en empresa ${targetEmpresaId} para teléfono: ${cleanPhone}`);
           }
         }
+
         if (!matched) {
-            console.log("No se encontró lead para ninguno de los candidatos.");
+          console.log("No se encontró lead para ninguno de los candidatos. Intentando creación automática...");
+
+          // Solo creamos lead si el mensaje viene del cliente (role 'lead')
+          // Fallback: si no hay candidato 'lead', usamos cualquier teléfono disponible
+          let inboundCandidate = phoneCandidates.find(c => c.senderRole === 'lead' && c.phone);
+
+          if (!inboundCandidate) {
+            // Fallback: usar cualquier candidato con teléfono
+            inboundCandidate = phoneCandidates.find(c => c.phone);
+            console.log("Usando fallback: cualquier candidato con teléfono");
+          }
+
+          if (inboundCandidate && inboundCandidate.phone) {
+            const targetPhone = inboundCandidate.phone;
+            const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
+            const timestamp = Date.now().toString().slice(-6);
+
+            // 1. Resolver Empresa Objetivo (Estrategia: Variable de Entorno o Primera Empresa Encontrada)
+            let targetEmpresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+            let ownerEmail = null;
+
+            if (!targetEmpresaId) {
+              // Fallback: Buscar la primera empresa creada (útil para setups de un solo tenant)
+              const { data: company, error: companyError } = await supabase
+                .from('empresa')
+                .select('id, usuario_id')
+                .limit(1)
+                .maybeSingle();
+
+              if (company) {
+                targetEmpresaId = company.id;
+                // Buscar email del dueño para notificar
+                const { data: owner } = await supabase
+                  .from('usuarios')
+                  .select('email')
+                  .eq('id', company.usuario_id)
+                  .single();
+                if (owner) ownerEmail = owner.email;
+              } else {
+                console.error("No se pudo determinar una empresa para asignar el nuevo lead.", companyError);
+              }
+            }
+
+            if (targetEmpresaId) {
+              // 2. Resolver Pipeline y Etapa (prioridad: variables de entorno, luego búsqueda automática)
+              let targetPipelineId: string | null = Deno.env.get("DEFAULT_PIPELINE_ID") || null;
+              let targetEtapaId: string | null = Deno.env.get("DEFAULT_ETAPA_ID") || null;
+
+              console.log(`Variables de entorno - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
+
+              // Si no hay pipeline configurado, buscar el primero de la empresa
+              if (!targetPipelineId) {
+                const { data: pipeline } = await supabase
+                  .from('pipeline')
+                  .select('id')
+                  .eq('empresa_id', targetEmpresaId)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (pipeline) {
+                  targetPipelineId = pipeline.id;
+                  console.log(`Pipeline encontrado automáticamente: ${targetPipelineId}`);
+                } else {
+                  console.log("No se encontró ningún pipeline para la empresa");
+                }
+              }
+
+              // Si no hay etapa configurada pero sí hay pipeline, buscar la primera etapa
+              if (targetPipelineId && !targetEtapaId) {
+                // Primero intentar encontrar etapa "Inicial", "Nuevo", o "New"
+                const { data: etapa } = await supabase
+                  .from('etapas')
+                  .select('id, nombre')
+                  .eq('pipeline_id', targetPipelineId)
+                  .or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%')
+                  .order('orden', { ascending: true, nullsFirst: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (etapa) {
+                  targetEtapaId = etapa.id;
+                  console.log(`Etapa encontrada por nombre (${etapa.nombre}): ${targetEtapaId}`);
+                } else {
+                  // Fallback: usar la primera etapa del pipeline ordenada por 'orden'
+                  const { data: firstEtapa } = await supabase
+                    .from('etapas')
+                    .select('id, nombre')
+                    .eq('pipeline_id', targetPipelineId)
+                    .order('orden', { ascending: true, nullsFirst: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                  if (firstEtapa) {
+                    targetEtapaId = firstEtapa.id;
+                    console.log(`Primera etapa encontrada (${firstEtapa.nombre}): ${targetEtapaId}`);
+                  } else {
+                    console.log("No se encontró ninguna etapa para el pipeline");
+                  }
+                }
+              }
+
+              console.log(`Final - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
+
+              // 3. Crear el Lead
+              const newLeadPayload = {
+                nombre_completo: `Mensaje Entrante #${timestamp}`,
+                telefono: cleanPhone,
+                empresa_id: targetEmpresaId,
+                pipeline_id: targetPipelineId,
+                etapa_id: targetEtapaId,
+                prioridad: 'medium',
+                empresa: 'WhatsApp',
+                correo_electronico: `lead_${cleanPhone}@whatsapp.placeholder`,
+                asignado_a: '00000000-0000-0000-0000-000000000000' // Asignado a "Todos"
+              };
+
+              const { data: newLead, error: createError } = await supabase
+                .from('lead')
+                .insert(newLeadPayload)
+                .select()
+                .single();
+
+              if (newLead && !createError) {
+                console.log(`Lead creado automáticamente: ${newLead.id}`);
+
+                // 3. Guardar el Mensaje
+                await supabase.from("mensajes").insert({
+                  lead_id: newLead.id,
+                  content: content,
+                  sender: 'lead',
+                  channel: "whatsapp",
+                  external_id: externalId,
+                  metadata: payload
+                });
+                console.log("Mensaje guardado para el nuevo lead.");
+
+                // 4. Crear Notificación (solo si tenemos email del dueño)
+                if (ownerEmail) {
+                  await supabase.from('notificaciones').insert({
+                    usuario_email: ownerEmail,
+                    type: 'message',
+                    title: 'Nuevo Lead por WhatsApp',
+                    message: `Se ha creado un nuevo lead desde el número +${cleanPhone}: ${content.substring(0, 50)}...`,
+                    data: { lead_id: newLead.id, phone: cleanPhone }
+                  });
+                  console.log(`Notificación enviada a ${ownerEmail}`);
+                }
+
+              } else {
+                console.error("Error creando nuevo lead:", createError);
+              }
+            }
+          }
         }
-      } else {
-          console.log("No content found in payload.");
-      }
+      } // Cierre del if (content)
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -303,7 +469,7 @@ serve(async (req) => {
       status: 405,
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error processing webhook:", error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
