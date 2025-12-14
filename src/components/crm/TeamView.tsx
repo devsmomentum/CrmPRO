@@ -15,6 +15,7 @@ import { getPipelines } from '@/supabase/helpers/pipeline'
 import { addPersonaToPipeline, getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
 import { getLeads } from '@/supabase/services/leads'
 import { Input } from '@/components/ui/input'
+import { AllLeadsDialog } from './AllLeadsDialog'
 
 type Equipo = { id: string; nombre_equipo: string; empresa_id: string; created_at: string }
 
@@ -94,7 +95,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         }))
         setLeads(mappedLeads)
       })
-        .catch(err => console.error('[TeamView] Error loading leads:', err))
+      .catch(err => console.error('[TeamView] Error loading leads:', err))
   }, [companyId])
 
   useEffect(() => {
@@ -155,8 +156,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
 
             // Buscar rol en empresa_miembros
             // Intentamos coincidir por usuario_id si existe, o por email
-            const memberInfo = companyMembers?.find((m: any) => 
-              (p.usuario_id && m.usuario_id === p.usuario_id) || 
+            const memberInfo = companyMembers?.find((m: any) =>
+              (p.usuario_id && m.usuario_id === p.usuario_id) ||
               (m.email && p.email && m.email.toLowerCase() === p.email.toLowerCase())
             )
 
@@ -271,7 +272,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
       toast.error('No tienes permisos para eliminar miembros')
       return
     }
-    
+
     const member: any = (teamMembers || []).find(m => m.id === memberId)
     if (!member) return
 
@@ -300,7 +301,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         await deletePersona(memberId)
         toast.success('Miembro eliminado de la base de datos')
       }
-      
+
       setTeamMembers((current) => (current || []).filter(m => m.id !== memberId))
     } catch (e: any) {
       console.error('[TeamView] error eliminando persona', e)
@@ -333,7 +334,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
     }
   }
 
-  const filteredTeams = (equipos || []).filter(eq => 
+  const filteredTeams = (equipos || []).filter(eq =>
     eq.nombre_equipo.toLowerCase().includes(teamSearch.toLowerCase())
   )
   const visibleTeams = showAllTeams ? filteredTeams : filteredTeams.slice(0, 5)
@@ -347,7 +348,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         if (member.teamId !== selectedTeamFilter) return false
       }
     }
-    
+
     // Filter by search
     if (memberSearch) {
       const searchLower = memberSearch.toLowerCase()
@@ -416,13 +417,13 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         <div className="flex gap-2">
           {isAdminOrOwner && (
             <>
-              <Input 
-                placeholder="Nombre del equipo" 
-                value={newTeamName} 
+              <Input
+                placeholder="Nombre del equipo"
+                value={newTeamName}
                 onChange={e => {
                   if (e.target.value.length <= 30) setNewTeamName(e.target.value)
-                }} 
-                className="max-w-xs" 
+                }}
+                className="max-w-xs"
               />
               <Button onClick={handleCreateEquipo}>Crear Equipo</Button>
             </>
@@ -456,9 +457,9 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
           ))}
         </div>
         {filteredTeams.length > 5 && (
-          <Button 
-            variant="ghost" 
-            className="w-full text-muted-foreground text-sm h-8" 
+          <Button
+            variant="ghost"
+            className="w-full text-muted-foreground text-sm h-8"
             onClick={() => setShowAllTeams(!showAllTeams)}
           >
             {showAllTeams ? (
@@ -577,36 +578,30 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                     </div>
                   )}
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Active Tasks</span>
+                    <span className="text-muted-foreground font-medium">Tareas Activas</span>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{getAssignedLeadsCount(member.id, (member as any).status)}</Badge>
+                      <Badge variant="secondary" className="text-sm font-semibold px-2 py-0.5">
+                        {getAssignedLeadsCount(member.id, (member as any).status)}
+                      </Badge>
                       {getAssignedLeadsCount(member.id, (member as any).status) > 0 && (
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 hover:bg-muted">
-                              <Info size={14} className="text-muted-foreground" />
+                        <AllLeadsDialog
+                          memberName={member.name}
+                          leads={(leads || []).filter(l => {
+                            if (l.assignedTo === member.id) return true
+                            if ((member as any).status !== 'pending' && (l.assignedTo === NIL_UUID || l.assignedTo === 'todos')) return true
+                            return false
+                          })}
+                          onLeadClick={(leadId) => {
+                            // Navegar al detalle del lead
+                            console.log('Navegando al lead:', leadId)
+                            // Aquí puedes agregar lógica de navegación
+                          }}
+                          trigger={
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-muted rounded-full cursor-pointer">
+                              <Info size={16} className="text-muted-foreground" />
                             </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-60" align="end">
-                            <div className="space-y-2">
-                              <h4 className="font-medium text-sm">Leads Asignados</h4>
-                              <div className="grid gap-1">
-                                {(leads || []).filter(l => {
-                                  if (l.assignedTo === member.id) return true
-                                  if ((member as any).status !== 'pending' && (l.assignedTo === NIL_UUID || l.assignedTo === 'todos')) return true
-                                  return false
-                                }).map(lead => (
-                                  <div key={lead.id} className="text-sm flex items-center gap-2">
-                                    <div className={`w-2 h-2 rounded-full ${lead.priority === 'high' ? 'bg-red-500' :
-                                      lead.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
-                                      }`} />
-                                    <span className="truncate">{lead.name}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
+                          }
+                        />
                       )}
                     </div>
                   </div>
