@@ -112,7 +112,7 @@ serve(async (req) => {
 
       // 2. Convertimos el texto a JSON para leer los datos
       const payload = JSON.parse(bodyText);
-      console.log("Webhook payload:", payload);
+      console.log("📦 [WEBHOOK] Webhook payload completo:", JSON.stringify(payload, null, 2));
 
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL") ?? "",
@@ -132,28 +132,69 @@ serve(async (req) => {
           })()
           : eventDataRaw;
 
-      console.log("Event Data Keys:", Object.keys(eventData));
+      console.log("📦 [WEBHOOK] Event Data Keys:", Object.keys(eventData));
 
       // 1. Intentamos sacar el texto normal
       let content = eventData.body ?? payload.body ?? eventData.text ?? payload.text;
 
       const externalId = eventData.id ?? payload.id;
+
+      // Super API usa 'file' en lugar de 'media'
+      const file = eventData.file ?? payload.file;
       const media = eventData.media ?? payload.media;
       const type = eventData.type ?? payload.type; // image, video, audio, etc.
 
-      // 2. Intentamos buscar la URL del archivo multimedia
-      // Nota: Diferentes APIs ponen la URL en sitios distintos. Probamos los más comunes.
-      let mediaUrl = null;
+      // Log detallado para debugging de Super API
+      console.log("📦 [WEBHOOK] Campos extraídos:", {
+        content,
+        externalId,
+        type,
+        hasFile: !!file,
+        hasMedia: !!media,
+        fileKeys: file ? Object.keys(file) : [],
+        mediaType: typeof media
+      });
 
-      if (typeof media === 'string' && media.startsWith('http')) {
+      // 2. Intentamos buscar la URL del archivo multimedia
+      // SUPER API usa la estructura 'file' con downloadUrl
+      let mediaUrl = null;
+      let mediaId = null;
+      let fileName = null;
+
+      // Prioridad 1: Super API file structure
+      if (file) {
+        mediaUrl = file.downloadUrl || file.url;
+        fileName = file.fileName;
+        console.log("✅ [WEBHOOK] File de Super API encontrado:", {
+          downloadUrl: file.downloadUrl,
+          fileName: file.fileName,
+          mimeType: file.mimeType
+        });
+      }
+
+
+      // Prioridad 2: Estructura genérica 'media'
+      if (!mediaUrl && typeof media === 'string' && media.startsWith('http')) {
         mediaUrl = media; // A veces 'media' es directamente la URL
+        console.log("📦 [WEBHOOK] Media es una URL directa:", mediaUrl);
       } else if (typeof media === 'object') {
         // Buscamos en todas las posibles ubicaciones conocidas
         mediaUrl = media.url ||
           media.link ||
           media.file ||
+          media.publicUrl ||
+          media.downloadUrl ||
           (media.links && media.links.download) ||
           null;
+
+        // Guardar el media ID si existe (común en WhatsApp Business API)
+        mediaId = media.id || media.mediaId || null;
+
+        console.log("📦 [WEBHOOK] Media object:", {
+          mediaUrl,
+          mediaId,
+          mediaKeys: Object.keys(media)
+        });
       }
 
       // Si la API lo manda en el root (ej: payload.mediaUrl)
@@ -163,8 +204,12 @@ serve(async (req) => {
           eventData.fileUrl ||
           payload.fileUrl ||
           eventData.url ||
-          payload.url;
+          payload.url ||
+          eventData.publicUrl ||
+          payload.publicUrl;
       }
+
+      console.log("📦 [WEBHOOK] URL final extraída:", mediaUrl);
 
       // Si el 'body' o 'content' es una URL y el tipo es media, úsalo como mediaUrl
       if (!mediaUrl && content && typeof content === 'string' && content.startsWith('http')) {
@@ -183,11 +228,15 @@ serve(async (req) => {
         } else {
           content = mediaUrl; // Guardamos solo el link
         }
+        console.log("✅ [WEBHOOK] Se guardará la URL en content:", content);
       } else {
         // Si NO hay URL pero detectamos que es un archivo, mantenemos el placeholder
         // para saber que llegó algo aunque no tengamos el link.
-        if (!content && (media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
+        if (!content && (file || media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
           content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
+          console.warn("⚠️ [WEBHOOK] No se encontró URL para tipo:", type);
+          console.warn("⚠️ [WEBHOOK] File completo:", JSON.stringify(file, null, 2));
+          console.warn("⚠️ [WEBHOOK] Media completo:", JSON.stringify(media, null, 2));
         }
       }
 
@@ -281,6 +330,21 @@ serve(async (req) => {
             console.log(`Lead encontrado en empresa ${targetEmpresaId}: ${leads.length} leads`);
 
             for (const lead of leads) {
+              // Crear metadata normalizada para preservar toda la información
+              const normalizedMetadata = {
+                type: type,
+                rawPayload: payload,
+                data: {
+                  type: type,
+                  body: eventData.body || payload.body,
+                  file: file,  // Super API file object
+                  media: media,
+                  mediaUrl: mediaUrl,
+                  mediaId: mediaId,
+                  fileName: fileName
+                }
+              };
+
               // Insertamos el mensaje para CADA lead encontrado en esta empresa
               await supabase.from("mensajes").insert({
                 lead_id: lead.id,
@@ -288,9 +352,9 @@ serve(async (req) => {
                 sender: senderRole,
                 channel: "whatsapp",
                 external_id: externalId,
-                metadata: payload
+                metadata: normalizedMetadata
               });
-              console.log(`Mensaje guardado para lead ${lead.id} (Empresa: ${lead.empresa_id})`);
+              console.log(`✅ Mensaje guardado para lead ${lead.id} con metadata normalizada`);
             }
 
             matched = true;
@@ -467,6 +531,21 @@ serve(async (req) => {
               if (newLead && !createError) {
                 console.log(`[Empresa ${empresa_id}] Lead creado: ${newLead.id}`);
 
+                // Crear metadata normalizada para preservar toda la información
+                const normalizedMetadata = {
+                  type: type,
+                  rawPayload: payload,
+                  data: {
+                    type: type,
+                    body: eventData.body || payload.body,
+                    file: file,  // Super API file object
+                    media: media,
+                    mediaUrl: mediaUrl,
+                    mediaId: mediaId,
+                    fileName: fileName
+                  }
+                };
+
                 // Guardar el Mensaje
                 await supabase.from("mensajes").insert({
                   lead_id: newLead.id,
@@ -474,9 +553,9 @@ serve(async (req) => {
                   sender: 'lead',
                   channel: "whatsapp",
                   external_id: externalId,
-                  metadata: payload
+                  metadata: normalizedMetadata
                 });
-                console.log(`[Empresa ${empresa_id}] Mensaje guardado`);
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado con metadata normalizada`);
 
               } else {
                 console.error(`[Empresa ${empresa_id}] Error creando lead:`, createError);
