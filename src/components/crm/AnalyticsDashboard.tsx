@@ -1,17 +1,19 @@
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Lead, Task } from '@/lib/types'
+import { Lead, Task, Pipeline } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
 
 export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
+  const [pipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
 
-  const pipelineData = [
-    { name: 'Sales', count: (leads || []).filter(l => l.pipeline === 'sales').length },
-    { name: 'Support', count: (leads || []).filter(l => l.pipeline === 'support').length },
-    { name: 'Admin', count: (leads || []).filter(l => l.pipeline === 'administrative').length }
-  ]
+  // Generar pipelineData dinámicamente desde los pipelines reales del CRM
+  // Comparamos con pipeline.id ya que los leads almacenan el pipeline_id (UUID)
+  const pipelineData = (pipelines || []).map(pipeline => ({
+    name: pipeline.name,
+    count: (leads || []).filter(l => l.pipeline === pipeline.id).length
+  }))
 
   const priorityData = [
     { name: 'High', value: (leads || []).filter(l => l.priority === 'high').length, color: '#ef4444' },

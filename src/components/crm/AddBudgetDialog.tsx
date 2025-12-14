@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useKV } from '@github/spark/hooks'
+// Eliminamos useKV de Spark para evitar errores 401 Unauthorized
+// import { useKV } from '@github/spark/hooks'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,7 +21,8 @@ interface AddBudgetDialogProps {
 
 export function AddBudgetDialog({ leadId, open, onClose, onAdd }: AddBudgetDialogProps) {
   const t = useTranslation('es')
-  const [catalogItems, setCatalogItems] = useKV<Item[]>('catalog-items', [])
+  // Usamos estado local en lugar de useKV para evitar errores 401
+  const [catalogItems, setCatalogItems] = useState<Item[]>([])
   const [name, setName] = useState('')
   const [status, setStatus] = useState<'draft' | 'sent' | 'approved' | 'rejected'>('draft')
   const [items, setItems] = useState<BudgetLineItem[]>([

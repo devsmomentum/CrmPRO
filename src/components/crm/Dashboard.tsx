@@ -90,8 +90,8 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
     <div className="flex-1 overflow-y-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Welcome Back!</h1>
-          <p className="text-muted-foreground mt-1">Here's what's happening today</p>
+          <h1 className="text-3xl font-bold">Bienvenido!</h1>
+          <p className="text-muted-foreground mt-1">Lo que está sucediendo hoy</p>
         </div>
         <div className="flex gap-2">
           <Button onClick={() => setShowVoiceRecorder(true)} variant="outline" size="lg">

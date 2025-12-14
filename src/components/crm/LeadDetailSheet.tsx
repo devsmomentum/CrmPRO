@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
-import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation } from '@/supabase/services/mensajes'
+import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead } from '@/supabase/services/mensajes'
 import {
   PaperPlaneRight,
   Tag as TagIcon,
@@ -66,6 +66,7 @@ interface LeadDetailSheetProps {
   teamMembers?: TeamMember[]
   canEdit?: boolean
   currentUser?: User | null
+  onMarkAsRead?: (leadId: string) => void
 }
 
 // Helper function to safely format dates
@@ -76,7 +77,7 @@ const formatSafeDate = (date: Date | string | null | undefined, formatStr: strin
   return format(dateObj, formatStr)
 }
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
   // Estados locales para evitar errores de autenticación del KV.
@@ -109,6 +110,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       }))
       setMessages(mapped)
       console.log('[Chat] mensajes iniciales cargados:', mapped.length)
+
+      // Marcar mensajes como leídos si hay mensajes no leídos
+      const hasUnread = mapped.some(m => !m.read && m.sender === 'lead')
+      if (hasUnread) {
+        markMessagesAsRead(lead.id)
+          .then(() => {
+            if (onMarkAsRead) onMarkAsRead(lead.id)
+          })
+          .catch(console.error)
+      }
     })
 
     // Subscribe to new messages
@@ -616,7 +627,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                       {/* Renderizado de imágenes si existen en metadata O en el contenido */}
                       {(() => {
                         const data = msg.metadata?.data || msg.metadata || {};
-                        
+
                         // 1. Buscar en metadata (lógica existente)
                         let mediaUrl =
                           data.media?.links?.download ||
@@ -626,82 +637,82 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
                         // 2. Si no hay en metadata, buscar en el contenido del mensaje
                         if (!mediaUrl && msg.content) {
-                            // Regex simple para buscar URLs
-                            const urlRegex = /(https?:\/\/[^\s]+)/g;
-                            const matches = msg.content.match(urlRegex);
-                            if (matches) {
-                                // Tomamos la última URL encontrada, asumiendo que es la que adjuntamos al final
-                                // O buscamos una que parezca imagen
-                                const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp','.pdf','.csv' ];
-                                const foundUrl = matches.find(url => {
-                                    const lower = url.toLowerCase();
-                                    return imageExtensions.some(ext => lower.includes(ext));
-                                }) || matches[matches.length - 1]; // Fallback a la última URL si no hay extensión obvia
-                                
-                                if (foundUrl) mediaUrl = foundUrl;
-                            }
+                          // Regex simple para buscar URLs
+                          const urlRegex = /(https?:\/\/[^\s]+)/g;
+                          const matches = msg.content.match(urlRegex);
+                          if (matches) {
+                            // Tomamos la última URL encontrada, asumiendo que es la que adjuntamos al final
+                            // O buscamos una que parezca imagen
+                            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.csv'];
+                            const foundUrl = matches.find(url => {
+                              const lower = url.toLowerCase();
+                              return imageExtensions.some(ext => lower.includes(ext));
+                            }) || matches[matches.length - 1]; // Fallback a la última URL si no hay extensión obvia
+
+                            if (foundUrl) mediaUrl = foundUrl;
+                          }
                         }
 
                         if (mediaUrl) {
                           const lowerUrl = mediaUrl.toLowerCase();
                           const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
                           const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
-                          
-                          if (isImage) {
-                              return (
-                                <div className="mt-2 rounded-md overflow-hidden">
-                                  <img
-                                    src={mediaUrl}
-                                    alt="Imagen adjunta"
-                                    className="max-w-full h-auto object-cover max-h-60"
-                                    loading="lazy"
-                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                  />
-                                </div>
-                              );
-                          } else if (isVideo) {
-                              return (
-                                <div className="mt-2 rounded-md overflow-hidden">
-                                  <video 
-                                    src={mediaUrl} 
-                                    controls 
-                                    className="max-w-full h-auto max-h-60"
-                                  />
-                                </div>
-                              );
-                          } else {
-                              // Intentar adivinar el nombre del archivo
-                              const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
-                              const isPdf = lowerUrl.includes('.pdf');
 
-                              return (
-                                  <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
-                                      <div className="bg-background p-2 rounded-md text-primary shadow-sm">
-                                        {isPdf ? <FilePdf size={24} weight="duotone" /> : <File size={24} weight="duotone" />}
-                                      </div>
-                                      <div className="flex-1 min-w-0 overflow-hidden">
-                                        <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
-                                        <a 
-                                            href={mediaUrl} 
-                                            target="_blank" 
-                                            rel="noopener noreferrer"
-                                            className="text-xs text-blue-500 hover:underline flex items-center gap-1"
-                                        >
-                                            Abrir en nueva pestaña
-                                        </a>
-                                      </div>
-                                      <a 
-                                        href={mediaUrl} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer" 
-                                        className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
-                                        title="Descargar"
-                                        download
-                                      >
-                                          <DownloadSimple size={20} />
-                                      </a>
-                                  </div>
-                              )
+                          if (isImage) {
+                            return (
+                              <div className="mt-2 rounded-md overflow-hidden">
+                                <img
+                                  src={mediaUrl}
+                                  alt="Imagen adjunta"
+                                  className="max-w-full h-auto object-cover max-h-60"
+                                  loading="lazy"
+                                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                />
+                              </div>
+                            );
+                          } else if (isVideo) {
+                            return (
+                              <div className="mt-2 rounded-md overflow-hidden">
+                                <video
+                                  src={mediaUrl}
+                                  controls
+                                  className="max-w-full h-auto max-h-60"
+                                />
+                              </div>
+                            );
+                          } else {
+                            // Intentar adivinar el nombre del archivo
+                            const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
+                            const isPdf = lowerUrl.includes('.pdf');
+
+                            return (
+                              <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
+                                <div className="bg-background p-2 rounded-md text-primary shadow-sm">
+                                  {isPdf ? <FilePdf size={24} weight="duotone" /> : <File size={24} weight="duotone" />}
+                                </div>
+                                <div className="flex-1 min-w-0 overflow-hidden">
+                                  <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
+                                  <a
+                                    href={mediaUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                                  >
+                                    Abrir en nueva pestaña
+                                  </a>
+                                </div>
+                                <a
+                                  href={mediaUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
+                                  title="Descargar"
+                                  download
+                                >
+                                  <DownloadSimple size={20} />
+                                </a>
+                              </div>
+                            )
                           }
                         }
                         return null;

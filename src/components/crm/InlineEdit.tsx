@@ -18,9 +18,9 @@ interface InlineEditProps {
   min?: number
 }
 
-export function InlineEdit({ 
-  value, 
-  onSave, 
+export function InlineEdit({
+  value,
+  onSave,
   type = 'text',
   className,
   displayClassName,
@@ -31,7 +31,9 @@ export function InlineEdit({
   min
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [editValue, setEditValue] = useState(value.toString())
+  // Manejo seguro de valores null/undefined
+  const safeValue = value ?? (type === 'number' ? 0 : '')
+  const [editValue, setEditValue] = useState(safeValue.toString())
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -56,7 +58,7 @@ export function InlineEdit({
 
 
   const handleCancel = () => {
-    setEditValue(value.toString())
+    setEditValue((value ?? (type === 'number' ? 0 : '')).toString())
     setIsEditing(false)
   }
 
@@ -71,7 +73,7 @@ export function InlineEdit({
 
   if (!isEditing) {
     return (
-      <div 
+      <div
         className={cn(
           'group inline-flex items-center gap-2 cursor-pointer hover:bg-muted/50 rounded px-2 py-1 -mx-2 -my-1 transition-colors',
           displayClassName,
@@ -80,12 +82,12 @@ export function InlineEdit({
         onClick={() => !disabled && setIsEditing(true)}
       >
         <span>
-          {prefix}{value}{suffix}
+          {prefix}{safeValue}{suffix}
         </span>
         {!disabled && (
-          <PencilSimple 
-            size={14} 
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground" 
+          <PencilSimple
+            size={14}
+            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground"
           />
         )}
       </div>
@@ -110,8 +112,8 @@ export function InlineEdit({
           value={editValue}
           onChange={(e) => {
             if (type === 'number' && min !== undefined) {
-               const val = parseFloat(e.target.value)
-               if (!isNaN(val) && val < min) return
+              const val = parseFloat(e.target.value)
+              if (!isNaN(val) && val < min) return
             }
             setEditValue(e.target.value)
           }}
