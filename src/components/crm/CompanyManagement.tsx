@@ -37,6 +37,7 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
   const [newCompanyLogo, setNewCompanyLogo] = useState<string>('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [editingLogoCompanyId, setEditingLogoCompanyId] = useState<string | null>(null)
+  const [viewingLogo, setViewingLogo] = useState<string | null>(null)
 
   const handleCreateCompany = async () => {
     if (!newCompanyName.trim()) {
@@ -78,7 +79,7 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
       setNewCompanyLogo('')
       setShowCreateDialog(false)
       toast.success('¡Empresa creada y guardada en la base de datos!')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[CompanyManagement] Error creando empresa', e)
       toast.error(e.message || 'No se pudo crear la empresa')
     }
@@ -128,7 +129,7 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
         )
         setEditingLogoCompanyId(null)
         toast.success('Logo actualizado y guardado')
-      } catch (err:any) {
+      } catch (err: any) {
         console.error('[CompanyManagement] Error guardando logo en empresa', err)
         toast.error(err.message || 'No se pudo guardar el logo')
       }
@@ -151,7 +152,7 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
         }
       }
       toast.success('Empresa eliminada de la base de datos')
-    } catch (e:any) {
+    } catch (e: any) {
       console.error('[CompanyManagement] Error eliminando empresa', e)
       toast.error(e.message || 'No se pudo eliminar la empresa')
     }
@@ -253,15 +254,20 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
               <CardContent className="p-4">
                 <div className="flex items-center gap-4">
                   <div className="relative">
-                    <Avatar className="h-16 w-16">
-                      {company.logo ? (
-                        <AvatarImage src={company.logo} alt={company.name} />
-                      ) : (
-                        <AvatarFallback>
-                          <Building size={32} />
-                        </AvatarFallback>
-                      )}
-                    </Avatar>
+                    <div
+                      className="h-16 w-16 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => company.logo && setViewingLogo(company.logo)}
+                    >
+                      <Avatar className="h-16 w-16">
+                        {company.logo ? (
+                          <AvatarImage src={company.logo} alt={company.name} />
+                        ) : (
+                          <AvatarFallback>
+                            <Building size={32} />
+                          </AvatarFallback>
+                        )}
+                      </Avatar>
+                    </div>
                     <input
                       type="file"
                       accept="image/*"
@@ -273,8 +279,11 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
                       <Button
                         variant="secondary"
                         size="sm"
-                        className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0"
-                        onClick={() => document.getElementById(`logo-upload-${company.id}`)?.click()}
+                        className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0 z-10"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          document.getElementById(`logo-upload-${company.id}`)?.click()
+                        }}
                       >
                         <Upload size={14} />
                       </Button>
@@ -325,6 +334,31 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
           ))
         )}
       </div>
+
+      {/* Modal de vista previa de logo estilo Instagram */}
+      {viewingLogo && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 cursor-pointer animate-in fade-in duration-200"
+          onClick={() => setViewingLogo(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full h-full flex items-center justify-center">
+            <img
+              src={viewingLogo}
+              alt="Logo preview"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-4 right-4 h-10 w-10 rounded-full bg-black/50 hover:bg-black/70 text-white p-0"
+              onClick={() => setViewingLogo(null)}
+            >
+              ✕
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
