@@ -369,8 +369,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
       {/* Barra de herramientas superior */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-bold">Team</h1>
-          <p className="text-muted-foreground text-sm">Manage team members and assignments</p>
+          <h1 className="text-3xl font-bold">Equipo</h1>
+          <p className="text-muted-foreground text-sm">Gestión de equipos y asignaciones</p>
         </div>
 
         {/* Botones principales */}
@@ -461,8 +461,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
             <div
               key={eq.id}
               className={`flex items-center justify-between border rounded-lg p-3 transition-colors ${selectedTeamFilter === eq.id
-                  ? 'bg-muted/50 border-primary'
-                  : 'hover:bg-muted/30'
+                ? 'bg-muted/50 border-primary'
+                : 'hover:bg-muted/30'
                 }`}
             >
               <div className="flex-1 min-w-0">
