@@ -16,6 +16,7 @@ interface InlineEditProps {
   multiline?: boolean
   disabled?: boolean
   min?: number
+  max?: number
 }
 
 export function InlineEdit({
@@ -28,7 +29,8 @@ export function InlineEdit({
   suffix = '',
   multiline = false,
   disabled = false,
-  min
+  min,
+  max
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false)
   // Manejo seguro de valores null/undefined
@@ -49,6 +51,9 @@ export function InlineEdit({
     const finalValue = type === 'number' ? Number(editValue) : editValue
     if (type === 'number' && min !== undefined && Number(finalValue) < min) {
       return // Do not save if below min
+    }
+    if (type === 'number' && max !== undefined && Number(finalValue) > max) {
+      return // Do not save if above max
     }
     if (finalValue !== value) {
       onSave(finalValue)
@@ -109,11 +114,15 @@ export function InlineEdit({
           ref={inputRef as React.RefObject<HTMLInputElement>}
           type={type}
           min={min}
+          max={max}
           value={editValue}
           onChange={(e) => {
-            if (type === 'number' && min !== undefined) {
+            if (type === 'number') {
               const val = parseFloat(e.target.value)
-              if (!isNaN(val) && val < min) return
+              if (!isNaN(val)) {
+                if (min !== undefined && val < min) return
+                if (max !== undefined && val > max) return
+              }
             }
             setEditValue(e.target.value)
           }}

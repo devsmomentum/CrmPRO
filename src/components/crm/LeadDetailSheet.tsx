@@ -77,6 +77,9 @@ const formatSafeDate = (date: Date | string | null | undefined, formatStr: strin
   return format(dateObj, formatStr)
 }
 
+// Límite máximo de presupuesto: 10 millones de dólares
+const MAX_BUDGET = 10_000_000
+
 export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
@@ -317,13 +320,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   }
 
   const updateField = (field: keyof Lead, value: string | number) => {
-    if (field === 'budget' && typeof value === 'number' && value < 0) {
-      toast.error('El presupuesto no puede ser negativo')
-      return
-    }
-    if (field === 'budget' && typeof value === 'string' && parseFloat(value) < 0) {
-      toast.error('El presupuesto no puede ser negativo')
-      return
+    if (field === 'budget') {
+      const numValue = typeof value === 'number' ? value : parseFloat(value)
+      if (numValue < 0) {
+        toast.error('El presupuesto no puede ser negativo')
+        return
+      }
+      if (numValue > MAX_BUDGET) {
+        toast.error(`El presupuesto no puede superar $${MAX_BUDGET.toLocaleString()}`)
+        return
+      }
     }
 
     onUpdate({ ...lead, [field]: value })
@@ -508,6 +514,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     onSave={(value) => updateField('budget', value)}
                     type="number"
                     min={0}
+                    max={MAX_BUDGET}
                     prefix="$"
                     displayClassName="font-medium text-primary"
                     disabled={!canEdit}
@@ -623,16 +630,93 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                           <Trash size={12} weight="bold" />
                         </button>
                       )}
-                      <p className="text-sm">{msg.content}</p>
-                      {/* Renderizado de imágenes si existen en metadata O en el contenido */}
+                      {/* Contenido del mensaje con indicador de tipo */}
                       {(() => {
                         const data = msg.metadata?.data || msg.metadata || {};
-
-                        // 1. Buscar en metadata (lógica existente)
                         let mediaUrl =
                           data.media?.links?.download ||
                           data.media?.url ||
                           data.mediaUrl ||
+                          (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
+
+                        if (!mediaUrl && msg.content) {
+                          const urlRegex = /(https?:\/\/[^\s]+)/g;
+                          const matches = msg.content.match(urlRegex);
+                          if (matches) {
+                            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.csv', '.mp3', '.wav', '.ogg', '.oga', '.m4a'];
+                            const foundUrl = matches.find(url => {
+                              const lower = url.toLowerCase();
+                              return imageExtensions.some(ext => lower.includes(ext));
+                            }) || matches[matches.length - 1];
+                            if (foundUrl) mediaUrl = foundUrl;
+                          }
+                        }
+
+                        // Determinar el tipo de contenido
+                        let contentType: string | null = null;
+                        let contentIcon: string | null = null;
+                        if (mediaUrl) {
+                          const lowerUrl = mediaUrl.toLowerCase();
+                          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
+                          const isVideo = ['.mp4', '.webm', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
+                          const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
+                            (data.type === 'audio') ||
+                            (data.type === 'ptt');
+                          const isPdf = lowerUrl.includes('.pdf');
+
+                          if (isAudio) {
+                            contentType = data.type === 'ptt' ? 'Nota de voz' : 'Audio';
+                            contentIcon = '🎤';
+                          } else if (isImage) {
+                            contentType = 'Imagen';
+                            contentIcon = '📷';
+                          } else if (isVideo) {
+                            contentType = 'Video';
+                            contentIcon = '🎬';
+                          } else if (isPdf) {
+                            contentType = 'PDF';
+                            contentIcon = '📄';
+                          } else {
+                            contentType = 'Archivo';
+                            contentIcon = '📎';
+                          }
+                        }
+
+                        return (
+                          <div className="space-y-1">
+                            {contentType && (
+                              <div className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-medium">
+                                <span>{contentIcon}</span>
+                                <span>{contentType}</span>
+                              </div>
+                            )}
+                            {msg.content && !msg.content.startsWith('http') && (
+                              <p className="text-sm">{msg.content}</p>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* Renderizado de archivos multimedia */}
+                      {(() => {
+                        const data = msg.metadata?.data || msg.metadata || {};
+
+                        // DEBUG: Ver qué estructura tiene la metadata
+                        if (msg.metadata && !msg.read) {
+                          console.log('[LeadDetailSheet] Metadata:', {
+                            hasData: !!msg.metadata.data,
+                            type: msg.metadata.type || msg.metadata.data?.type,
+                            hasMediaUrl: !!(msg.metadata.data?.mediaUrl),
+                            keys: Object.keys(msg.metadata)
+                          });
+                        }
+
+                        // 1. Buscar en metadata normalizada (nueva estructura)
+                        let mediaUrl =
+                          data.mediaUrl ||  // Campo directo de metadata normalizada
+                          data.media?.links?.download ||
+                          data.media?.url ||
+                          data.media?.publicUrl ||
+                          data.media?.downloadUrl ||
                           (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
 
                         // 2. Si no hay en metadata, buscar en el contenido del mensaje
@@ -657,6 +741,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                           const lowerUrl = mediaUrl.toLowerCase();
                           const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
                           const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
+                          const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
+                            (data.type === 'audio') ||
+                            (data.type === 'ptt'); // WhatsApp voice message
 
                           if (isImage) {
                             return (
@@ -678,6 +765,30 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                                   controls
                                   className="max-w-full h-auto max-h-60"
                                 />
+                              </div>
+                            );
+                          } else if (isAudio) {
+                            // Renderizado especial para audios de WhatsApp
+                            return (
+                              <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full">
+                                <div className="bg-gradient-to-br from-green-500 to-green-600 p-2 rounded-full text-white shadow-sm">
+                                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="currentColor">
+                                    <path d="M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V232a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z"></path>
+                                  </svg>
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-xs text-muted-foreground mb-1">
+                                    {data.type === 'ptt' ? '🎤 Nota de voz' : '🔊 Audio'}
+                                  </p>
+                                  <audio
+                                    src={mediaUrl}
+                                    controls
+                                    className="w-full max-w-sm h-8"
+                                    style={{ maxHeight: '32px' }}
+                                  >
+                                    Tu navegador no soporta reproducción de audio.
+                                  </audio>
+                                </div>
                               </div>
                             );
                           } else {

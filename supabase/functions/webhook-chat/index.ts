@@ -112,7 +112,7 @@ serve(async (req) => {
 
       // 2. Convertimos el texto a JSON para leer los datos
       const payload = JSON.parse(bodyText);
-      console.log("Webhook payload:", payload);
+      console.log("📦 [WEBHOOK] Webhook payload completo:", JSON.stringify(payload, null, 2));
 
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL") ?? "",
@@ -132,28 +132,69 @@ serve(async (req) => {
           })()
           : eventDataRaw;
 
-      console.log("Event Data Keys:", Object.keys(eventData));
+      console.log("📦 [WEBHOOK] Event Data Keys:", Object.keys(eventData));
 
       // 1. Intentamos sacar el texto normal
       let content = eventData.body ?? payload.body ?? eventData.text ?? payload.text;
 
       const externalId = eventData.id ?? payload.id;
+
+      // Super API usa 'file' en lugar de 'media'
+      const file = eventData.file ?? payload.file;
       const media = eventData.media ?? payload.media;
       const type = eventData.type ?? payload.type; // image, video, audio, etc.
 
-      // 2. Intentamos buscar la URL del archivo multimedia
-      // Nota: Diferentes APIs ponen la URL en sitios distintos. Probamos los más comunes.
-      let mediaUrl = null;
+      // Log detallado para debugging de Super API
+      console.log("📦 [WEBHOOK] Campos extraídos:", {
+        content,
+        externalId,
+        type,
+        hasFile: !!file,
+        hasMedia: !!media,
+        fileKeys: file ? Object.keys(file) : [],
+        mediaType: typeof media
+      });
 
-      if (typeof media === 'string' && media.startsWith('http')) {
+      // 2. Intentamos buscar la URL del archivo multimedia
+      // SUPER API usa la estructura 'file' con downloadUrl
+      let mediaUrl = null;
+      let mediaId = null;
+      let fileName = null;
+
+      // Prioridad 1: Super API file structure
+      if (file) {
+        mediaUrl = file.downloadUrl || file.url;
+        fileName = file.fileName;
+        console.log("✅ [WEBHOOK] File de Super API encontrado:", {
+          downloadUrl: file.downloadUrl,
+          fileName: file.fileName,
+          mimeType: file.mimeType
+        });
+      }
+
+
+      // Prioridad 2: Estructura genérica 'media'
+      if (!mediaUrl && typeof media === 'string' && media.startsWith('http')) {
         mediaUrl = media; // A veces 'media' es directamente la URL
+        console.log("📦 [WEBHOOK] Media es una URL directa:", mediaUrl);
       } else if (typeof media === 'object') {
         // Buscamos en todas las posibles ubicaciones conocidas
         mediaUrl = media.url ||
           media.link ||
           media.file ||
+          media.publicUrl ||
+          media.downloadUrl ||
           (media.links && media.links.download) ||
           null;
+
+        // Guardar el media ID si existe (común en WhatsApp Business API)
+        mediaId = media.id || media.mediaId || null;
+
+        console.log("📦 [WEBHOOK] Media object:", {
+          mediaUrl,
+          mediaId,
+          mediaKeys: Object.keys(media)
+        });
       }
 
       // Si la API lo manda en el root (ej: payload.mediaUrl)
@@ -163,8 +204,12 @@ serve(async (req) => {
           eventData.fileUrl ||
           payload.fileUrl ||
           eventData.url ||
-          payload.url;
+          payload.url ||
+          eventData.publicUrl ||
+          payload.publicUrl;
       }
+
+      console.log("📦 [WEBHOOK] URL final extraída:", mediaUrl);
 
       // Si el 'body' o 'content' es una URL y el tipo es media, úsalo como mediaUrl
       if (!mediaUrl && content && typeof content === 'string' && content.startsWith('http')) {
@@ -183,11 +228,15 @@ serve(async (req) => {
         } else {
           content = mediaUrl; // Guardamos solo el link
         }
+        console.log("✅ [WEBHOOK] Se guardará la URL en content:", content);
       } else {
         // Si NO hay URL pero detectamos que es un archivo, mantenemos el placeholder
         // para saber que llegó algo aunque no tengamos el link.
-        if (!content && (media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
+        if (!content && (file || media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
           content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
+          console.warn("⚠️ [WEBHOOK] No se encontró URL para tipo:", type);
+          console.warn("⚠️ [WEBHOOK] File completo:", JSON.stringify(file, null, 2));
+          console.warn("⚠️ [WEBHOOK] Media completo:", JSON.stringify(media, null, 2));
         }
       }
 
@@ -281,6 +330,21 @@ serve(async (req) => {
             console.log(`Lead encontrado en empresa ${targetEmpresaId}: ${leads.length} leads`);
 
             for (const lead of leads) {
+              // Crear metadata normalizada para preservar toda la información
+              const normalizedMetadata = {
+                type: type,
+                rawPayload: payload,
+                data: {
+                  type: type,
+                  body: eventData.body || payload.body,
+                  file: file,  // Super API file object
+                  media: media,
+                  mediaUrl: mediaUrl,
+                  mediaId: mediaId,
+                  fileName: fileName
+                }
+              };
+
               // Insertamos el mensaje para CADA lead encontrado en esta empresa
               await supabase.from("mensajes").insert({
                 lead_id: lead.id,
@@ -288,9 +352,9 @@ serve(async (req) => {
                 sender: senderRole,
                 channel: "whatsapp",
                 external_id: externalId,
-                metadata: payload
+                metadata: normalizedMetadata
               });
-              console.log(`Mensaje guardado para lead ${lead.id} (Empresa: ${lead.empresa_id})`);
+              console.log(`✅ Mensaje guardado para lead ${lead.id} con metadata normalizada`);
             }
 
             matched = true;
@@ -318,60 +382,103 @@ serve(async (req) => {
             const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
             const timestamp = Date.now().toString().slice(-6);
 
-            // 1. Resolver Empresa Objetivo (Estrategia: Variable de Entorno o Primera Empresa Encontrada)
-            let targetEmpresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
-            let ownerEmail = null;
+            // Leer parámetros de la URL (tienen prioridad sobre secrets)
+            const url = new URL(req.url);
+            const urlEmpresaId = url.searchParams.get("empresa_id");
+            const urlPipelineId = url.searchParams.get("pipeline_id");
+            const urlEtapaId = url.searchParams.get("etapa_id");
 
-            if (!targetEmpresaId) {
-              // Fallback: Buscar la primera empresa creada (útil para setups de un solo tenant)
-              const { data: company, error: companyError } = await supabase
+            // Leer configuración de múltiples empresas desde variable de entorno JSON
+            let empresasConfig: Array<{ empresa_id: string; pipeline_id?: string; etapa_id?: string }> = [];
+
+            // Prioridad 1: Parámetros en la URL
+            if (urlEmpresaId) {
+              console.log(`Usando parámetros de URL - Empresa: ${urlEmpresaId}, Pipeline: ${urlPipelineId || 'auto'}, Etapa: ${urlEtapaId || 'auto'}`);
+              empresasConfig = [{
+                empresa_id: urlEmpresaId,
+                pipeline_id: urlPipelineId || undefined,
+                etapa_id: urlEtapaId || undefined
+              }];
+            }
+            // Prioridad 2: WEBHOOK_EMPRESAS JSON
+            else {
+              try {
+                const configJson = Deno.env.get("WEBHOOK_EMPRESAS");
+                if (configJson) {
+                  empresasConfig = JSON.parse(configJson);
+                  console.log(`Configuradas ${empresasConfig.length} empresas para auto-leads desde WEBHOOK_EMPRESAS`);
+                } else {
+                  // Prioridad 3: Variables individuales (backward compatibility)
+                  const empresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+                  if (empresaId) {
+                    empresasConfig = [{
+                      empresa_id: empresaId,
+                      pipeline_id: Deno.env.get("DEFAULT_PIPELINE_ID") || undefined,
+                      etapa_id: Deno.env.get("DEFAULT_ETAPA_ID") || undefined
+                    }];
+                    console.log(`Usando variables DEFAULT_* - Empresa: ${empresaId}`);
+                  }
+                }
+              } catch (e) {
+                console.error("Error parseando WEBHOOK_EMPRESAS:", e);
+              }
+            }
+
+            // Prioridad 4: Fallback final - buscar primera empresa
+            if (empresasConfig.length === 0) {
+              console.log("No se encontró configuración, buscando primera empresa en BD...");
+              const { data: company } = await supabase
                 .from('empresa')
-                .select('id, usuario_id')
+                .select('id')
                 .limit(1)
                 .maybeSingle();
 
               if (company) {
-                targetEmpresaId = company.id;
-                // Buscar email del dueño para notificar
-                const { data: owner } = await supabase
-                  .from('usuarios')
-                  .select('email')
-                  .eq('id', company.usuario_id)
-                  .single();
-                if (owner) ownerEmail = owner.email;
-              } else {
-                console.error("No se pudo determinar una empresa para asignar el nuevo lead.", companyError);
+                empresasConfig = [{ empresa_id: company.id }];
+                console.log(`Usando empresa fallback: ${company.id}`);
               }
             }
 
-            if (targetEmpresaId) {
-              // 2. Resolver Pipeline y Etapa (prioridad: variables de entorno, luego búsqueda automática)
-              let targetPipelineId: string | null = Deno.env.get("DEFAULT_PIPELINE_ID") || null;
-              let targetEtapaId: string | null = Deno.env.get("DEFAULT_ETAPA_ID") || null;
+            // Iterar por cada empresa configurada
+            for (const config of empresasConfig) {
+              const { empresa_id, pipeline_id, etapa_id } = config;
 
-              console.log(`Variables de entorno - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
+              console.log(`[Empresa ${empresa_id}] Procesando auto-creación de lead...`);
 
-              // Si no hay pipeline configurado, buscar el primero de la empresa
+              // Verificar si ya existe el lead en esta empresa específica
+              const { data: existingLead } = await supabase
+                .from("lead")
+                .select("id")
+                .eq("empresa_id", empresa_id)
+                .ilike("telefono", `%${cleanPhone}%`)
+                .maybeSingle();
+
+              if (existingLead) {
+                console.log(`[Empresa ${empresa_id}] Lead ya existe: ${existingLead.id}`);
+                continue; // Saltar a la siguiente empresa
+              }
+
+              // Determinar pipeline y etapa
+              let targetPipelineId = pipeline_id || null;
+              let targetEtapaId = etapa_id || null;
+
+              // Si no están configurados, buscar automáticamente
               if (!targetPipelineId) {
                 const { data: pipeline } = await supabase
                   .from('pipeline')
                   .select('id')
-                  .eq('empresa_id', targetEmpresaId)
+                  .eq('empresa_id', empresa_id)
                   .order('created_at', { ascending: true })
                   .limit(1)
                   .maybeSingle();
 
                 if (pipeline) {
                   targetPipelineId = pipeline.id;
-                  console.log(`Pipeline encontrado automáticamente: ${targetPipelineId}`);
-                } else {
-                  console.log("No se encontró ningún pipeline para la empresa");
+                  console.log(`[Empresa ${empresa_id}] Pipeline auto-detectado: ${targetPipelineId}`);
                 }
               }
 
-              // Si no hay etapa configurada pero sí hay pipeline, buscar la primera etapa
               if (targetPipelineId && !targetEtapaId) {
-                // Primero intentar encontrar etapa "Inicial", "Nuevo", o "New"
                 const { data: etapa } = await supabase
                   .from('etapas')
                   .select('id, nombre')
@@ -383,9 +490,8 @@ serve(async (req) => {
 
                 if (etapa) {
                   targetEtapaId = etapa.id;
-                  console.log(`Etapa encontrada por nombre (${etapa.nombre}): ${targetEtapaId}`);
+                  console.log(`[Empresa ${empresa_id}] Etapa encontrada: ${etapa.nombre}`);
                 } else {
-                  // Fallback: usar la primera etapa del pipeline ordenada por 'orden'
                   const { data: firstEtapa } = await supabase
                     .from('etapas')
                     .select('id, nombre')
@@ -396,26 +502,24 @@ serve(async (req) => {
 
                   if (firstEtapa) {
                     targetEtapaId = firstEtapa.id;
-                    console.log(`Primera etapa encontrada (${firstEtapa.nombre}): ${targetEtapaId}`);
-                  } else {
-                    console.log("No se encontró ninguna etapa para el pipeline");
+                    console.log(`[Empresa ${empresa_id}] Primera etapa: ${firstEtapa.nombre}`);
                   }
                 }
               }
 
-              console.log(`Final - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
+              console.log(`[Empresa ${empresa_id}] Creando lead - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
 
-              // 3. Crear el Lead
+              // Crear el Lead
               const newLeadPayload = {
-                nombre_completo: `Mensaje Entrante #${timestamp}`,
+                nombre_completo: `Nuevo Lead WhatsApp ${cleanPhone}`,
                 telefono: cleanPhone,
-                empresa_id: targetEmpresaId,
+                empresa_id: empresa_id,
                 pipeline_id: targetPipelineId,
                 etapa_id: targetEtapaId,
                 prioridad: 'medium',
-                empresa: 'WhatsApp',
-                correo_electronico: `lead_${cleanPhone}@whatsapp.placeholder`,
-                asignado_a: '00000000-0000-0000-0000-000000000000' // Asignado a "Todos"
+                empresa: 'WhatsApp Contact',
+                correo_electronico: `${cleanPhone}@unknown.com`,
+                asignado_a: '00000000-0000-0000-0000-000000000000'
               };
 
               const { data: newLead, error: createError } = await supabase
@@ -425,33 +529,36 @@ serve(async (req) => {
                 .single();
 
               if (newLead && !createError) {
-                console.log(`Lead creado automáticamente: ${newLead.id}`);
+                console.log(`[Empresa ${empresa_id}] Lead creado: ${newLead.id}`);
 
-                // 3. Guardar el Mensaje
+                // Crear metadata normalizada para preservar toda la información
+                const normalizedMetadata = {
+                  type: type,
+                  rawPayload: payload,
+                  data: {
+                    type: type,
+                    body: eventData.body || payload.body,
+                    file: file,  // Super API file object
+                    media: media,
+                    mediaUrl: mediaUrl,
+                    mediaId: mediaId,
+                    fileName: fileName
+                  }
+                };
+
+                // Guardar el Mensaje
                 await supabase.from("mensajes").insert({
                   lead_id: newLead.id,
                   content: content,
                   sender: 'lead',
                   channel: "whatsapp",
                   external_id: externalId,
-                  metadata: payload
+                  metadata: normalizedMetadata
                 });
-                console.log("Mensaje guardado para el nuevo lead.");
-
-                // 4. Crear Notificación (solo si tenemos email del dueño)
-                if (ownerEmail) {
-                  await supabase.from('notificaciones').insert({
-                    usuario_email: ownerEmail,
-                    type: 'message',
-                    title: 'Nuevo Lead por WhatsApp',
-                    message: `Se ha creado un nuevo lead desde el número +${cleanPhone}: ${content.substring(0, 50)}...`,
-                    data: { lead_id: newLead.id, phone: cleanPhone }
-                  });
-                  console.log(`Notificación enviada a ${ownerEmail}`);
-                }
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado con metadata normalizada`);
 
               } else {
-                console.error("Error creando nuevo lead:", createError);
+                console.error(`[Empresa ${empresa_id}] Error creando lead:`, createError);
               }
             }
           }

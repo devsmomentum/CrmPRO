@@ -193,12 +193,12 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-2" size={20} />
-          Add Member
+          Agregar Miembro
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Team Member</DialogTitle>
+          <DialogTitle>Agregar Miembro al Equipo</DialogTitle>
           <p className="text-sm text-muted-foreground">
             Invita a un usuario existente a tu equipo. Debe tener una cuenta registrada con este email.
           </p>
@@ -330,7 +330,7 @@ export function AddTeamMemberDialog({ onAdd, companyId, onInvitationCreated }: A
             </Popover>
             <p className="text-xs text-muted-foreground mt-1">Opcional: podrás asignar pipelines después desde “Editar miembro”.</p>
           </div>
-          <Button onClick={handleSubmit} className="w-full">Add Team Member</Button>
+          <Button onClick={handleSubmit} className="w-full">Agregar Miembro al Equipo</Button>
         </div>
       </DialogContent>
     </Dialog>

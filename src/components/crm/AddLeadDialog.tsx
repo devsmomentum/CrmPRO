@@ -32,25 +32,28 @@ interface AddLeadDialogProps {
   companyName?: string // nombre de la empresa activa
 }
 
+// Límite máximo de presupuesto: 10 millones de dólares
+const MAX_BUDGET = 10_000_000
+
 export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, onAdd, trigger, defaultStageId, companies = [], currentUser, companyName }: AddLeadDialogProps) {
   const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [localUser] = usePersistentState<User | null>('current-user', null)
-  
+
   // Priorizar currentUser prop, luego localUser.
   // Si no hay usuario, usar un objeto dummy (aunque idealmente siempre debería haber usuario)
   const effectiveUser = currentUser || localUser
-  
+
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [company, setCompany] = useState('')
   const [budget, setBudget] = useState('')
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
-  
+
   // Usar ID para assignedTo
   const [assignedTo, setAssignedTo] = useState(teamMembers[0]?.id || effectiveUser?.id || '')
-  
+
   const firstStageId = stages[0]?.id || ''
   const [stageId, setStageId] = useState(defaultStageId || firstStageId)
 
@@ -146,7 +149,8 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
           foundCompanyInText = true
         } else if (['presupuesto', 'costo', 'valor', 'precio', 'budget'].some(k => key.includes(k))) {
           const num = value.replace(/[^0-9.]/g, '')
-          if (num) newBudget = num
+          const parsed = parseFloat(num)
+          if (num && !isNaN(parsed) && parsed <= MAX_BUDGET) newBudget = num
         } else if (['prioridad', 'priority'].some(k => key.includes(k))) {
           const lowerVal = value.toLowerCase()
           if (lowerVal.includes('alta') || lowerVal.includes('high')) newPriority = 'high'
@@ -164,7 +168,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       }
 
       // 2. Heurísticas para líneas sin formato (Prioridad Baja)
-      
+
       // Email (contiene @ y .)
       if (trimmedLine.includes('@') && trimmedLine.includes('.')) {
         newEmail = trimmedLine
@@ -189,20 +193,21 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       // Teléfono vs Presupuesto
       const digitsOnly = trimmedLine.replace(/[^0-9]/g, '')
       const isCurrencyOrNumber = /^[0-9.,$]+$/.test(trimmedLine)
-      
+
       // Si parece teléfono (tiene +, -, () o empieza con 0/3/5/6 y es largo)
       if (/^[+\d\s()-]+$/.test(trimmedLine) && digitsOnly.length >= 7) {
         // Si tiene formato explícito de teléfono o es muy largo para ser presupuesto simple sin contexto
         if (trimmedLine.includes('-') || trimmedLine.includes('(') || trimmedLine.startsWith('+') || digitsOnly.length > 8) {
-           newPhone = trimmedLine
-           return
+          newPhone = trimmedLine
+          return
         }
       }
 
       // Si es solo números (y no lo capturó el teléfono arriba), asumimos presupuesto
       if (isCurrencyOrNumber) {
         const num = trimmedLine.replace(/[^0-9.]/g, '')
-        if (num && !isNaN(parseFloat(num))) {
+        const parsed = parseFloat(num)
+        if (num && !isNaN(parsed) && parsed <= MAX_BUDGET) {
           newBudget = num
           return
         }
@@ -231,7 +236,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     setBudget(newBudget)
     setPriority(newPriority)
     setAssignedTo(newAssignedTo)
-    
+
     setActiveTab('manual')
     toast.success('Datos procesados. Por favor verifica la información.')
   }
@@ -301,7 +306,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         <DialogHeader>
           <DialogTitle>{t.pipeline.addLead}</DialogTitle>
         </DialogHeader>
-        
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2 mb-4">
             <TabsTrigger value="manual">Manual</TabsTrigger>
@@ -362,9 +367,13 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                 value={budget}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value)
-                  if (val < 0) return
+                  if (val < 0 || val > MAX_BUDGET) {
+                    toast.error(`El presupuesto no puede superar $${MAX_BUDGET.toLocaleString()}`)
+                    return
+                  }
                   setBudget(e.target.value)
                 }}
+                max={MAX_BUDGET}
                 placeholder="10000"
               />
             </div>
