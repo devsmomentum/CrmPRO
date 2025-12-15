@@ -694,9 +694,27 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                                 <span>{contentType}</span>
                               </div>
                             )}
-                            {msg.content && !msg.content.startsWith('http') && (
-                              <p className="text-sm">{msg.content}</p>
-                            )}
+                            {(() => {
+                              // Si hay mediaUrl, intentamos limpiar el contenido de URLs
+                              if (!msg.content) return null;
+
+                              // Si el contenido es solo una URL, no lo mostramos
+                              if (msg.content.startsWith('http')) return null;
+
+                              // Si hay un mediaUrl detectado, quitamos las URLs del texto
+                              if (mediaUrl) {
+                                const urlRegex = /https?:\/\/[^\s]+/gi;
+                                const cleanedContent = msg.content.replace(urlRegex, '').trim();
+                                // Si después de quitar URLs queda algo útil, mostrarlo
+                                if (cleanedContent && cleanedContent.length > 0) {
+                                  return <p className="text-sm">{cleanedContent}</p>;
+                                }
+                                return null;
+                              }
+
+                              // Si no hay mediaUrl, mostrar el contenido normal
+                              return <p className="text-sm">{msg.content}</p>;
+                            })()}
                           </div>
                         );
                       })()}
