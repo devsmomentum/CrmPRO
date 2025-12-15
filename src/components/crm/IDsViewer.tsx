@@ -115,15 +115,6 @@ export function IDsViewer({ empresaId, empresaNombre }: IDsViewerProps) {
 
     return (
         <div className="space-y-4">
-            <div className="bg-muted/50 p-4 rounded-lg">
-                <p className="text-sm text-muted-foreground mb-2">
-                    Estos IDs son necesarios para configurar las variables de entorno del webhook:
-                </p>
-                <code className="text-xs bg-background p-2 rounded block">
-                    DEFAULT_EMPRESA_ID, DEFAULT_PIPELINE_ID, DEFAULT_ETAPA_ID
-                </code>
-            </div>
-
             {/* Empresa ID */}
             <Card>
                 <CardHeader className="pb-3">

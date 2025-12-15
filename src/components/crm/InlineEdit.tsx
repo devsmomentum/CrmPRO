@@ -17,6 +17,7 @@ interface InlineEditProps {
   disabled?: boolean
   min?: number
   max?: number
+  placeholder?: string
 }
 
 export function InlineEdit({
@@ -30,13 +31,17 @@ export function InlineEdit({
   multiline = false,
   disabled = false,
   min,
-  max
+  max,
+  placeholder
 }: InlineEditProps) {
   const [isEditing, setIsEditing] = useState(false)
   // Manejo seguro de valores null/undefined
   const safeValue = value ?? (type === 'number' ? 0 : '')
   const [editValue, setEditValue] = useState(safeValue.toString())
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
+
+  // Verificar si el valor está vacío
+  const isEmpty = safeValue === '' || safeValue === 0 || safeValue === null || safeValue === undefined
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -86,9 +91,15 @@ export function InlineEdit({
         )}
         onClick={() => !disabled && setIsEditing(true)}
       >
-        <span>
-          {prefix}{safeValue}{suffix}
-        </span>
+        {isEmpty && placeholder ? (
+          <span className="text-muted-foreground italic">
+            {placeholder}
+          </span>
+        ) : (
+          <span>
+            {prefix}{safeValue}{suffix}
+          </span>
+        )}
         {!disabled && (
           <PencilSimple
             size={14}
@@ -107,6 +118,7 @@ export function InlineEdit({
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          placeholder={placeholder}
           className={cn('min-h-[60px]', className)}
         />
       ) : (
@@ -116,6 +128,7 @@ export function InlineEdit({
           min={min}
           max={max}
           value={editValue}
+          placeholder={placeholder}
           onChange={(e) => {
             if (type === 'number') {
               const val = parseFloat(e.target.value)
