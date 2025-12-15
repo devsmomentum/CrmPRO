@@ -365,6 +365,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   onSave={(value) => updateField('name', value)}
                   displayClassName="text-2xl font-bold"
                   disabled={!canEdit}
+                  placeholder="Nombre del lead"
                 />
               </div>
               <div className="mb-2">
@@ -373,6 +374,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   onSave={(value) => updateField('company', value)}
                   displayClassName="text-sm text-muted-foreground"
                   disabled={!canEdit}
+                  placeholder="Empresa"
                 />
               </div>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
@@ -382,6 +384,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   type="email"
                   displayClassName="text-xs"
                   disabled={!canEdit}
+                  placeholder="correo@ejemplo.com"
                 />
                 <InlineEdit
                   value={lead.phone}
@@ -389,6 +392,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   type="tel"
                   displayClassName="text-xs"
                   disabled={!canEdit}
+                  placeholder="+1 234 567 8900"
                 />
               </div>
             </div>

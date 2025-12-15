@@ -97,17 +97,6 @@ serve(async (req) => {
 
         // --- DEBUG MODE: IGNORAMOS EL ERROR DE FIRMA TEMPORALMENTE ---
         console.log("⚠️ IGNORING SIGNATURE ERROR FOR DEBUGGING TO TEST LOGIC ⚠️");
-        /*
-        return new Response(JSON.stringify({ 
-          error: "Invalid signature", 
-          detail: "Signature mismatch",
-          received: receivedSignature, 
-          calculated: hashHex 
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 403,
-        });
-        */
       }
 
       // 2. Convertimos el texto a JSON para leer los datos
@@ -156,7 +145,6 @@ serve(async (req) => {
       });
 
       // 2. Intentamos buscar la URL del archivo multimedia
-      // SUPER API usa la estructura 'file' con downloadUrl
       let mediaUrl = null;
       let mediaId = null;
       let fileName = null;
@@ -172,13 +160,11 @@ serve(async (req) => {
         });
       }
 
-
       // Prioridad 2: Estructura genérica 'media'
       if (!mediaUrl && typeof media === 'string' && media.startsWith('http')) {
-        mediaUrl = media; // A veces 'media' es directamente la URL
+        mediaUrl = media;
         console.log("📦 [WEBHOOK] Media es una URL directa:", mediaUrl);
       } else if (typeof media === 'object') {
-        // Buscamos en todas las posibles ubicaciones conocidas
         mediaUrl = media.url ||
           media.link ||
           media.file ||
@@ -187,7 +173,6 @@ serve(async (req) => {
           (media.links && media.links.download) ||
           null;
 
-        // Guardar el media ID si existe (común en WhatsApp Business API)
         mediaId = media.id || media.mediaId || null;
 
         console.log("📦 [WEBHOOK] Media object:", {
@@ -197,7 +182,7 @@ serve(async (req) => {
         });
       }
 
-      // Si la API lo manda en el root (ej: payload.mediaUrl)
+      // Si la API lo manda en el root
       if (!mediaUrl) {
         mediaUrl = eventData.mediaUrl ||
           payload.mediaUrl ||
@@ -221,22 +206,16 @@ serve(async (req) => {
 
       // 3. Decidimos qué guardar en la base de datos
       if (mediaUrl) {
-        // Si encontramos una URL, la guardamos.
-        // Si venía texto acompañado de foto (caption), lo juntamos.
         if (content) {
           content = `${content} \n ${mediaUrl}`;
         } else {
-          content = mediaUrl; // Guardamos solo el link
+          content = mediaUrl;
         }
         console.log("✅ [WEBHOOK] Se guardará la URL en content:", content);
       } else {
-        // Si NO hay URL pero detectamos que es un archivo, mantenemos el placeholder
-        // para saber que llegó algo aunque no tengamos el link.
         if (!content && (file || media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
           content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
           console.warn("⚠️ [WEBHOOK] No se encontró URL para tipo:", type);
-          console.warn("⚠️ [WEBHOOK] File completo:", JSON.stringify(file, null, 2));
-          console.warn("⚠️ [WEBHOOK] Media completo:", JSON.stringify(media, null, 2));
         }
       }
 
@@ -271,28 +250,85 @@ serve(async (req) => {
 
       // Lógica de roles
       if (payload.event === "ai_response" || payload.event === "message_create") {
-        // Mensaje saliente (Team/AI -> Lead)
-        // El lead es el destinatario
         if (pTo) phoneCandidates.push({ phone: pTo, senderRole: "team" });
         if (pRecipient) phoneCandidates.push({ phone: pRecipient, senderRole: "team" });
         if (pChatId) phoneCandidates.push({ phone: pChatId, senderRole: "team" });
         if (pRemoteJid) phoneCandidates.push({ phone: pRemoteJid, senderRole: "team" });
         if (pPhone) phoneCandidates.push({ phone: pPhone, senderRole: "team" });
         if (pConversationId) phoneCandidates.push({ phone: pConversationId, senderRole: "team" });
-        // A veces en message_create (fromMe=true), el 'to' es el lead.
       }
 
-      // Mensaje entrante (Lead -> Team)
-      // El lead es el remitente
-      // Nota: Si es ai_response, 'from' suele ser el bot, así que no lo agregamos como candidato 'lead'
       if (payload.event !== "ai_response") {
         if (pFrom) phoneCandidates.push({ phone: pFrom, senderRole: "lead" });
       }
 
       console.log("Phone Candidates:", phoneCandidates);
 
+      // ============================================================
+      // OBTENER CONFIGURACIÓN DE EMPRESAS
+      // ============================================================
+      let empresasConfig: Array<{ empresa_id: string; pipeline_id?: string; etapa_id?: string }> = [];
+
+      // Prioridad 1: Parámetros en la URL
+      const urlEmpresaId = url.searchParams.get("empresa_id");
+      const urlPipelineId = url.searchParams.get("pipeline_id");
+      const urlEtapaId = url.searchParams.get("etapa_id");
+
+      if (urlEmpresaId) {
+        console.log(`Usando parámetros de URL - Empresa: ${urlEmpresaId}`);
+        empresasConfig = [{
+          empresa_id: urlEmpresaId,
+          pipeline_id: urlPipelineId || undefined,
+          etapa_id: urlEtapaId || undefined
+        }];
+      }
+      // Prioridad 2: WEBHOOK_EMPRESAS JSON
+      else {
+        try {
+          const configJson = Deno.env.get("WEBHOOK_EMPRESAS");
+          if (configJson) {
+            empresasConfig = JSON.parse(configJson);
+            console.log(`Configuradas ${empresasConfig.length} empresas desde WEBHOOK_EMPRESAS`);
+          } else {
+            // Prioridad 3: Variables individuales
+            const empresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+            if (empresaId) {
+              empresasConfig = [{
+                empresa_id: empresaId,
+                pipeline_id: Deno.env.get("DEFAULT_PIPELINE_ID") || undefined,
+                etapa_id: Deno.env.get("DEFAULT_ETAPA_ID") || undefined
+              }];
+              console.log(`Usando DEFAULT_EMPRESA_ID: ${empresaId}`);
+            }
+          }
+        } catch (e) {
+          console.error("Error parseando WEBHOOK_EMPRESAS:", e);
+        }
+      }
+
+      // Prioridad 4: Fallback - buscar primera empresa
+      if (empresasConfig.length === 0) {
+        console.log("No se encontró configuración, buscando primera empresa...");
+        const { data: company } = await supabase
+          .from('empresa')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+
+        if (company) {
+          empresasConfig = [{ empresa_id: company.id }];
+          console.log(`Usando empresa fallback: ${company.id}`);
+        }
+      }
+
+      // ============================================================
+      // BUSCAR LEADS EN TODAS LAS EMPRESAS CONFIGURADAS
+      // ============================================================
       if (content) {
-        let matched = false;
+        let totalLeadsMatched = 0;
+        const empresasWithoutLead: typeof empresasConfig = [];
+
+        // Iterar por cada candidato de teléfono
         for (const candidate of phoneCandidates) {
           const targetPhone = candidate.phone;
           const senderRole = candidate.senderRole;
@@ -305,147 +341,92 @@ serve(async (req) => {
             .trim();
           if (!cleanPhone) continue;
 
-          // 1. Primero determinamos la empresa target (igual lógica que después)
-          let targetEmpresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+          console.log(`🔍 Buscando leads con teléfono: ${cleanPhone}`);
 
-          if (!targetEmpresaId) {
-            // Fallback: Buscar la primera empresa
-            const { data: company } = await supabase
-              .from('empresa')
-              .select('id')
-              .limit(1)
-              .maybeSingle();
-            if (company) targetEmpresaId = company.id;
+          // BUSCAR EN TODAS LAS EMPRESAS CONFIGURADAS
+          for (const config of empresasConfig) {
+            const { empresa_id } = config;
+
+            const { data: leads, error } = await supabase
+              .from("lead")
+              .select("id, empresa_id, nombre_completo")
+              .eq("empresa_id", empresa_id)
+              .ilike("telefono", `%${cleanPhone}%`);
+
+            if (!error && leads && leads.length > 0) {
+              console.log(`✅ [Empresa ${empresa_id}] Encontrados ${leads.length} leads con teléfono ${cleanPhone}`);
+
+              for (const lead of leads) {
+                // Crear metadata normalizada
+                const normalizedMetadata = {
+                  type: type,
+                  rawPayload: payload,
+                  data: {
+                    type: type,
+                    body: eventData.body || payload.body,
+                    file: file,
+                    media: media,
+                    mediaUrl: mediaUrl,
+                    mediaId: mediaId,
+                    fileName: fileName
+                  }
+                };
+
+                // Insertar mensaje para este lead
+                const { error: insertError } = await supabase.from("mensajes").insert({
+                  lead_id: lead.id,
+                  content: content,
+                  sender: senderRole,
+                  channel: "whatsapp",
+                  external_id: externalId,
+                  metadata: normalizedMetadata
+                });
+
+                if (insertError) {
+                  console.error(`❌ Error insertando mensaje para lead ${lead.id}:`, insertError);
+                } else {
+                  console.log(`✅ Mensaje guardado para lead ${lead.id} (${lead.nombre_completo})`);
+                  totalLeadsMatched++;
+                }
+              }
+            } else {
+              // No se encontró lead en esta empresa - agregar a la lista para crear
+              if (!empresasWithoutLead.find(e => e.empresa_id === empresa_id)) {
+                empresasWithoutLead.push(config);
+              }
+              console.log(`ℹ️ [Empresa ${empresa_id}] No hay leads con teléfono ${cleanPhone}`);
+            }
           }
 
-          // 2. Buscar lead SOLO en la empresa target (no en todas las empresas)
-          // Esto permite que el mismo número tenga leads independientes en diferentes empresas
-          const { data: leads, error } = await supabase
-            .from("lead")
-            .select("id, empresa_id")
-            .eq("empresa_id", targetEmpresaId || "") // Filtrar por empresa específica
-            .ilike("telefono", `%${cleanPhone}%`);
-
-          if (!error && leads && leads.length > 0) {
-            console.log(`Lead encontrado en empresa ${targetEmpresaId}: ${leads.length} leads`);
-
-            for (const lead of leads) {
-              // Crear metadata normalizada para preservar toda la información
-              const normalizedMetadata = {
-                type: type,
-                rawPayload: payload,
-                data: {
-                  type: type,
-                  body: eventData.body || payload.body,
-                  file: file,  // Super API file object
-                  media: media,
-                  mediaUrl: mediaUrl,
-                  mediaId: mediaId,
-                  fileName: fileName
-                }
-              };
-
-              // Insertamos el mensaje para CADA lead encontrado en esta empresa
-              await supabase.from("mensajes").insert({
-                lead_id: lead.id,
-                content: content,
-                sender: senderRole,
-                channel: "whatsapp",
-                external_id: externalId,
-                metadata: normalizedMetadata
-              });
-              console.log(`✅ Mensaje guardado para lead ${lead.id} con metadata normalizada`);
-            }
-
-            matched = true;
-            break; // Encontramos y guardamos, salimos del loop
-          } else {
-            console.log(`Lead no encontrado en empresa ${targetEmpresaId} para teléfono: ${cleanPhone}`);
+          // Si encontramos al menos un lead, no seguimos buscando con otros candidatos
+          if (totalLeadsMatched > 0) {
+            console.log(`✅ Total: ${totalLeadsMatched} mensajes guardados`);
+            break;
           }
         }
 
-        if (!matched) {
-          console.log("No se encontró lead para ninguno de los candidatos. Intentando creación automática...");
+        // ============================================================
+        // SI NO SE ENCONTRÓ NINGÚN LEAD, CREAR NUEVOS
+        // ============================================================
+        if (totalLeadsMatched === 0 && empresasWithoutLead.length > 0) {
+          console.log(`🆕 No se encontraron leads. Creando en ${empresasWithoutLead.length} empresa(s)...`);
 
-          // Solo creamos lead si el mensaje viene del cliente (role 'lead')
-          // Fallback: si no hay candidato 'lead', usamos cualquier teléfono disponible
+          // Buscar candidato para crear lead
           let inboundCandidate = phoneCandidates.find(c => c.senderRole === 'lead' && c.phone);
-
           if (!inboundCandidate) {
-            // Fallback: usar cualquier candidato con teléfono
             inboundCandidate = phoneCandidates.find(c => c.phone);
-            console.log("Usando fallback: cualquier candidato con teléfono");
           }
 
           if (inboundCandidate && inboundCandidate.phone) {
             const targetPhone = inboundCandidate.phone;
             const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
-            const timestamp = Date.now().toString().slice(-6);
 
-            // Leer parámetros de la URL (tienen prioridad sobre secrets)
-            const url = new URL(req.url);
-            const urlEmpresaId = url.searchParams.get("empresa_id");
-            const urlPipelineId = url.searchParams.get("pipeline_id");
-            const urlEtapaId = url.searchParams.get("etapa_id");
-
-            // Leer configuración de múltiples empresas desde variable de entorno JSON
-            let empresasConfig: Array<{ empresa_id: string; pipeline_id?: string; etapa_id?: string }> = [];
-
-            // Prioridad 1: Parámetros en la URL
-            if (urlEmpresaId) {
-              console.log(`Usando parámetros de URL - Empresa: ${urlEmpresaId}, Pipeline: ${urlPipelineId || 'auto'}, Etapa: ${urlEtapaId || 'auto'}`);
-              empresasConfig = [{
-                empresa_id: urlEmpresaId,
-                pipeline_id: urlPipelineId || undefined,
-                etapa_id: urlEtapaId || undefined
-              }];
-            }
-            // Prioridad 2: WEBHOOK_EMPRESAS JSON
-            else {
-              try {
-                const configJson = Deno.env.get("WEBHOOK_EMPRESAS");
-                if (configJson) {
-                  empresasConfig = JSON.parse(configJson);
-                  console.log(`Configuradas ${empresasConfig.length} empresas para auto-leads desde WEBHOOK_EMPRESAS`);
-                } else {
-                  // Prioridad 3: Variables individuales (backward compatibility)
-                  const empresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
-                  if (empresaId) {
-                    empresasConfig = [{
-                      empresa_id: empresaId,
-                      pipeline_id: Deno.env.get("DEFAULT_PIPELINE_ID") || undefined,
-                      etapa_id: Deno.env.get("DEFAULT_ETAPA_ID") || undefined
-                    }];
-                    console.log(`Usando variables DEFAULT_* - Empresa: ${empresaId}`);
-                  }
-                }
-              } catch (e) {
-                console.error("Error parseando WEBHOOK_EMPRESAS:", e);
-              }
-            }
-
-            // Prioridad 4: Fallback final - buscar primera empresa
-            if (empresasConfig.length === 0) {
-              console.log("No se encontró configuración, buscando primera empresa en BD...");
-              const { data: company } = await supabase
-                .from('empresa')
-                .select('id')
-                .limit(1)
-                .maybeSingle();
-
-              if (company) {
-                empresasConfig = [{ empresa_id: company.id }];
-                console.log(`Usando empresa fallback: ${company.id}`);
-              }
-            }
-
-            // Iterar por cada empresa configurada
-            for (const config of empresasConfig) {
+            for (const config of empresasWithoutLead) {
               const { empresa_id, pipeline_id, etapa_id } = config;
 
-              console.log(`[Empresa ${empresa_id}] Procesando auto-creación de lead...`);
+              console.log(`🆕 [Empresa ${empresa_id}] Creando nuevo lead...`);
 
-              // Verificar si ya existe el lead en esta empresa específica
+              // Verificar que no exista (doble check)
               const { data: existingLead } = await supabase
                 .from("lead")
                 .select("id")
@@ -454,15 +435,14 @@ serve(async (req) => {
                 .maybeSingle();
 
               if (existingLead) {
-                console.log(`[Empresa ${empresa_id}] Lead ya existe: ${existingLead.id}`);
-                continue; // Saltar a la siguiente empresa
+                console.log(`⚠️ [Empresa ${empresa_id}] Lead ya existe: ${existingLead.id}`);
+                continue;
               }
 
               // Determinar pipeline y etapa
               let targetPipelineId = pipeline_id || null;
               let targetEtapaId = etapa_id || null;
 
-              // Si no están configurados, buscar automáticamente
               if (!targetPipelineId) {
                 const { data: pipeline } = await supabase
                   .from('pipeline')
@@ -474,7 +454,6 @@ serve(async (req) => {
 
                 if (pipeline) {
                   targetPipelineId = pipeline.id;
-                  console.log(`[Empresa ${empresa_id}] Pipeline auto-detectado: ${targetPipelineId}`);
                 }
               }
 
@@ -490,11 +469,10 @@ serve(async (req) => {
 
                 if (etapa) {
                   targetEtapaId = etapa.id;
-                  console.log(`[Empresa ${empresa_id}] Etapa encontrada: ${etapa.nombre}`);
                 } else {
                   const { data: firstEtapa } = await supabase
                     .from('etapas')
-                    .select('id, nombre')
+                    .select('id')
                     .eq('pipeline_id', targetPipelineId)
                     .order('orden', { ascending: true, nullsFirst: false })
                     .limit(1)
@@ -502,12 +480,9 @@ serve(async (req) => {
 
                   if (firstEtapa) {
                     targetEtapaId = firstEtapa.id;
-                    console.log(`[Empresa ${empresa_id}] Primera etapa: ${firstEtapa.nombre}`);
                   }
                 }
               }
-
-              console.log(`[Empresa ${empresa_id}] Creando lead - Pipeline: ${targetPipelineId}, Etapa: ${targetEtapaId}`);
 
               // Crear el Lead
               const newLeadPayload = {
@@ -529,16 +504,16 @@ serve(async (req) => {
                 .single();
 
               if (newLead && !createError) {
-                console.log(`[Empresa ${empresa_id}] Lead creado: ${newLead.id}`);
+                console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id}`);
 
-                // Crear metadata normalizada para preservar toda la información
+                // Crear metadata normalizada
                 const normalizedMetadata = {
                   type: type,
                   rawPayload: payload,
                   data: {
                     type: type,
                     body: eventData.body || payload.body,
-                    file: file,  // Super API file object
+                    file: file,
                     media: media,
                     mediaUrl: mediaUrl,
                     mediaId: mediaId,
@@ -555,15 +530,42 @@ serve(async (req) => {
                   external_id: externalId,
                   metadata: normalizedMetadata
                 });
-                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado con metadata normalizada`);
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para nuevo lead`);
+
+                // Crear notificación para el owner de la empresa
+                try {
+                  const { data: empresa } = await supabase
+                    .from('empresa')
+                    .select('owner_id, nombre')
+                    .eq('id', empresa_id)
+                    .single();
+
+                  if (empresa?.owner_id) {
+                    await supabase.from('notificaciones').insert({
+                      user_id: empresa.owner_id,
+                      tipo: 'nuevo_lead_whatsapp',
+                      titulo: 'Nuevo Lead desde WhatsApp',
+                      mensaje: `Se ha creado automáticamente un nuevo lead: ${cleanPhone}`,
+                      datos: {
+                        lead_id: newLead.id,
+                        telefono: cleanPhone,
+                        empresa_id: empresa_id
+                      },
+                      leido: false
+                    });
+                    console.log(`📬 Notificación enviada al owner de empresa ${empresa_id}`);
+                  }
+                } catch (notifError) {
+                  console.warn("No se pudo crear notificación:", notifError);
+                }
 
               } else {
-                console.error(`[Empresa ${empresa_id}] Error creando lead:`, createError);
+                console.error(`❌ [Empresa ${empresa_id}] Error creando lead:`, createError);
               }
             }
           }
         }
-      } // Cierre del if (content)
+      }
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

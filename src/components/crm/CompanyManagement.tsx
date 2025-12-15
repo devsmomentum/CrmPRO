@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Plus, Upload, Trash, Building, Check } from '@phosphor-icons/react'
+import { Plus, Upload, Trash, Building, Check, Eye } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { createEmpresa, deleteEmpresa, updateEmpresaLogo } from '@/supabase/services/empresa'
@@ -158,182 +158,288 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
     }
   }
 
-  const userCompanies = (companies || []).filter(c => c.ownerId === currentUserId)
+  // Separar empresas propias y empresas invitadas
+  const ownedCompanies = (companies || []).filter(c => c.ownerId === currentUserId)
+  const invitedCompanies = (companies || []).filter(c => c.ownerId !== currentUserId)
+
+  // Verificar si la empresa actual es una empresa invitada
+  const currentCompany = companies.find(c => c.id === currentCompanyId)
+  const isViewingInvitedCompany = currentCompany && currentCompany.ownerId !== currentUserId
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Gestión de Empresas</h2>
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2" size={20} />
-              Nueva Empresa
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Crear Nueva Empresa</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="company-name">Nombre de la Empresa *</Label>
-                <Input
-                  id="company-name"
-                  value={newCompanyName}
-                  onChange={(e) => {
-                    if (e.target.value.length <= 30) setNewCompanyName(e.target.value)
-                  }}
-                  placeholder="Mi Empresa S.A."
-                />
-              </div>
-
-              <div>
-                <Label>Logo de la Empresa</Label>
-                <div className="flex items-center gap-4 mt-2">
-                  <Avatar className="h-16 w-16">
-                    {newCompanyLogo ? (
-                      <AvatarImage src={newCompanyLogo} alt="Logo" />
-                    ) : (
-                      <AvatarFallback>
-                        <Building size={32} />
-                      </AvatarFallback>
-                    )}
-                  </Avatar>
-                  <div className="flex-1">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleLogoUpload(e)}
-                      className="hidden"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Upload className="mr-2" size={16} />
-                      Subir Logo
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      PNG, JPG hasta 2MB
-                    </p>
+    <div className="space-y-6">
+      {/* Sección de empresas invitadas (si está en modo invitado) */}
+      {isViewingInvitedCompany && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Eye size={20} className="text-primary" />
+            <h2 className="text-xl font-semibold">Empresa Actual (Modo Invitado)</h2>
+          </div>
+          <Card className="ring-2 ring-primary bg-primary/5">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div
+                    className="h-16 w-16 cursor-pointer hover:opacity-80 transition-opacity"
+                    onClick={() => currentCompany?.logo && setViewingLogo(currentCompany.logo)}
+                  >
+                    <Avatar className="h-16 w-16">
+                      {currentCompany?.logo ? (
+                        <AvatarImage src={currentCompany.logo} alt={currentCompany.name} />
+                      ) : (
+                        <AvatarFallback>
+                          <Building size={32} />
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
                   </div>
                 </div>
-              </div>
 
-              <Button onClick={handleCreateCompany} className="w-full">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-lg">{currentCompany?.name}</h3>
+                    <Badge variant="secondary" className="h-5">
+                      <Eye size={12} className="mr-1" />
+                      Invitado
+                    </Badge>
+                    <Badge variant="outline" className="h-5 capitalize">
+                      {currentCompany?.role || 'viewer'}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tienes acceso de {currentCompany?.role === 'admin' ? 'administrador' : 'solo lectura'} a esta empresa
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Sección de mis empresas */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">
+            {isViewingInvitedCompany ? 'Mis Empresas' : 'Gestión de Empresas'}
+          </h2>
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button>
                 <Plus className="mr-2" size={20} />
-                Crear Empresa
+                Nueva Empresa
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Crear Nueva Empresa</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="company-name">Nombre de la Empresa *</Label>
+                  <Input
+                    id="company-name"
+                    value={newCompanyName}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 30) setNewCompanyName(e.target.value)
+                    }}
+                    placeholder="Mi Empresa S.A."
+                  />
+                </div>
+
+                <div>
+                  <Label>Logo de la Empresa</Label>
+                  <div className="flex items-center gap-4 mt-2">
+                    <Avatar className="h-16 w-16">
+                      {newCompanyLogo ? (
+                        <AvatarImage src={newCompanyLogo} alt="Logo" />
+                      ) : (
+                        <AvatarFallback>
+                          <Building size={32} />
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+                    <div className="flex-1">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleLogoUpload(e)}
+                        className="hidden"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Upload className="mr-2" size={16} />
+                        Subir Logo
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        PNG, JPG hasta 2MB
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <Button onClick={handleCreateCompany} className="w-full">
+                  <Plus className="mr-2" size={20} />
+                  Crear Empresa
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="grid gap-4">
+          {ownedCompanies.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg bg-muted/10 border-dashed">
+              <div className="bg-background p-4 rounded-full mb-4 shadow-sm">
+                <Building size={40} className="text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">No tienes empresas propias aún</h3>
+              <p className="text-muted-foreground max-w-sm mb-6">
+                Comienza creando tu primera empresa para gestionar tus proyectos y equipo.
+              </p>
+              <Button onClick={() => setShowCreateDialog(true)}>
+                <Plus className="mr-2" size={18} />
+                Crear mi primera empresa
               </Button>
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="grid gap-4">
-        {userCompanies.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center border rounded-lg bg-muted/10 border-dashed">
-            <div className="bg-background p-4 rounded-full mb-4 shadow-sm">
-              <Building size={40} className="text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold mb-2">No tienes empresas aún</h3>
-            <p className="text-muted-foreground max-w-sm mb-6">
-              Comienza creando tu primera empresa para gestionar tus proyectos y equipo.
-            </p>
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className="mr-2" size={18} />
-              Crear mi primera empresa
-            </Button>
-          </div>
-        ) : (
-          userCompanies.map((company) => (
-            <Card key={company.id} className={company.id === currentCompanyId ? 'ring-2 ring-primary' : ''}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className="relative">
-                    <div
-                      className="h-16 w-16 cursor-pointer hover:opacity-80 transition-opacity"
-                      onClick={() => company.logo && setViewingLogo(company.logo)}
-                    >
-                      <Avatar className="h-16 w-16">
-                        {company.logo ? (
-                          <AvatarImage src={company.logo} alt={company.name} />
-                        ) : (
-                          <AvatarFallback>
-                            <Building size={32} />
-                          </AvatarFallback>
-                        )}
-                      </Avatar>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => handleLogoUpload(e, company.id)}
-                      className="hidden"
-                      id={`logo-upload-${company.id}`}
-                    />
-                    {(company.role === 'owner' || company.role === 'admin') && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0 z-10"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          document.getElementById(`logo-upload-${company.id}`)?.click()
-                        }}
+          ) : (
+            ownedCompanies.map((company) => (
+              <Card key={company.id} className={company.id === currentCompanyId ? 'ring-2 ring-primary' : ''}>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <div
+                        className="h-16 w-16 cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => company.logo && setViewingLogo(company.logo)}
                       >
-                        <Upload size={14} />
-                      </Button>
-                    )}
-                  </div>
-
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{company.name}</h3>
-                      {company.id === currentCompanyId && (
-                        <Badge variant="default" className="h-5">
-                          <Check size={12} className="mr-1" />
-                          Activa
-                        </Badge>
+                        <Avatar className="h-16 w-16">
+                          {company.logo ? (
+                            <AvatarImage src={company.logo} alt={company.name} />
+                          ) : (
+                            <AvatarFallback>
+                              <Building size={32} />
+                            </AvatarFallback>
+                          )}
+                        </Avatar>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleLogoUpload(e, company.id)}
+                        className="hidden"
+                        id={`logo-upload-${company.id}`}
+                      />
+                      {(company.role === 'owner' || company.role === 'admin') && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full p-0 z-10"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            document.getElementById(`logo-upload-${company.id}`)?.click()
+                          }}
+                        >
+                          <Upload size={14} />
+                        </Button>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Creada el {new Date(company.createdAt).toLocaleDateString('es-ES')}
-                    </p>
-                  </div>
 
-                  <div className="flex gap-2">
-                    {company.id !== currentCompanyId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          onCompanyChange(company.id)
-                          toast.success(`Cambiado a ${company.name}`)
-                        }}
-                      >
-                        Activar
-                      </Button>
-                    )}
-                    {company.role === 'owner' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteCompany(company.id)}
-                      >
-                        <Trash size={16} />
-                      </Button>
-                    )}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold">{company.name}</h3>
+                        {company.id === currentCompanyId && (
+                          <Badge variant="default" className="h-5">
+                            <Check size={12} className="mr-1" />
+                            Activa
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Creada el {new Date(company.createdAt).toLocaleDateString('es-ES')}
+                      </p>
+                    </div>
+
+                    <div className="flex gap-2">
+                      {company.id !== currentCompanyId && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            onCompanyChange(company.id)
+                            toast.success(`Cambiado a ${company.name}`)
+                          }}
+                        >
+                          Activar
+                        </Button>
+                      )}
+                      {company.role === 'owner' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDeleteCompany(company.id)}
+                        >
+                          <Trash size={16} />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
+
+      {/* Sección de otras empresas invitadas (si hay más de una) */}
+      {invitedCompanies.length > 0 && !isViewingInvitedCompany && (
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold text-muted-foreground">Empresas Invitadas</h2>
+          <div className="grid gap-4">
+            {invitedCompanies.map((company) => (
+              <Card key={company.id} className="opacity-80 hover:opacity-100 transition-opacity">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-12 w-12">
+                      {company.logo ? (
+                        <AvatarImage src={company.logo} alt={company.name} />
+                      ) : (
+                        <AvatarFallback>
+                          <Building size={24} />
+                        </AvatarFallback>
+                      )}
+                    </Avatar>
+
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-medium">{company.name}</h3>
+                        <Badge variant="outline" className="h-5 capitalize">
+                          {company.role || 'viewer'}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        onCompanyChange(company.id)
+                        toast.success(`Entrando a ${company.name} como invitado`)
+                      }}
+                    >
+                      <Eye size={14} className="mr-1" />
+                      Ver
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Modal de vista previa de logo estilo Instagram */}
       {viewingLogo && (
