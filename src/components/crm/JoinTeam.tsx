@@ -71,13 +71,16 @@ export function JoinTeam({ token, user, onSuccess, onLoginRequest }: JoinTeamPro
                   <p className="text-sm text-gray-600">
                     Para aceptar la invitación, necesitas iniciar sesión o crear una cuenta.
                   </p>
+                  <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                    💡 Después de iniciar sesión o registrarte, la invitación se aceptará automáticamente.
+                  </p>
                   <Button className="w-full" onClick={onLoginRequest}>
                     Iniciar Sesión / Registrarse
                   </Button>
                 </div>
               ) : (
                 <div className="space-y-3">
-                   <p className="text-sm text-gray-600">
+                  <p className="text-sm text-gray-600">
                     Aceptando invitación como <strong>{user.email}</strong>...
                   </p>
                   <Button className="w-full" onClick={handleAccept} disabled={loading}>

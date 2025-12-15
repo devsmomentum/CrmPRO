@@ -45,6 +45,9 @@ function App() {
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [isLoggingInForInvite, setIsLoggingInForInvite] = useState(false)
 
+  // Key for storing invite token in localStorage
+  const INVITE_TOKEN_KEY = 'pending_invite_token'
+
   useEffect(() => {
     ; (window as any).empDiag = {
       verifyEmpresaTable,
@@ -56,10 +59,19 @@ function App() {
   }, [])
 
   useEffect(() => {
+    // Check URL for token first
     const params = new URLSearchParams(window.location.search)
-    const token = params.get('token')
-    if (token) {
-      setInviteToken(token)
+    const urlToken = params.get('token')
+    if (urlToken) {
+      setInviteToken(urlToken)
+      // Also save to localStorage in case user needs to register/confirm email
+      localStorage.setItem(INVITE_TOKEN_KEY, urlToken)
+    } else {
+      // Check if there's a pending invite token in localStorage (from before login/register)
+      const storedToken = localStorage.getItem(INVITE_TOKEN_KEY)
+      if (storedToken) {
+        setInviteToken(storedToken)
+      }
     }
   }, [])
 
@@ -236,6 +248,8 @@ function App() {
               // Recargar empresas para mostrar la nueva empresa invitada
               await fetchCompanies()
               setInviteToken(null)
+              // Clear from localStorage as well
+              localStorage.removeItem(INVITE_TOKEN_KEY)
               window.history.replaceState({}, document.title, window.location.pathname)
               setCurrentView('dashboard')
               toast.success('¡Te has unido exitosamente! Ahora puedes ver la empresa desde el selector.')
@@ -333,7 +347,7 @@ function App() {
                         try {
                           await leaveCompany(currentCompany.id, user.email, user.id)
                           toast.success('Has abandonado la empresa correctamente')
-                          
+
                           const myCompany = companies.find(c => c.ownerId === user.id)
                           if (myCompany) {
                             setCurrentCompanyId(myCompany.id)
@@ -391,7 +405,7 @@ function App() {
                   const role = currentCompany?.ownerId === user.id ? 'Owner' : (currentCompany?.role || 'Viewer')
                   const displayRole = role === 'admin' ? 'Admin' : (role === 'owner' || role === 'Owner') ? 'Owner' : 'Viewer'
                   const badgeColor = displayRole === 'Owner' ? 'border-primary text-primary' : displayRole === 'Admin' ? 'border-blue-500 text-blue-500' : 'border-muted-foreground text-muted-foreground'
-                  
+
                   return (
                     <Badge variant="outline" className={`text-[10px] h-4 px-1 py-0 ${badgeColor}`}>
                       {displayRole}
