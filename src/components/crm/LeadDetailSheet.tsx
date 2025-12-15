@@ -77,6 +77,9 @@ const formatSafeDate = (date: Date | string | null | undefined, formatStr: strin
   return format(dateObj, formatStr)
 }
 
+// Límite máximo de presupuesto: 10 millones de dólares
+const MAX_BUDGET = 10_000_000
+
 export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
@@ -317,13 +320,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   }
 
   const updateField = (field: keyof Lead, value: string | number) => {
-    if (field === 'budget' && typeof value === 'number' && value < 0) {
-      toast.error('El presupuesto no puede ser negativo')
-      return
-    }
-    if (field === 'budget' && typeof value === 'string' && parseFloat(value) < 0) {
-      toast.error('El presupuesto no puede ser negativo')
-      return
+    if (field === 'budget') {
+      const numValue = typeof value === 'number' ? value : parseFloat(value)
+      if (numValue < 0) {
+        toast.error('El presupuesto no puede ser negativo')
+        return
+      }
+      if (numValue > MAX_BUDGET) {
+        toast.error(`El presupuesto no puede superar $${MAX_BUDGET.toLocaleString()}`)
+        return
+      }
     }
 
     onUpdate({ ...lead, [field]: value })
@@ -508,6 +514,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     onSave={(value) => updateField('budget', value)}
                     type="number"
                     min={0}
+                    max={MAX_BUDGET}
                     prefix="$"
                     displayClassName="font-medium text-primary"
                     disabled={!canEdit}
