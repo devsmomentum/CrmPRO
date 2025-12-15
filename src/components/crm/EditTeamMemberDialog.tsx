@@ -11,6 +11,21 @@ import { TeamMember, Pipeline } from '@/lib/types'
 
 import { getPipelines } from '@/supabase/helpers/pipeline'
 import { getPipelinesForPersona, addPersonaToPipeline, removePersonaFromPipeline } from '@/supabase/helpers/personaPipeline'
+import { updatePersona } from '@/supabase/helpers/persona'
+import { updateCompanyMemberRole, getCompanyMembers } from '@/supabase/services/empresa'
+import { getEquipos } from '@/supabase/helpers/equipos'
+
+// Opciones predefinidas de cargos/títulos de trabajo
+const JOB_TITLE_OPTIONS = [
+  { value: 'sales_rep', label: 'Sales Rep' },
+  { value: 'sales_manager', label: 'Sales Manager' },
+  { value: 'support_agent', label: 'Support Agent' },
+  { value: 'support_manager', label: 'Support Manager' },
+  { value: 'account_executive', label: 'Account Executive' },
+  { value: 'business_developer', label: 'Business Developer' },
+  { value: 'customer_success', label: 'Customer Success' },
+  { value: 'administrator', label: 'Administrator' }
+]
 
 interface EditTeamMemberDialogProps {
   member: TeamMember
@@ -26,6 +41,10 @@ export function EditTeamMemberDialog({ member, companyId, onUpdated, canEditRole
   const [localSelection, setLocalSelection] = useState<Set<string>>(new Set())
   const [jobTitle, setJobTitle] = useState(member.role || '')
   const [permissionRole, setPermissionRole] = useState(member.permissionRole || 'viewer')
+
+  // Estado para equipos
+  const [teams, setTeams] = useState<{ id: string, name: string }[]>([])
+  const [selectedTeamId, setSelectedTeamId] = useState(member.teamId || '')
 
   const pipelineOptions = useMemo(() => dbPipelines.map(p => ({ value: p.id, label: p.name })), [dbPipelines])
 
@@ -45,6 +64,19 @@ export function EditTeamMemberDialog({ member, companyId, onUpdated, canEditRole
         }
       })
       .catch(err => console.error('[EditTeamMemberDialog] error cargando pipelines empresa', err))
+
+    // Cargar equipos de la empresa
+    getEquipos(companyId)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[EditTeamMemberDialog] error cargando equipos', error)
+          return
+        }
+        const mapped = (data || []).map((t: any) => ({ id: t.id, name: t.nombre_equipo }))
+        setTeams(mapped)
+      })
+      .catch(err => console.error('[EditTeamMemberDialog] error cargando equipos', err))
+
     // Cargar pipelines actuales del miembro (IDs)
     getPipelinesForPersona(member.id)
       .then(({ data, error }: any) => {
@@ -94,14 +126,16 @@ export function EditTeamMemberDialog({ member, companyId, onUpdated, canEditRole
 
       // actualizar job title en persona si cambió
       if ((jobTitle || '') !== (member.role || '')) {
-        const { updatePersona } = await import('@/supabase/helpers/persona')
         await updatePersona(member.id, { titulo_trabajo: jobTitle })
+      }
+
+      // actualizar equipo si cambió
+      if (selectedTeamId && selectedTeamId !== (member.teamId || '')) {
+        await updatePersona(member.id, { equipo_id: selectedTeamId })
       }
 
       // actualizar permission role en empresa_miembros si cambió
       if (canEditRole && (permissionRole || 'viewer') !== (member.permissionRole || 'viewer')) {
-        const { updateCompanyMemberRole, getCompanyMembers } = await import('@/supabase/services/empresa')
-
         // Primero verificar si el miembro existe en empresa_miembros
         const companyMembers = await getCompanyMembers(companyId)
         const match = (companyMembers || []).find((m: any) => (m.email || '').toLowerCase() === (member.email || '').toLowerCase())
@@ -145,21 +179,37 @@ export function EditTeamMemberDialog({ member, companyId, onUpdated, canEditRole
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Editar Pipelines de {member.name}</DialogTitle>
-          <p className="text-sm text-muted-foreground">Agrega o quita acceso a pipelines para este miembro.</p>
+          <DialogTitle>Editar Miembro: {member.name}</DialogTitle>
+          <p className="text-sm text-muted-foreground">Modifica el cargo, equipo y acceso a pipelines.</p>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label className="mb-2 block">Job Title</Label>
-            <input
-              className="w-full border rounded-md px-3 py-2 text-sm"
+            <Label className="mb-2 block">Cargo / Job Title</Label>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
               value={jobTitle}
-              onChange={(e) => {
-                const val = e.target.value
-                if (val.length <= 30 && !/\d/.test(val)) setJobTitle(val)
-              }}
-              placeholder="Sales Rep"
-            />
+              onChange={(e) => setJobTitle(e.target.value)}
+            >
+              <option value="">Seleccionar cargo...</option>
+              {JOB_TITLE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.label}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <Label className="mb-2 block">Equipo</Label>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={selectedTeamId}
+              onChange={(e) => setSelectedTeamId(e.target.value)}
+            >
+              <option value="">Seleccionar equipo...</option>
+              {teams.map(team => (
+                <option key={team.id} value={team.id}>{team.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">Cambiar de equipo moverá al miembro a otro equipo.</p>
           </div>
           <div>
             <Label className="mb-2 block">Permission Role</Label>
