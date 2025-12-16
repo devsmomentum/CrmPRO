@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash } from '@phosphor-icons/react'
+import { Plus, Trash, SignOut } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -22,9 +22,10 @@ interface SettingsViewProps {
   onCompanyChange?: (companyId: string) => void
   companies?: Company[]
   setCompanies?: Dispatch<SetStateAction<Company[]>>
+  onLogout?: () => void
 }
 
-export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange, companies, setCompanies }: SettingsViewProps = {}) {
+export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange, companies, setCompanies, onLogout }: SettingsViewProps = {}) {
   const currentCompany = companies?.find(c => c.id === currentCompanyId)
   const userRole = currentCompany?.role || 'viewer'
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
@@ -44,14 +45,24 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Settings</h1>
-        <p className="text-muted-foreground mt-1">Configure pipelines and automations</p>
+    <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Settings</h1>
+          <p className="text-muted-foreground mt-1">Configure pipelines and automations</p>
+        </div>
+        <Button
+          variant="outline"
+          className="text-destructive hover:bg-destructive/10 border-destructive/20 md:hidden"
+          onClick={onLogout}
+        >
+          <SignOut className="mr-2" size={16} />
+          Cerrar Sesión
+        </Button>
       </div>
 
       <Tabs defaultValue="companies">
-        <TabsList>
+        <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar">
           <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>

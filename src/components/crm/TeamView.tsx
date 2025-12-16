@@ -365,7 +365,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
   })
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-6">
       {/* Barra de herramientas superior */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="space-y-1">
@@ -477,8 +477,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                   size="sm"
                   onClick={() => setSelectedTeamFilter(selectedTeamFilter === eq.id ? null : eq.id)}
                 >
-                  <Funnel size={14} className="mr-1" />
-                  {selectedTeamFilter === eq.id ? 'Filtrando' : 'Filtrar'}
+                  <Funnel size={14} className={selectedTeamFilter === eq.id ? "mr-1" : "sm:mr-1"} />
+                  <span className="hidden sm:inline">{selectedTeamFilter === eq.id ? 'Filtrando' : 'Filtrar'}</span>
                 </Button>
               </div>
             </div>

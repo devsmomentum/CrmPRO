@@ -59,16 +59,16 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                     // Cargar invitaciones pendientes
                     // getPendingInvitations ya incluye el join con empresa y equipo
                     const invitationsData = await getPendingInvitations(user.email)
-                    
+
                     // Mapeamos para asegurar que la estructura sea la esperada
                     // Si el join falla (por RLS), intentamos usar invite-details como fallback
                     const mappedInvitations = await Promise.all((invitationsData || []).map(async (inv: any) => {
                         let empresa = inv.empresa
                         let equipo = inv.equipo
-                        
+
                         // Si falta información (probablemente por RLS), intentamos recuperarla vía Edge Function
                         if (!empresa?.nombre_empresa || !equipo?.nombre_equipo) {
-                             try {
+                            try {
                                 const { data: details } = await supabase.functions.invoke('invite-details', {
                                     body: { empresa_id: inv.empresa_id, equipo_id: inv.equipo_id }
                                 })
@@ -80,10 +80,10 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                                         equipo = { nombre_equipo: details.equipo_nombre }
                                     }
                                 }
-                             } catch (e) {
-                                 // Si falla la función (no desplegada), nos quedamos con lo que tenemos
-                                 console.warn('Could not fetch invite details', e)
-                             }
+                            } catch (e) {
+                                // Si falla la función (no desplegada), nos quedamos con lo que tenemos
+                                console.warn('Could not fetch invite details', e)
+                            }
                         }
 
                         return {
@@ -92,7 +92,7 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                             equipo: equipo || { nombre_equipo: 'General' }
                         }
                     }))
-                    
+
                     setInvitations(mappedInvitations)
 
                     // Cargar notificaciones de respuesta
@@ -153,7 +153,7 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
     const pendingInvitations = invitations.filter(i => i.status === 'pending')
 
     return (
-        <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-background/50">
+        <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-background/50 pb-24 md:pb-8">
             <div className="max-w-4xl mx-auto space-y-8">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="p-3 bg-primary/10 rounded-full">
@@ -262,16 +262,16 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                                     <Card
                                         key={notification.id}
                                         className={`overflow-hidden transition-all hover:shadow-md border-l-4 ${isAccepted
-                                                ? 'border-l-green-500 bg-green-50/50 dark:bg-green-950/20'
-                                                : 'border-l-gray-400 bg-gray-50/50 dark:bg-gray-900/20'
+                                            ? 'border-l-green-500 bg-green-50/50 dark:bg-green-950/20'
+                                            : 'border-l-gray-400 bg-gray-50/50 dark:bg-gray-900/20'
                                             }`}
                                     >
                                         <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
                                             <div className="flex items-start gap-4">
                                                 <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
                                                     <AvatarFallback className={`font-bold ${isAccepted
-                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
-                                                            : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                                                        ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
+                                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
                                                         }`}>
                                                         {notification.data.invited_nombre?.substring(0, 2).toUpperCase() || 'US'}
                                                     </AvatarFallback>
@@ -285,8 +285,8 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                                                         <Badge
                                                             variant={isAccepted ? "default" : "secondary"}
                                                             className={`text-xs font-normal ${isAccepted
-                                                                    ? 'bg-green-500 hover:bg-green-600'
-                                                                    : 'bg-gray-400 hover:bg-gray-500'
+                                                                ? 'bg-green-500 hover:bg-green-600'
+                                                                : 'bg-gray-400 hover:bg-gray-500'
                                                                 }`}
                                                         >
                                                             {isAccepted ? (

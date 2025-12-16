@@ -130,12 +130,20 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      // Intentar webm primero, luego mp4, luego lo que soporte el navegador
-      let mimeType = 'audio/webm'
-      if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/mp4'
-        if (!MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = '' // Dejar que el navegador elija
+      // Priorizar OGG/Opus (formato nativo de WhatsApp) para mejor compatibilidad
+      let mimeType = ''
+      const preferredFormats = [
+        'audio/ogg;codecs=opus',  // Formato nativo de WhatsApp
+        'audio/ogg',
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm'
+      ]
+
+      for (const format of preferredFormats) {
+        if (MediaRecorder.isTypeSupported(format)) {
+          mimeType = format
+          break
         }
       }
       console.log('[Audio] Using mimeType:', mimeType || 'default')
@@ -176,10 +184,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           return
         }
 
-        const extension = mediaRecorder.mimeType?.includes('mp4') ? 'mp4' : 'webm'
-        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.${extension}`, {
-          type: mediaRecorder.mimeType || 'audio/webm'
+        // Forzar formato OGG para compatibilidad con WhatsApp (notas de voz)
+        // WhatsApp reconoce .ogg como formato de nota de voz
+        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.ogg`, {
+          type: 'audio/ogg'
         })
+        console.log('[Audio] File created as OGG for WhatsApp compatibility')
 
         // Subir y enviar
         setIsUploading(true)
@@ -616,12 +626,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </TabsList>
 
           <TabsContent value="overview" className="flex-1 p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
                 <div className="mt-1">
                   <Select value={assignedTo || 'todos'} onValueChange={handleUpdateAssignedTo} disabled={!canEdit}>
-                    <SelectTrigger className="w-56">
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -646,7 +656,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     min={0}
                     max={MAX_BUDGET}
                     prefix="$"
-                    displayClassName="font-medium text-primary"
+                    displayClassName="font-medium text-primary !m-0 !p-0 hover:bg-transparent justify-start w-auto"
                     disabled={!canEdit}
                   />
                 </div>
@@ -990,7 +1000,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               </div>
             </ScrollArea>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1045,7 +1055,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 placeholder={t.chat.typeMessage}
                 onKeyDown={(e) => e.key === 'Enter' && !isUploading && sendMessage()}
                 disabled={!canEdit || isUploading}
-                className="flex-1"
+                className="flex-1 min-w-0"
               />
               <Button onClick={sendMessage} disabled={!canEdit || isUploading || isRecording}>
                 <PaperPlaneRight size={20} />

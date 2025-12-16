@@ -30,7 +30,7 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   const avgDealSize = totalRevenue / ((leads || []).length || 1)
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+    <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Analytics</h1>
         <p className="text-muted-foreground mt-1">Performance insights and metrics</p>
