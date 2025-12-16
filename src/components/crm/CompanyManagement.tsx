@@ -195,19 +195,21 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
                   </div>
                 </div>
 
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-lg">{currentCompany?.name}</h3>
-                    <Badge variant="secondary" className="h-5">
-                      <Eye size={12} className="mr-1" />
-                      Invitado
-                    </Badge>
-                    <Badge variant="outline" className="h-5 capitalize">
-                      {currentCompany?.role || 'viewer'}
-                    </Badge>
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-col md:flex-row md:items-center gap-2">
+                    <h3 className="font-semibold text-lg truncate">{currentCompany?.name}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="secondary" className="h-5 whitespace-nowrap">
+                        <Eye size={12} className="mr-1" />
+                        Invitado
+                      </Badge>
+                      <Badge variant="outline" className="h-5 capitalize whitespace-nowrap">
+                        {currentCompany?.role || 'viewer'}
+                      </Badge>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Tienes acceso de {currentCompany?.role === 'admin' ? 'administrador' : 'solo lectura'} a esta empresa
+                  <p className="text-xs text-muted-foreground mt-1 break-words">
+                    Acceso: {currentCompany?.role === 'admin' ? 'Administrador' : 'Lectura'}
                   </p>
                 </div>
               </div>

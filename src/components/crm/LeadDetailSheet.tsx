@@ -626,12 +626,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </TabsList>
 
           <TabsContent value="overview" className="flex-1 p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
                 <div className="mt-1">
                   <Select value={assignedTo || 'todos'} onValueChange={handleUpdateAssignedTo} disabled={!canEdit}>
-                    <SelectTrigger className="w-56">
+                    <SelectTrigger className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -656,7 +656,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     min={0}
                     max={MAX_BUDGET}
                     prefix="$"
-                    displayClassName="font-medium text-primary"
+                    displayClassName="font-medium text-primary !m-0 !p-0 hover:bg-transparent justify-start w-auto"
                     disabled={!canEdit}
                   />
                 </div>
@@ -1000,7 +1000,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               </div>
             </ScrollArea>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1055,7 +1055,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 placeholder={t.chat.typeMessage}
                 onKeyDown={(e) => e.key === 'Enter' && !isUploading && sendMessage()}
                 disabled={!canEdit || isUploading}
-                className="flex-1"
+                className="flex-1 min-w-0"
               />
               <Button onClick={sendMessage} disabled={!canEdit || isUploading || isRecording}>
                 <PaperPlaneRight size={20} />

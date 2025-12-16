@@ -639,9 +639,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         </div>
 
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
-          <TabsList className="w-full md:w-auto flex-wrap h-auto">
+          <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar md:w-auto md:flex-wrap">
             {(pipelines || []).map(p => (
-              <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm">
+              <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm min-w-fit whitespace-nowrap">
                 {p.name}
               </TabsTrigger>
             ))}
@@ -672,26 +672,26 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto md:overflow-hidden bg-background/50">
         {(!pipelines || pipelines.length === 0) && (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
             <p className="text-lg font-medium">No hay pipelines disponibles</p>
             <p className="text-sm">Ve a Configuración para crear uno nuevo.</p>
           </div>
         )}
-        <div className="h-full overflow-x-auto px-4 md:px-6 py-4 md:py-6">
-          <div className="flex gap-3 md:gap-4 h-full min-h-0 min-w-max">
+        <div className="h-full md:overflow-x-auto px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6">
+          <div className="flex flex-col md:flex-row gap-6 md:gap-4 h-auto md:h-full md:min-w-max">
             {(currentPipeline?.stages || []).map(stage => {
               const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
 
               return (
                 <div
                   key={stage.id}
-                  className="w-72 md:w-80 flex flex-col shrink-0 min-h-0"
+                  className="w-full md:w-80 flex flex-col shrink-0"
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-3 sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
                       <h3 className="font-semibold text-sm md:text-base truncate">{stage.name}</h3>
@@ -714,11 +714,11 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                           pipelineType={activePipeline}
                           pipelineId={currentPipeline?.id}
                           stages={currentPipeline?.stages || []}
-                          teamMembers={teamMembers} // Pasar objetos TeamMember
+                          teamMembers={teamMembers}
                           onAdd={handleAddLead}
                           defaultStageId={stage.id}
                           companies={companies}
-                          currentUser={user} // Pasar objeto User
+                          currentUser={user}
                           companyName={currentCompany?.name}
                           trigger={
                             <Button
@@ -737,13 +737,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                     </div>
                   </div>
 
-                  <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/30 rounded-lg p-2">
+                  <div className="flex flex-row md:flex-col gap-3 md:gap-2 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto min-h-[120px] md:min-h-[200px] bg-muted/30 rounded-lg p-2 md:flex-1 no-scrollbar-mobile pb-4 md:pb-2">
                     {stageLeads.map(lead => (
                       <Card
                         key={lead.id}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead)}
-                        className="p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
+                        className="w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
                         style={{ borderLeftColor: stage.color }}
                         onClick={() => setSelectedLead(lead)}
                       >
