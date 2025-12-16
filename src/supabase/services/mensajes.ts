@@ -12,6 +12,34 @@ export interface Message {
   metadata?: any
 }
 
+export interface MediaPayload {
+  downloadUrl: string
+  fileName: string
+}
+
+// Subir archivo al bucket de Storage y obtener URL pública
+export async function uploadChatAttachment(file: File, leadId: string): Promise<MediaPayload> {
+  const ext = file.name.split('.').pop() || 'file'
+  const fileName = `${leadId}-${Date.now()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('Send-message CRM')
+    .upload(fileName, file, { upsert: true })
+
+  if (uploadError) {
+    console.error('[uploadChatAttachment] Error subiendo archivo:', uploadError)
+    throw uploadError
+  }
+
+  const { data } = supabase.storage
+    .from('Send-message CRM')
+    .getPublicUrl(fileName)
+
+  console.log('[uploadChatAttachment] Archivo subido:', { url: data.publicUrl, originalName: file.name })
+
+  return { downloadUrl: data.publicUrl, fileName: file.name }
+}
+
 export async function getMessages(leadId: string) {
   const { data, error } = await supabase
     .from('mensajes')
@@ -23,14 +51,21 @@ export async function getMessages(leadId: string) {
   return data as Message[]
 }
 
-export async function sendMessage(leadId: string, content: string, sender: 'team' | 'lead' = 'team', channel: string = 'whatsapp') {
+export async function sendMessage(
+  leadId: string,
+  content: string,
+  sender: 'team' | 'lead' = 'team',
+  channel: string = 'whatsapp',
+  media?: MediaPayload
+) {
   // Si es un mensaje del equipo, usamos la Edge Function para que también se envíe a la Super API
   if (sender === 'team') {
     const { data, error } = await supabase.functions.invoke('send-message', {
       body: {
         lead_id: leadId,
-        content,
-        channel
+        content: content || undefined,
+        channel,
+        media
       }
     })
     // Debug: superficie la respuesta completa de la Edge Function

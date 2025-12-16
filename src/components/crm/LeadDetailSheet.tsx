@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
-import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead } from '@/supabase/services/mensajes'
+import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import {
   PaperPlaneRight,
   Tag as TagIcon,
@@ -26,7 +26,11 @@ import {
   Trash,
   DownloadSimple,
   FilePdf,
-  File
+  File as FileIcon,
+  Paperclip,
+  Spinner,
+  Microphone,
+  Stop
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -96,6 +100,128 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const NIL_UUID = '00000000-0000-0000-0000-000000000000'
   const [assignedTo, setAssignedTo] = useState<string | null>(lead.assignedTo || null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  // Estados para grabación de audio
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  // Función para detener la grabación
+  const stopRecording = () => {
+    console.log('[Audio] Stopping recording...')
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current)
+      recordingIntervalRef.current = null
+    }
+  }
+
+  // Función para iniciar la grabación
+  const startRecording = async () => {
+    try {
+      console.log('[Audio] Starting recording...')
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+
+      // Intentar webm primero, luego mp4, luego lo que soporte el navegador
+      let mimeType = 'audio/webm'
+      if (!MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/mp4'
+        if (!MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = '' // Dejar que el navegador elija
+        }
+      }
+      console.log('[Audio] Using mimeType:', mimeType || 'default')
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
+
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        console.log('[Audio] Data available:', event.data.size)
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        console.log('[Audio] onstop triggered, chunks:', audioChunksRef.current.length)
+
+        // Detener el stream
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+        }
+
+        // Limpiar estado de grabación inmediatamente
+        setRecordingTime(0)
+        setIsRecording(false)
+
+        // Crear el archivo de audio
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' })
+        console.log('[Audio] Blob created:', audioBlob.size, 'bytes')
+
+        if (audioBlob.size === 0) {
+          toast.error('No se grabó audio')
+          return
+        }
+
+        const extension = mediaRecorder.mimeType?.includes('mp4') ? 'mp4' : 'webm'
+        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.${extension}`, {
+          type: mediaRecorder.mimeType || 'audio/webm'
+        })
+
+        // Subir y enviar
+        setIsUploading(true)
+        try {
+          const mediaData = await uploadChatAttachment(audioFile, lead.id)
+          const sentMsg = await sendDbMessage(lead.id, '', 'team', selectedChannel, mediaData)
+          if (sentMsg) {
+            const mappedMsg = {
+              id: sentMsg.id,
+              leadId: sentMsg.lead_id,
+              channel: sentMsg.channel as Channel,
+              content: sentMsg.content,
+              timestamp: new Date(sentMsg.created_at),
+              sender: sentMsg.sender as 'team' | 'lead',
+              read: sentMsg.read || false
+            }
+            setMessages(prev => prev.find(p => p.id === mappedMsg.id) ? prev : [...prev, mappedMsg])
+          }
+          toast.success('Nota de voz enviada')
+        } catch (err) {
+          console.error('[Audio] Error sending:', err)
+          toast.error('Error enviando nota de voz')
+        } finally {
+          setIsUploading(false)
+        }
+      }
+
+      // Usar timeslice de 500ms para capturar datos durante la grabación
+      mediaRecorder.start(500)
+      setIsRecording(true)
+      setRecordingTime(0)
+
+      // Iniciar temporizador
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1)
+      }, 1000)
+
+    } catch (err) {
+      console.error('[Audio] Error accessing microphone:', err)
+      toast.error('No se pudo acceder al micrófono')
+    }
+  }
 
   useEffect(() => {
     if (!lead.id || !open) return
@@ -694,9 +820,27 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                                 <span>{contentType}</span>
                               </div>
                             )}
-                            {msg.content && !msg.content.startsWith('http') && (
-                              <p className="text-sm">{msg.content}</p>
-                            )}
+                            {(() => {
+                              // Si hay mediaUrl, intentamos limpiar el contenido de URLs
+                              if (!msg.content) return null;
+
+                              // Si el contenido es solo una URL, no lo mostramos
+                              if (msg.content.startsWith('http')) return null;
+
+                              // Si hay un mediaUrl detectado, quitamos las URLs del texto
+                              if (mediaUrl) {
+                                const urlRegex = /https?:\/\/[^\s]+/gi;
+                                const cleanedContent = msg.content.replace(urlRegex, '').trim();
+                                // Si después de quitar URLs queda algo útil, mostrarlo
+                                if (cleanedContent && cleanedContent.length > 0) {
+                                  return <p className="text-sm">{cleanedContent}</p>;
+                                }
+                                return null;
+                              }
+
+                              // Si no hay mediaUrl, mostrar el contenido normal
+                              return <p className="text-sm">{msg.content}</p>;
+                            })()}
                           </div>
                         );
                       })()}
@@ -803,7 +947,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                             return (
                               <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
                                 <div className="bg-background p-2 rounded-md text-primary shadow-sm">
-                                  {isPdf ? <FilePdf size={24} weight="duotone" /> : <File size={24} weight="duotone" />}
+                                  {isPdf ? <FilePdf size={24} weight="duotone" /> : <FileIcon size={24} weight="duotone" />}
                                 </div>
                                 <div className="flex-1 min-w-0 overflow-hidden">
                                   <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
@@ -847,16 +991,96 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </ScrollArea>
 
             <div className="flex gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  if (file.size > 16 * 1024 * 1024) {
+                    toast.error('El archivo es muy grande. Máximo 16MB')
+                    return
+                  }
+                  setIsUploading(true)
+                  try {
+                    const mediaData = await uploadChatAttachment(file, lead.id)
+                    const sentMsg = await sendDbMessage(lead.id, messageInput || '', 'team', selectedChannel, mediaData)
+                    if (sentMsg) {
+                      const mappedMsg = {
+                        id: sentMsg.id,
+                        leadId: sentMsg.lead_id,
+                        channel: sentMsg.channel as Channel,
+                        content: sentMsg.content,
+                        timestamp: new Date(sentMsg.created_at),
+                        sender: sentMsg.sender as 'team' | 'lead',
+                        read: sentMsg.read || false
+                      }
+                      setMessages(prev => prev.find(p => p.id === mappedMsg.id) ? prev : [...prev, mappedMsg])
+                    }
+                    setMessageInput('')
+                    toast.success('Archivo enviado')
+                  } catch (err) {
+                    console.error(err)
+                    toast.error('Error enviando archivo')
+                  } finally {
+                    setIsUploading(false)
+                    if (fileInputRef.current) fileInputRef.current.value = ''
+                  }
+                }}
+                className="hidden"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!canEdit || isUploading}
+                title="Adjuntar archivo"
+              >
+                {isUploading ? <Spinner size={20} className="animate-spin" /> : <Paperclip size={20} />}
+              </Button>
               <Input
                 value={messageInput}
                 onChange={(e) => setMessageInput(e.target.value)}
                 placeholder={t.chat.typeMessage}
-                onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                disabled={!canEdit}
+                onKeyDown={(e) => e.key === 'Enter' && !isUploading && sendMessage()}
+                disabled={!canEdit || isUploading}
+                className="flex-1"
               />
-              <Button onClick={sendMessage} disabled={!canEdit}>
+              <Button onClick={sendMessage} disabled={!canEdit || isUploading || isRecording}>
                 <PaperPlaneRight size={20} />
               </Button>
+
+              {/* Botón de grabar audio */}
+              <Button
+                variant={isRecording ? "destructive" : "ghost"}
+                size="icon"
+                disabled={!canEdit || isUploading}
+                title={isRecording ? "Detener grabación" : "Grabar nota de voz"}
+                onClick={() => {
+                  if (isRecording) {
+                    stopRecording()
+                  } else {
+                    startRecording()
+                  }
+                }}
+              >
+                {isRecording ? (
+                  <Stop size={20} weight="fill" />
+                ) : (
+                  <Microphone size={20} />
+                )}
+              </Button>
+
+              {/* Indicador de tiempo de grabación */}
+              {isRecording && (
+                <div className="flex items-center gap-2 text-destructive animate-pulse">
+                  <div className="w-2 h-2 rounded-full bg-destructive" />
+                  <span className="text-sm font-mono">
+                    {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+                  </span>
+                </div>
+              )}
             </div>
           </TabsContent>
 
