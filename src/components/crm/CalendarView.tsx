@@ -15,20 +15,20 @@ export function CalendarView({ companyId }: { companyId?: string }) {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [showAddDialog, setShowAddDialog] = useState(false)
 
-  const dayAppointments = (appointments || []).filter(appt => 
+  const dayAppointments = (appointments || []).filter(appt =>
     isSameDay(new Date(appt.startTime), selectedDate)
   )
 
   const getLeadName = (leadId: string) => {
     return (leads || []).find(l => l.id === leadId)?.name || 'Unknown'
   }
-  
+
   const handleAddAppointment = (appointment: Appointment) => {
     setAppointments((current) => [...(current || []), appointment])
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-6 space-y-6">
+    <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-background/50 pb-24 md:pb-8 space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Calendar</h1>
@@ -79,7 +79,7 @@ export function CalendarView({ companyId }: { companyId?: string }) {
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Clock size={12} />
                     <span>
-                      {format(new Date(appt.startTime), 'h:mm a')} - 
+                      {format(new Date(appt.startTime), 'h:mm a')} -
                       {format(new Date(appt.endTime), 'h:mm a')}
                     </span>
                   </div>
@@ -118,7 +118,7 @@ export function CalendarView({ companyId }: { companyId?: string }) {
           </div>
         </CardContent>
       </Card>
-      
+
       <AddAppointmentDialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}

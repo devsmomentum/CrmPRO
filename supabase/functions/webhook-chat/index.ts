@@ -399,11 +399,11 @@ serve(async (req) => {
       }
 
       // ============================================================
-      // BUSCAR LEADS EN TODAS LAS EMPRESAS CONFIGURADAS
+      // BUSCAR LEADS EN TODAS LAS EMPRESAS (búsqueda global)
       // ============================================================
       if (content) {
         let totalLeadsMatched = 0;
-        const empresasWithoutLead: typeof empresasConfig = [];
+        let foundAnyLead = false;
 
         // Iterar por cada candidato de teléfono
         for (const candidate of phoneCandidates) {
@@ -418,86 +418,77 @@ serve(async (req) => {
             .trim();
           if (!cleanPhone) continue;
 
-          console.log(`🔍 Buscando leads con teléfono: ${cleanPhone}`);
+          console.log(`🔍 Buscando leads con teléfono: ${cleanPhone} en TODAS las empresas`);
 
-          // BUSCAR EN TODAS LAS EMPRESAS CONFIGURADAS
-          for (const config of empresasConfig) {
-            const { empresa_id } = config;
+          // BUSCAR EN TODAS LAS EMPRESAS (sin filtro de empresa_id)
+          const { data: leads, error } = await supabase
+            .from("lead")
+            .select("id, empresa_id, nombre_completo")
+            .ilike("telefono", `%${cleanPhone}%`);
 
-            const { data: leads, error } = await supabase
-              .from("lead")
-              .select("id, empresa_id, nombre_completo")
-              .eq("empresa_id", empresa_id)
-              .ilike("telefono", `%${cleanPhone}%`);
+          if (!error && leads && leads.length > 0) {
+            foundAnyLead = true;
+            console.log(`✅ Encontrados ${leads.length} leads con teléfono ${cleanPhone} en total`);
 
-            if (!error && leads && leads.length > 0) {
-              console.log(`✅ [Empresa ${empresa_id}] Encontrados ${leads.length} leads con teléfono ${cleanPhone}`);
+            for (const lead of leads) {
+              // Si hay archivo multimedia, descargarlo y guardarlo en Storage
+              let storedMediaUrl: string | null = null;
+              if (mediaUrl) {
+                const mimeType = file?.mimeType || null;
+                storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, lead.id, fileName, mimeType);
+              }
 
-              for (const lead of leads) {
-                // Si hay archivo multimedia, descargarlo y guardarlo en Storage
-                let storedMediaUrl: string | null = null;
-                if (mediaUrl) {
-                  const mimeType = file?.mimeType || null;
-                  storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, lead.id, fileName, mimeType);
-                }
-
-                // Crear metadata normalizada
-                const normalizedMetadata = {
+              // Crear metadata normalizada
+              const normalizedMetadata = {
+                type: type,
+                rawPayload: payload,
+                data: {
                   type: type,
-                  rawPayload: payload,
-                  data: {
-                    type: type,
-                    body: eventData.body || payload.body,
-                    file: file,
-                    media: media,
-                    mediaUrl: mediaUrl,
-                    mediaId: mediaId,
-                    fileName: fileName,
-                    storedMediaUrl: storedMediaUrl // URL del archivo guardado en nuestro Storage
-                  }
-                };
-
-                // Insertar mensaje para este lead
-                const { error: insertError } = await supabase.from("mensajes").insert({
-                  lead_id: lead.id,
-                  content: content,
-                  sender: senderRole,
-                  channel: "whatsapp",
-                  external_id: externalId,
-                  metadata: normalizedMetadata
-                });
-
-                if (insertError) {
-                  console.error(`❌ Error insertando mensaje para lead ${lead.id}:`, insertError);
-                } else {
-                  console.log(`✅ Mensaje guardado para lead ${lead.id} (${lead.nombre_completo})`);
-                  if (storedMediaUrl) {
-                    console.log(`✅ Archivo multimedia guardado en Storage: ${storedMediaUrl}`);
-                  }
-                  totalLeadsMatched++;
+                  body: eventData.body || payload.body,
+                  file: file,
+                  media: media,
+                  mediaUrl: mediaUrl,
+                  mediaId: mediaId,
+                  fileName: fileName,
+                  storedMediaUrl: storedMediaUrl
                 }
+              };
+
+              // Insertar mensaje para este lead
+              const { error: insertError } = await supabase.from("mensajes").insert({
+                lead_id: lead.id,
+                content: content,
+                sender: senderRole,
+                channel: "whatsapp",
+                external_id: externalId,
+                metadata: normalizedMetadata
+              });
+
+              if (insertError) {
+                console.error(`❌ Error insertando mensaje para lead ${lead.id}:`, insertError);
+              } else {
+                console.log(`✅ Mensaje guardado para lead ${lead.id} (${lead.nombre_completo}) [Empresa ${lead.empresa_id}]`);
+                if (storedMediaUrl) {
+                  console.log(`✅ Archivo multimedia guardado en Storage: ${storedMediaUrl}`);
+                }
+                totalLeadsMatched++;
               }
-            } else {
-              // No se encontró lead en esta empresa - agregar a la lista para crear
-              if (!empresasWithoutLead.find(e => e.empresa_id === empresa_id)) {
-                empresasWithoutLead.push(config);
-              }
-              console.log(`ℹ️ [Empresa ${empresa_id}] No hay leads con teléfono ${cleanPhone}`);
             }
           }
 
           // Si encontramos al menos un lead, no seguimos buscando con otros candidatos
-          if (totalLeadsMatched > 0) {
-            console.log(`✅ Total: ${totalLeadsMatched} mensajes guardados`);
+          if (foundAnyLead) {
+            console.log(`✅ Total: ${totalLeadsMatched} mensajes guardados en todas las empresas`);
             break;
           }
         }
 
         // ============================================================
-        // SI NO SE ENCONTRÓ NINGÚN LEAD, CREAR NUEVOS
+        // VERIFICAR Y CREAR LEADS EN EMPRESAS CONFIGURADAS
+        // (Independientemente de si existen en otras empresas)
         // ============================================================
-        if (totalLeadsMatched === 0 && empresasWithoutLead.length > 0) {
-          console.log(`🆕 No se encontraron leads. Creando en ${empresasWithoutLead.length} empresa(s)...`);
+        if (empresasConfig.length > 0) {
+          console.log(`🔍 Verificando leads en ${empresasConfig.length} empresa(s) configuradas...`);
 
           // Buscar candidato para crear lead
           let inboundCandidate = phoneCandidates.find(c => c.senderRole === 'lead' && c.phone);
@@ -509,10 +500,10 @@ serve(async (req) => {
             const targetPhone = inboundCandidate.phone;
             const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
 
-            for (const config of empresasWithoutLead) {
+            for (const config of empresasConfig) {
               const { empresa_id, pipeline_id, etapa_id } = config;
 
-              console.log(`🆕 [Empresa ${empresa_id}] Creando nuevo lead...`);
+              console.log(`🔍 [Empresa ${empresa_id}] Verificando si existe lead con teléfono ${cleanPhone}...`);
 
               // Verificar que no exista (doble check)
               const { data: existingLead } = await supabase

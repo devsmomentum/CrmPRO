@@ -33,6 +33,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
   const t = useTranslation('es')
   const [notifications] = usePersistentState<Notification[]>('notifications', [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
+  const [showCompanySelector, setShowCompanySelector] = useState(false)
   // const [companies] = usePersistentState<Company[]>('companies', [])
 
   const unreadCount = (notifications || []).filter(n => !n.read).length + notificationCount
@@ -69,7 +70,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                 <SelectContent>
                   {(companies || []).map(c => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.name} {c.ownerId !== user?.id && <span className="text-muted-foreground text-[10px] ml-1">({t.common?.guest || 'Invitado'})</span>}
+                      {c.name} {c.ownerId !== user?.id && <span className="text-muted-foreground text-[10px] ml-1">('Invitado')</span>}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -141,9 +142,20 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
         </div>
       </div>
 
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-card border-t border-border z-50">
-        <nav className="flex items-center justify-around p-2">
-          {menuItems.slice(0, 4).map((item) => {
+      <div className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-background border-t border-border z-[9999] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] pb-[env(safe-area-inset-bottom)]">
+        <nav className="flex items-center justify-between px-1 py-1.5 overflow-x-auto">
+          {/* Botón de empresa */}
+          {user && (companies || []).length > 0 && (
+            <button
+              onClick={() => setShowCompanySelector(true)}
+              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium text-muted-foreground min-w-fit"
+            >
+              <Buildings size={20} />
+              <span className="text-[9px] truncate max-w-[40px]">Empresa</span>
+            </button>
+          )}
+
+          {menuItems.map((item) => {
             const Icon = item.icon
             const isActive = currentView === item.id
 
@@ -152,46 +164,25 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
                 className={cn(
-                  'flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all',
+                  'flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium transition-all min-w-fit',
                   isActive
                     ? 'text-primary'
                     : 'text-muted-foreground'
                 )}
               >
-                <Icon size={24} weight={isActive ? 'fill' : 'regular'} />
-                <span className="text-[10px]">{item.label}</span>
+                <Icon size={20} weight={isActive ? 'fill' : 'regular'} />
+                <span className="text-[9px]">{item.label}</span>
               </button>
             )
           })}
 
           <button
             onClick={() => setShowVoiceRecorder(true)}
-            className="flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium text-primary bg-primary/10"
+            className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium text-primary bg-primary/10 min-w-fit"
           >
-            <Microphone size={24} weight="fill" />
-            <span className="text-[10px]">{t.nav.voice}</span>
+            <Microphone size={20} weight="fill" />
+            <span className="text-[9px]">{t.nav.voice}</span>
           </button>
-
-          {menuItems.slice(4).map((item) => {
-            const Icon = item.icon
-            const isActive = currentView === item.id
-
-            return (
-              <button
-                key={item.id}
-                onClick={() => onViewChange(item.id)}
-                className={cn(
-                  'flex flex-col items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-all',
-                  isActive
-                    ? 'text-primary'
-                    : 'text-muted-foreground'
-                )}
-              >
-                <Icon size={24} weight={isActive ? 'fill' : 'regular'} />
-                <span className="text-[10px]">{item.label}</span>
-              </button>
-            )
-          })}
         </nav>
       </div>
 
@@ -201,6 +192,52 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
             <DialogTitle>{t.nav.voice}</DialogTitle>
           </DialogHeader>
           <VoiceRecorder onClose={() => setShowVoiceRecorder(false)} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog para selector de empresa en móvil */}
+      <Dialog open={showCompanySelector} onOpenChange={setShowCompanySelector}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Buildings size={20} />
+              Cambiar Empresa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            {(companies || []).map(c => (
+              <button
+                key={c.id}
+                onClick={() => {
+                  onCompanyChange && onCompanyChange(c.id)
+                  setShowCompanySelector(false)
+                }}
+                className={cn(
+                  'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+                  currentCompanyId === c.id
+                    ? 'bg-primary text-primary-foreground'
+                    : 'hover:bg-muted'
+                )}
+              >
+                {c.name}
+                {c.ownerId !== user?.id && (
+                  <span className="text-xs ml-2 opacity-70">('Invitado')</span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="pt-2 mt-2 border-t border-border">
+            <button
+              onClick={() => {
+                onLogout && onLogout()
+                setShowCompanySelector(false)
+              }}
+              className="w-full text-left px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 transition-colors flex items-center gap-2"
+            >
+              <SignOut size={16} />
+              Cerrar Sesión
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
     </>

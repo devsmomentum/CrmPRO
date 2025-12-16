@@ -313,7 +313,7 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="fixed inset-0 bg-background overflow-hidden flex flex-col md:flex-row">
       <Sidebar
         currentView={currentView}
         onViewChange={setCurrentView}
@@ -325,23 +325,27 @@ function App() {
         notificationCount={pendingInvitationsCount}
       />
 
-      <main className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <main className="flex-1 flex flex-col overflow-hidden relative">
         {(() => {
           const currentCompany = companies.find(c => c.id === currentCompanyId)
           const isGuest = currentCompany && currentCompany.ownerId !== user.id
 
           if (isGuest) {
             return (
-              <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-amber-900 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">Modo Invitado:</span>
-                  <span>Estás viendo la empresa <strong>{currentCompany.name}</strong>. Tienes acceso de lectura/escritura limitado según tu rol.</span>
+              <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 flex flex-col md:flex-row items-start md:items-center justify-between text-amber-900 text-sm gap-2">
+                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium whitespace-nowrap">Modo Invitado:</span>
+                    <span className="md:hidden text-xs">Empresa <strong>{currentCompany.name}</strong></span>
+                  </div>
+                  <span className="hidden md:inline">Estás viendo la empresa <strong>{currentCompany.name}</strong>. Tienes acceso de lectura/escritura limitado según tu rol.</span>
+                  <span className="md:hidden text-xs text-amber-800/80 leading-tight">Acceso limitado según tu rol.</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full md:w-auto mt-1 md:mt-0">
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 bg-white border-red-300 hover:bg-red-50 text-red-900"
+                    className="flex-1 md:flex-none h-8 md:h-7 bg-white border-red-300 hover:bg-red-50 text-red-900 text-xs px-2"
                     onClick={async () => {
                       if (confirm('¿Estás seguro de que quieres abandonar esta empresa? Perderás el acceso inmediatamente.')) {
                         try {
@@ -361,12 +365,12 @@ function App() {
                       }
                     }}
                   >
-                    Abandonar Empresa
+                    Abandonar
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 bg-white border-amber-300 hover:bg-amber-50 text-amber-900"
+                    className="flex-1 md:flex-none h-8 md:h-7 bg-white border-amber-300 hover:bg-amber-50 text-amber-900 text-xs px-2"
                     onClick={() => {
                       console.log('[GUEST_MODE] Saliendo del modo invitado...')
                       const myCompany = companies.find(c => c.ownerId === user.id)
@@ -379,7 +383,7 @@ function App() {
                       }
                     }}
                   >
-                    Salir del Modo Invitado
+                    Salir del Modo
                   </Button>
                 </div>
               </div>
@@ -431,6 +435,7 @@ function App() {
             onCompanyChange={setCurrentCompanyId}
             companies={companies}
             setCompanies={setCompanies}
+            onLogout={handleLogout}
           />
         )}
         {currentView === 'notifications' && (
