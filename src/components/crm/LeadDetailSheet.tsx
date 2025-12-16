@@ -130,12 +130,20 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       streamRef.current = stream
 
-      // Intentar webm primero, luego mp4, luego lo que soporte el navegador
-      let mimeType = 'audio/webm'
-      if (!MediaRecorder.isTypeSupported('audio/webm')) {
-        mimeType = 'audio/mp4'
-        if (!MediaRecorder.isTypeSupported('audio/mp4')) {
-          mimeType = '' // Dejar que el navegador elija
+      // Priorizar OGG/Opus (formato nativo de WhatsApp) para mejor compatibilidad
+      let mimeType = ''
+      const preferredFormats = [
+        'audio/ogg;codecs=opus',  // Formato nativo de WhatsApp
+        'audio/ogg',
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm'
+      ]
+
+      for (const format of preferredFormats) {
+        if (MediaRecorder.isTypeSupported(format)) {
+          mimeType = format
+          break
         }
       }
       console.log('[Audio] Using mimeType:', mimeType || 'default')
@@ -176,10 +184,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           return
         }
 
-        const extension = mediaRecorder.mimeType?.includes('mp4') ? 'mp4' : 'webm'
-        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.${extension}`, {
-          type: mediaRecorder.mimeType || 'audio/webm'
+        // Forzar formato OGG para compatibilidad con WhatsApp (notas de voz)
+        // WhatsApp reconoce .ogg como formato de nota de voz
+        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.ogg`, {
+          type: 'audio/ogg'
         })
+        console.log('[Audio] File created as OGG for WhatsApp compatibility')
 
         // Subir y enviar
         setIsUploading(true)

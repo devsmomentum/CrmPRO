@@ -8,6 +8,83 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-hub-signature-256, x-signature-256",
 };
 
+// Nombre del bucket para guardar archivos recibidos
+const MEDIA_BUCKET = "CRM message received";
+
+// Función helper para descargar archivo de URL y subirlo al bucket de Storage
+async function downloadAndStoreMedia(
+  supabase: ReturnType<typeof createClient>,
+  originalUrl: string,
+  leadId: string,
+  fileName?: string | null,
+  mimeType?: string | null
+): Promise<string | null> {
+  try {
+    console.log(`📥 [STORAGE] Descargando archivo desde: ${originalUrl}`);
+
+    // Descargar el archivo
+    const response = await fetch(originalUrl);
+    if (!response.ok) {
+      console.error(`❌ [STORAGE] Error descargando archivo: ${response.status}`);
+      return null;
+    }
+
+    const blob = await response.blob();
+    console.log(`📥 [STORAGE] Archivo descargado: ${blob.size} bytes, tipo: ${blob.type}`);
+
+    // Determinar extensión del archivo
+    let extension = 'bin';
+    const contentType = mimeType || blob.type || '';
+
+    if (contentType.includes('image/jpeg') || contentType.includes('image/jpg')) extension = 'jpg';
+    else if (contentType.includes('image/png')) extension = 'png';
+    else if (contentType.includes('image/gif')) extension = 'gif';
+    else if (contentType.includes('image/webp')) extension = 'webp';
+    else if (contentType.includes('audio/ogg') || contentType.includes('audio/opus')) extension = 'ogg';
+    else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) extension = 'mp3';
+    else if (contentType.includes('audio/wav')) extension = 'wav';
+    else if (contentType.includes('audio/webm')) extension = 'webm';
+    else if (contentType.includes('video/mp4')) extension = 'mp4';
+    else if (contentType.includes('video/webm')) extension = 'webm';
+    else if (contentType.includes('application/pdf')) extension = 'pdf';
+    else if (fileName) {
+      // Intentar obtener extensión del nombre original
+      const parts = fileName.split('.');
+      if (parts.length > 1) extension = parts.pop() || 'bin';
+    }
+
+    // Generar nombre único para el archivo
+    const timestamp = Date.now();
+    const storagePath = `${leadId}/${timestamp}.${extension}`;
+
+    // Subir al bucket
+    const { error: uploadError } = await supabase.storage
+      .from(MEDIA_BUCKET)
+      .upload(storagePath, blob, {
+        contentType: contentType || 'application/octet-stream',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error(`❌ [STORAGE] Error subiendo archivo:`, uploadError);
+      return null;
+    }
+
+    // Obtener URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from(MEDIA_BUCKET)
+      .getPublicUrl(storagePath);
+
+    const storedUrl = publicUrlData?.publicUrl;
+    console.log(`✅ [STORAGE] Archivo guardado en bucket: ${storedUrl}`);
+
+    return storedUrl;
+  } catch (error) {
+    console.error(`❌ [STORAGE] Error procesando archivo:`, error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -357,6 +434,13 @@ serve(async (req) => {
               console.log(`✅ [Empresa ${empresa_id}] Encontrados ${leads.length} leads con teléfono ${cleanPhone}`);
 
               for (const lead of leads) {
+                // Si hay archivo multimedia, descargarlo y guardarlo en Storage
+                let storedMediaUrl: string | null = null;
+                if (mediaUrl) {
+                  const mimeType = file?.mimeType || null;
+                  storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, lead.id, fileName, mimeType);
+                }
+
                 // Crear metadata normalizada
                 const normalizedMetadata = {
                   type: type,
@@ -368,7 +452,8 @@ serve(async (req) => {
                     media: media,
                     mediaUrl: mediaUrl,
                     mediaId: mediaId,
-                    fileName: fileName
+                    fileName: fileName,
+                    storedMediaUrl: storedMediaUrl // URL del archivo guardado en nuestro Storage
                   }
                 };
 
@@ -386,6 +471,9 @@ serve(async (req) => {
                   console.error(`❌ Error insertando mensaje para lead ${lead.id}:`, insertError);
                 } else {
                   console.log(`✅ Mensaje guardado para lead ${lead.id} (${lead.nombre_completo})`);
+                  if (storedMediaUrl) {
+                    console.log(`✅ Archivo multimedia guardado en Storage: ${storedMediaUrl}`);
+                  }
                   totalLeadsMatched++;
                 }
               }
@@ -506,6 +594,13 @@ serve(async (req) => {
               if (newLead && !createError) {
                 console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id}`);
 
+                // Si hay archivo multimedia, descargarlo y guardarlo en Storage
+                let storedMediaUrl: string | null = null;
+                if (mediaUrl) {
+                  const mimeType = file?.mimeType || null;
+                  storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, newLead.id, fileName, mimeType);
+                }
+
                 // Crear metadata normalizada
                 const normalizedMetadata = {
                   type: type,
@@ -517,7 +612,8 @@ serve(async (req) => {
                     media: media,
                     mediaUrl: mediaUrl,
                     mediaId: mediaId,
-                    fileName: fileName
+                    fileName: fileName,
+                    storedMediaUrl: storedMediaUrl // URL del archivo guardado en nuestro Storage
                   }
                 };
 

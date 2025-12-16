@@ -81,6 +81,10 @@ serve(async (req) => {
       console.log(`[DEBUG] Final ChatId: '${chatId}'`);
       console.log(`[DEBUG] Platform: '${platform}'`);
       console.log(`[DEBUG] Has Media: ${!!media}`);
+      if (media) {
+        console.log(`[DEBUG] Media URL: ${media.downloadUrl}`);
+        console.log(`[DEBUG] Media FileName: ${media.fileName}`);
+      }
       console.log(`[DEBUG] Payload:`, JSON.stringify(apiPayload));
 
       const response = await fetch(SUPER_API_URL, {
