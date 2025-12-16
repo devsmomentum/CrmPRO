@@ -16,7 +16,8 @@ import { toast } from 'sonner'
 import { Company } from './CompanyManagement'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import * as XLSX from 'xlsx'
-import { createLead } from '@/supabase/services/leads'
+import { createLead, createLeadsBulk } from '@/supabase/services/leads'
+import { Progress } from '@/components/ui/progress'
 
 // Lazy load PDF.js to avoid worker issues
 let pdfjsLib: any = null
@@ -95,6 +96,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
   const [file, setFile] = useState<File | null>(null)
   const [previewData, setPreviewData] = useState<PreviewRow[]>([])
   const [importStatus, setImportStatus] = useState<'idle' | 'preview' | 'importing' | 'success'>('idle')
+  const [progress, setProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Miembros elegibles: aquellos cuyo array pipelines incluye el pipeline actual (o no tienen restricción)
@@ -591,8 +593,65 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         isValid,
         error: !isValid ? 'Nombre es requerido' : undefined
       }
-    }).filter(Boolean) as PreviewRow[] // Filtrar nulos (filas vacías)
-    setPreviewData(mappedData)
+    }).filter(Boolean) as PreviewRow[]
+
+    // Deduplicate within the file itself
+    const seenEmails = new Set<string>()
+    const seenPhones = new Set<string>()
+
+    // Fetch existing leads to check for duplicates in DB
+
+
+    let existingLeadsMaps: { emails: Set<string>, phones: Set<string> } = { emails: new Set(), phones: new Set() }
+
+    try {
+      // Optimización: Traer solo columnas necesarias para chequear duplicados
+      const { data: existingData } = await supabase
+        .from('lead')
+        .select('correo_electronico, telefono')
+        .eq('empresa_id', effectiveCompanyId)
+
+      if (existingData) {
+        existingData.forEach((l: any) => {
+          if (l.correo_electronico) existingLeadsMaps.emails.add(String(l.correo_electronico).toLowerCase().trim())
+          if (l.telefono) existingLeadsMaps.phones.add(String(l.telefono).replace(/\D/g, ''))
+        })
+      }
+    } catch (err) {
+      console.error('Error fetching existing leads for deduplication', err)
+    }
+
+    const processedData = mappedData.map(row => {
+      const email = row.correo_electronico?.toLowerCase().trim()
+      const rawPhone = row.telefono ? String(row.telefono).replace(/\D/g, '') : ''
+
+      // 1. Check if valid
+      if (!row.isValid) return row
+
+      // 2. Check internal duplicates (in the same file)
+      if (email && seenEmails.has(email)) {
+        return { ...row, isValid: false, error: 'Duplicado en este archivo (Email)' }
+      }
+      if (rawPhone && rawPhone.length > 6 && seenPhones.has(rawPhone)) {
+        return { ...row, isValid: false, error: 'Duplicado en este archivo (Teléfono)' }
+      }
+
+      // 3. Check DB duplicates
+      if (email && existingLeadsMaps.emails.has(email)) {
+        return { ...row, isValid: false, error: 'Ya existe en el CRM (Email)' }
+      }
+      if (rawPhone && rawPhone.length > 6 && existingLeadsMaps.phones.has(rawPhone)) {
+        return { ...row, isValid: false, error: 'Ya existe en el CRM (Teléfono)' }
+      }
+
+      // Add to sets
+      if (email) seenEmails.add(email)
+      if (rawPhone && rawPhone.length > 6) seenPhones.add(rawPhone)
+
+      return row
+    })
+
+    setPreviewData(processedData)
   }
 
   const handleImport = async () => {
@@ -624,59 +683,78 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
     const validRows = previewData.filter(r => r.isValid)
     const importedLeads: Lead[] = []
+    const BATCH_SIZE = 50
+    const totalBatches = Math.ceil(validRows.length / BATCH_SIZE)
 
-    for (const row of validRows) {
+    for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+      const batch = validRows.slice(i, i + BATCH_SIZE)
+      const batchLeads = batch.map(row => ({
+        nombre_completo: row.nombre_completo,
+        telefono: row.telefono,
+        correo_electronico: row.correo_electronico,
+        empresa: row.empresa,
+        presupuesto: row.presupuesto,
+        empresa_id: effectiveCompanyId,
+        pipeline_id: pipelineId,
+        etapa_id: stageId,
+        asignado_a: null,
+        prioridad: 'medium'
+      }))
+
       try {
-        const result = await createLead({
-          nombre_completo: row.nombre_completo,
-          telefono: row.telefono,
-          correo_electronico: row.correo_electronico,
-          empresa: row.empresa,
-          presupuesto: row.presupuesto,
-          empresa_id: effectiveCompanyId,
-          pipeline_id: pipelineId,
-          etapa_id: stageId, // Use currently selected stage in dialog
-          // created_at: new Date(), // Use created_at instead if needed, though DB has default
-          asignado_a: null, // Opcional: Podría ser el usuario actual
-          prioridad: 'medium'
-          // origen removed as it's not in schema
-        })
+        const result = await createLeadsBulk(batchLeads)
 
-
-        // Construct a local lead object to update UI immediately
-        importedLeads.push({
-          id: result.id,
-          name: row.nombre_completo || '',
-          email: row.correo_electronico || '',
-          phone: row.telefono || '',
-          company: row.empresa || '',
-          budget: row.presupuesto || 0,
-          stage: stageId,
-          pipeline: pipelineType,
-          priority: 'medium',
-          assignedTo: '00000000-0000-0000-0000-000000000000', // Unassigned UUID
-          tags: [],
-          createdAt: new Date(),
-          lastContact: new Date()
-        })
-
-        successCount++
+        if (result && Array.isArray(result)) {
+          successCount += result.length
+          // Add to local list for UI update
+          result.forEach(r => {
+            importedLeads.push({
+              id: r.id,
+              name: r.nombre_completo || '',
+              email: r.correo_electronico || '',
+              phone: r.telefono || '',
+              company: r.empresa || '',
+              budget: r.presupuesto || 0,
+              stage: stageId,
+              pipeline: pipelineId || 'sales',
+              priority: 'medium',
+              assignedTo: null,
+              tags: [],
+              createdAt: new Date(),
+              lastContact: new Date()
+            })
+          })
+        }
       } catch (err: any) {
-        console.error('Error importing row:', row)
-        console.error('Full Error Details:', err)
-        if (err.message) console.error('Error Message:', err.message)
-        if (err.details) console.error('Error Details:', err.details)
-        if (err.hint) console.error('Error Hint:', err.hint)
-        errorsCount++
-        // Mostrar toast con el error específico del primer fallo para ayudar a debuggear
-        if (errorsCount === 1) {
-          toast.error(`Error al importar: ${err.message || 'Error desconocido'}`)
+        console.error('Error importing batch:', err)
+        errorsCount += batch.length
+
+        // Handle specific Foreign Key errors
+        let errorMsg = err.message || 'Error desconocido'
+        if (err.code === '23503' || String(err.message).includes('foreign key constraint')) {
+          if (String(err.message).includes('etapa_id')) {
+            errorMsg = 'La etapa seleccionada no existe en la base de datos. Asegúrate de que el pipeline esté guardado.'
+          } else if (String(err.message).includes('pipeline_id')) {
+            errorMsg = 'El pipeline seleccionado no es válido o no está guardado.'
+          } else if (String(err.message).includes('empresa_id')) {
+            errorMsg = 'ID de compañía inválido.'
+          }
+        }
+
+        if (errorsCount <= BATCH_SIZE) {
+          toast.error(`Error al importar lote: ${errorMsg}`)
+          console.error('Batch error details:', err)
         }
       }
+
+      // Update progress 
+      const currentProgress = Math.round(((i + BATCH_SIZE) / validRows.length) * 100)
+      setProgress(Math.min(currentProgress, 100))
+      console.log(`Processed batch ${Math.ceil((i + 1) / BATCH_SIZE)} of ${totalBatches}`)
     }
 
     setImportStatus('success')
-    toast.success(`Importación finalizada: ${successCount} leads creados.${errorsCount > 0 ? `${errorsCount} errores.` : ''} `)
+    toast.success(`Importación finalizada: ${successCount} leads creados. ${errorsCount > 0 ? `${errorsCount} errores.` : ''}`)
 
     // Call onAdd for each imported lead (or refactor onAdd to accept array)
     // For now, since onAdd expects single lead, we might just rely on parent refresh or refresh locally?
@@ -688,8 +766,9 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     // Hack: trigger onAdd for the last one just to close effectively or maybe loop?
     // Better: Assume parent handles realtime, or we can just close.
 
-    // If we want to show them immediately without realtime:
-    importedLeads.forEach(l => onAdd(l))
+    // We do NOT call onAdd here because that would trigger a second DB insert (since handleAddLead in PipelineView creates a lead).
+    // The bulk import above already created them.
+    // The UI should update via Realtime subscription or manual refresh.
 
     setTimeout(() => {
       resetForm()
@@ -971,10 +1050,16 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                     </Button>
                   )}
                   {importStatus === 'importing' && (
-                    <Button disabled className="w-full">
-                      <Spinner className="mr-2 animate-spin" />
-                      Importando...
-                    </Button>
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <Progress value={progress} className="h-2" />
+                        <p className="text-xs text-center text-muted-foreground">Procesando... {progress}%</p>
+                      </div>
+                      <Button disabled className="w-full">
+                        <Spinner className="mr-2 animate-spin" />
+                        Importando...
+                      </Button>
+                    </div>
                   )}
                   {importStatus === 'success' && (
                     <Button variant="default" className="w-full bg-green-600 hover:bg-green-700">

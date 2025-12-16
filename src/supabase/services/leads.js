@@ -26,6 +26,17 @@ export async function createLead(lead) {
 
   if (error) throw error
   return data
+
+}
+
+export async function createLeadsBulk(leads) {
+  const { data, error } = await supabase
+    .from('lead')
+    .insert(leads)
+    .select()
+
+  if (error) throw error
+  return data
 }
 
 export async function updateLead(id, updates) {

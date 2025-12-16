@@ -425,7 +425,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           id: created.id,
           pipeline: pipelineIdToSave || lead.pipeline
         }
-        setLeads((current) => [...(current || []), newLead])
+        // setLeads((current) => [...(current || []), newLead])
+        // Comentado para evitar duplicados en UI (Realtime lo agregará)
         toast.success('Lead guardado en BD')
       } else {
         // Fallback local para defaults
@@ -457,6 +458,10 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const handleDeleteStage = async (stageId: string) => {
     if (!isAdminOrOwner) {
       toast.error('No tienes permisos para eliminar etapas')
+      return
+    }
+
+    if (!window.confirm('¿Quieres eliminar la etapa? Se eliminarán todos los leads en ella.')) {
       return
     }
 
