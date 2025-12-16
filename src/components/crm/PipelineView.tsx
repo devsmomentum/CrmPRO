@@ -10,6 +10,7 @@ import { Plus, DotsThree, Funnel, Trash } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
+import { ExcelImportDialog } from './ExcelImportDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
@@ -622,16 +623,20 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                   </>
                 )}
                 {canEditLeads && (
-                  <AddLeadDialog
-                    pipelineType={activePipeline}
-                    pipelineId={currentPipeline?.id}
-                    stages={currentPipeline?.stages || []}
-                    teamMembers={teamMembers}
-                    onAdd={handleAddLead}
-                    companies={companies}
-                    currentUser={user}
-                    companyName={currentCompany?.name}
-                  />
+                  <>
+                    <AddLeadDialog
+                      pipelineType={activePipeline}
+                      pipelineId={currentPipeline?.id}
+                      stages={currentPipeline?.stages || []}
+                      teamMembers={teamMembers}
+                      onAdd={handleAddLead}
+                      companies={companies}
+                      currentUser={user}
+                      companyName={currentCompany?.name}
+                      companyId={companyId}
+                    />
+
+                  </>
                 )}
               </>
             )}
