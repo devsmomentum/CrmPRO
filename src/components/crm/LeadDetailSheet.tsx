@@ -491,10 +491,10 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
   return (
     <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col">
-        <SheetHeader className="p-6 border-b border-border">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
+      <SheetContent className="w-full sm:max-w-2xl p-0 flex h-full max-h-[100dvh] flex-col overflow-y-auto">
+        <SheetHeader className="p-5 sm:p-6 border-b border-border">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex-1 min-w-0">
               <div className="mb-2">
                 <InlineEdit
                   value={lead.name}
@@ -513,7 +513,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   placeholder="Empresa"
                 />
               </div>
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
+              <div className="flex items-start gap-2 mt-2 flex-wrap">
                 <InlineEdit
                   value={lead.email}
                   onSave={(value) => updateField('email', value)}
@@ -532,9 +532,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 />
               </div>
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 sm:items-end">
               <Select value={lead.priority} onValueChange={updatePriority} disabled={!canEdit}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-full sm:w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -617,7 +617,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-          <TabsList className="mx-6 mt-4">
+          <TabsList className="mx-4 sm:mx-6 mt-3 sm:mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/60 p-1">
             <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
             <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger>
             <TabsTrigger value="budget">{t.tabs.budget}</TabsTrigger>
@@ -625,7 +625,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             <TabsTrigger value="notes">{t.tabs.notes}</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="flex-1 p-6 space-y-4">
+          <TabsContent value="overview" className="flex-1 px-4 sm:px-6 py-4 sm:py-6 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
@@ -696,7 +696,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="chat" className="flex-1 flex flex-col p-6 min-h-0">
+          <TabsContent value="chat" className="flex-1 flex flex-col px-4 sm:px-6 py-4 sm:py-6 min-h-0 gap-3">
             <div className="flex justify-between items-center mb-4">
               <div className="flex gap-2 flex-wrap">
                 {(Object.keys(channelIcons) as Channel[]).map(channel => {
@@ -741,7 +741,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               )}
             </div>
 
-            <ScrollArea className="flex-1 pr-4 mb-4 min-h-0">
+            <ScrollArea className="flex-1 pr-3 sm:pr-4 mb-4 min-h-[320px]">
               <div className="space-y-3">
                 {leadMessages
                   .filter(m => m.channel === selectedChannel)
