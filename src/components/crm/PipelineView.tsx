@@ -30,7 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { deletePipeline, getPipelines } from '@/supabase/helpers/pipeline'
-import { createLead, deleteLead, getLeads, updateLead } from '@/supabase/services/leads'
+import { createLead, deleteLead, getLeads, getLeadsPaged, updateLead } from '@/supabase/services/leads'
 import { getEquipos } from '@/supabase/services/equipos'
 import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
@@ -72,6 +72,10 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
   const [unreadLeads, setUnreadLeads] = useState<Set<string>>(new Set())
+  const [pipelineOffset, setPipelineOffset] = useState(0)
+  const [pipelineHasMore, setPipelineHasMore] = useState(false)
+  const [isLoadingMoreAll, setIsLoadingMoreAll] = useState(false)
+  const [stagePages, setStagePages] = useState<Record<string, { offset: number; hasMore: boolean }>>({})
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
@@ -139,12 +143,72 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       })()
   }, [companyId])
 
+  // Cargar pipelines y luego leads paginados por pipeline
   useEffect(() => {
-    if (companyId) {
-      // Cargar leads
-      getLeads(companyId, user?.id, isAdminOrOwner)
-        .then((data: any) => {
-          const mappedLeads = data.map((l: any) => ({
+    if (!companyId) return
+
+    // Cargar pipelines de BD
+    getPipelines(companyId)
+      .then(({ data }) => {
+        if (data) {
+          const dbPipelines: Pipeline[] = data.map((p: any) => ({
+            id: p.id,
+            name: p.nombre,
+            type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+            stages: (p.etapas || []).map((s: any) => ({
+              id: s.id,
+              name: s.nombre,
+              order: s.orden,
+              color: s.color,
+              pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
+            })).sort((a: any, b: any) => a.order - b.order)
+          }))
+
+          setPipelines(dbPipelines)
+
+          setActivePipeline(current => {
+            const exists = dbPipelines.find(p => p.type === current)
+            if (!exists && dbPipelines.length > 0) {
+              return dbPipelines[0].type
+            }
+            return current
+          })
+        }
+      })
+      .catch(err => console.error('Error loading pipelines:', err))
+  }, [companyId])
+
+  // Carga inicial: 100 leads por etapa al cambiar de pipeline
+  useEffect(() => {
+    if (!companyId || !pipelines || pipelines.length === 0) return
+    const currentPipelineObj = pipelines.find(p => p.type === activePipeline)
+    if (!currentPipelineObj?.id) return
+
+    const BASE_STAGE_LIMIT = 100
+    const stages = currentPipelineObj.stages || []
+
+    setStagePages({})
+    setPipelineOffset(0)
+    setPipelineHasMore(false)
+
+    Promise.all(
+      stages.map(async (s) => {
+        const { data } = await getLeadsPaged({
+          empresaId: companyId,
+          currentUserId: user?.id,
+          isAdminOrOwner,
+          limit: BASE_STAGE_LIMIT,
+          offset: 0,
+          pipelineId: currentPipelineObj.id,
+          stageId: s.id,
+          order: 'desc'
+        })
+        return { stageId: s.id, data: data || [] }
+      })
+    )
+      .then((results) => {
+        const mappedAll = results.flatMap(({ data }) =>
+          data.map((l: any) => ({
             id: l.id,
             name: l.nombre_completo,
             email: l.correo_electronico,
@@ -159,43 +223,148 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             createdAt: new Date(l.created_at),
             lastContact: new Date(l.created_at)
           }))
-          setLeads(mappedLeads)
-        })
-        .catch(err => console.error('Error loading leads:', err))
+        )
 
-      // Cargar pipelines de BD
-      getPipelines(companyId)
-        .then(({ data }) => {
-          if (data) {
-            // Mapear DB pipelines a estructura Pipeline
-            const dbPipelines: Pipeline[] = data.map((p: any) => ({
-              id: p.id,
-              name: p.nombre,
-              type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
-              stages: (p.etapas || []).map((s: any) => ({
-                id: s.id,
-                name: s.nombre,
-                order: s.orden,
-                color: s.color,
-                pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
-              })).sort((a: any, b: any) => a.order - b.order)
-            }))
+        const byId = new Map<string, any>()
+        mappedAll.forEach(l => byId.set(l.id, l))
+        const unique = Array.from(byId.values())
+        setLeads(unique)
 
-            setPipelines(dbPipelines)
-
-            // Si el pipeline activo no existe en los nuevos pipelines, seleccionar el primero
-            setActivePipeline(current => {
-              const exists = dbPipelines.find(p => p.type === current)
-              if (!exists && dbPipelines.length > 0) {
-                return dbPipelines[0].type
-              }
-              return current
-            })
+        const nextStagePages: Record<string, { offset: number; hasMore: boolean }> = {}
+        stages.forEach((s) => {
+          const fetchedForStage = results.find(r => r.stageId === s.id)?.data?.length || 0
+          nextStagePages[s.id] = {
+            offset: fetchedForStage,
+            hasMore: fetchedForStage === BASE_STAGE_LIMIT,
           }
         })
-        .catch(err => console.error('Error loading pipelines:', err))
+        setStagePages(nextStagePages)
+
+        // Calcular si quedan más a nivel pipeline
+        getLeadsPaged({
+          empresaId: companyId,
+          currentUserId: user?.id,
+          isAdminOrOwner,
+          limit: 1,
+          offset: 0,
+          pipelineId: currentPipelineObj.id,
+          order: 'desc'
+        })
+          .then(({ count }) => {
+            if (typeof count === 'number') {
+              setPipelineHasMore(count > unique.length)
+              setPipelineOffset(unique.length)
+            }
+          })
+          .catch((err) => console.error('Error counting leads:', err))
+      })
+      .catch(err => console.error('Error loading leads by stage:', err))
+  }, [companyId, activePipeline, pipelines, isAdminOrOwner, user?.id])
+
+  const handleLoadMoreStage = async (stageId: string) => {
+    if (!companyId || !pipelines) return
+    const currentPipelineObj = pipelines.find(p => p.type === activePipeline)
+    if (!currentPipelineObj?.id) return
+
+    const current = stagePages[stageId] || { offset: 0, hasMore: true }
+    if (!current.hasMore) return
+
+    const STAGE_PAGE_SIZE = 300
+    try {
+      const { data } = await getLeadsPaged({
+        empresaId: companyId,
+        currentUserId: user?.id,
+        isAdminOrOwner,
+        limit: STAGE_PAGE_SIZE,
+        offset: current.offset,
+        pipelineId: currentPipelineObj.id,
+        stageId,
+        order: 'desc'
+      })
+      const mapped = (data || []).map((l: any) => ({
+        id: l.id,
+        name: l.nombre_completo,
+        email: l.correo_electronico,
+        phone: l.telefono,
+        company: l.empresa,
+        budget: l.presupuesto,
+        stage: l.etapa_id,
+        pipeline: l.pipeline_id || 'sales',
+        priority: l.prioridad,
+        assignedTo: l.asignado_a,
+        tags: [],
+        createdAt: new Date(l.created_at),
+        lastContact: new Date(l.created_at)
+      }))
+
+      setLeads((prev) => {
+        const byId = new Set((prev || []).map(l => l.id))
+        const toAdd = mapped.filter(l => !byId.has(l.id))
+        return [...(prev || []), ...toAdd]
+      })
+      const fetched = mapped.length
+      setStagePages((prev) => ({
+        ...prev,
+        [stageId]: { offset: current.offset + fetched, hasMore: fetched === STAGE_PAGE_SIZE }
+      }))
+      setPipelineOffset((prev) => prev + fetched)
+    } catch (err) {
+      console.error('Error loading more leads for stage:', err)
     }
-  }, [companyId])
+  }
+
+  const handleLoadMoreAll = async () => {
+    if (!companyId || !pipelines || isLoadingMoreAll) return
+    const currentPipelineObj = pipelines.find(p => p.type === activePipeline)
+    if (!currentPipelineObj?.id) return
+
+    setIsLoadingMoreAll(true)
+    const PIPELINE_PAGE_SIZE = 500
+    try {
+      const { data, count } = await getLeadsPaged({
+        empresaId: companyId,
+        currentUserId: user?.id,
+        isAdminOrOwner,
+        limit: PIPELINE_PAGE_SIZE,
+        offset: pipelineOffset,
+        pipelineId: currentPipelineObj.id,
+        order: 'desc'
+      })
+      const mapped = (data || []).map((l: any) => ({
+        id: l.id,
+        name: l.nombre_completo,
+        email: l.correo_electronico,
+        phone: l.telefono,
+        company: l.empresa,
+        budget: l.presupuesto,
+        stage: l.etapa_id,
+        pipeline: l.pipeline_id || 'sales',
+        priority: l.prioridad,
+        assignedTo: l.asignado_a,
+        tags: [],
+        createdAt: new Date(l.created_at),
+        lastContact: new Date(l.created_at)
+      }))
+
+      setLeads((current) => {
+        const byId = new Set((current || []).map(l => l.id))
+        const toAdd = mapped.filter(l => !byId.has(l.id))
+        return [...(current || []), ...toAdd]
+      })
+      const fetched = mapped.length
+      const newOffset = pipelineOffset + fetched
+      setPipelineOffset(newOffset)
+      if (typeof count === 'number') {
+        setPipelineHasMore(newOffset < count)
+      } else {
+        setPipelineHasMore(fetched === PIPELINE_PAGE_SIZE)
+      }
+    } catch (err) {
+      console.error('Error loading more leads (all):', err)
+    } finally {
+      setIsLoadingMoreAll(false)
+    }
+  }
 
   // Cargar mensajes no leídos
   useEffect(() => {
@@ -584,6 +753,15 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               leads={leads}
               onSelectLead={(lead) => setSelectedLead(lead)}
             />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLoadMoreAll}
+              disabled={!pipelineHasMore || isLoadingMoreAll}
+              title="Cargar más leads del pipeline"
+            >
+              {isLoadingMoreAll ? 'Cargando...' : 'Cargar más (todos)'}
+            </Button>
 
             {currentPipeline && (
               <>
@@ -708,6 +886,15 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                       <Badge variant="secondary" className="text-xs shrink-0">{stageLeads.length}</Badge>
                     </div>
                     <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleLoadMoreStage(stage.id)}
+                        disabled={!stagePages[stage.id]?.hasMore}
+                        title="Cargar más leads de esta etapa"
+                      >
+                        Cargar +
+                      </Button>
                       {isAdminOrOwner && (
                         <Button
                           variant="ghost"
@@ -890,6 +1077,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           </div>
         </div>
       </div>
+
+      {/* Botón inferior eliminado: ahora hay botones arriba y por etapa */}
 
       {selectedLead && (
         <LeadDetailSheet
