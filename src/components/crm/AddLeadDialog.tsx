@@ -17,6 +17,7 @@ import { Company } from './CompanyManagement'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import * as XLSX from 'xlsx'
 import { createLead, createLeadsBulk } from '@/supabase/services/leads'
+import { supabase } from '@/lib/supabase'
 import { Progress } from '@/components/ui/progress'
 
 // Lazy load PDF.js to avoid worker issues
@@ -600,22 +601,28 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     const seenPhones = new Set<string>()
 
     // Fetch existing leads to check for duplicates in DB
-
+    const effectiveCompanyId = companyId || (companies && companies.length > 0 ? companies[0].id : undefined)
+    if (!effectiveCompanyId) {
+      // Si no hay empresa, no podemos deduplicar contra BD; seguimos con dedupe local
+      console.warn('No companyId available for DB dedupe; skipping DB duplicate check')
+    }
 
     let existingLeadsMaps: { emails: Set<string>, phones: Set<string> } = { emails: new Set(), phones: new Set() }
 
     try {
       // Optimización: Traer solo columnas necesarias para chequear duplicados
-      const { data: existingData } = await supabase
-        .from('lead')
-        .select('correo_electronico, telefono')
-        .eq('empresa_id', effectiveCompanyId)
+      if (effectiveCompanyId) {
+        const { data: existingData } = await supabase
+          .from('lead')
+          .select('correo_electronico, telefono')
+          .eq('empresa_id', effectiveCompanyId)
 
-      if (existingData) {
-        existingData.forEach((l: any) => {
-          if (l.correo_electronico) existingLeadsMaps.emails.add(String(l.correo_electronico).toLowerCase().trim())
-          if (l.telefono) existingLeadsMaps.phones.add(String(l.telefono).replace(/\D/g, ''))
-        })
+        if (existingData) {
+          existingData.forEach((l: any) => {
+            if (l.correo_electronico) existingLeadsMaps.emails.add(String(l.correo_electronico).toLowerCase().trim())
+            if (l.telefono) existingLeadsMaps.phones.add(String(l.telefono).replace(/\D/g, ''))
+          })
+        }
       }
     } catch (err) {
       console.error('Error fetching existing leads for deduplication', err)
@@ -718,7 +725,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
               stage: stageId,
               pipeline: pipelineId || 'sales',
               priority: 'medium',
-              assignedTo: null,
+              assignedTo: '',
               tags: [],
               createdAt: new Date(),
               lastContact: new Date()
@@ -1024,7 +1031,9 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                             {row.isValid ? (
                               <Check size={16} className="text-green-500" />
                             ) : (
-                              <Warning size={16} className="text-amber-500" title={row.error} />
+                              <span title={row.error}>
+                                <Warning size={16} className="text-amber-500" />
+                              </span>
                             )}
                           </TableCell>
                           <TableCell className="font-medium text-xs sm:text-sm">{row.nombre_completo}</TableCell>

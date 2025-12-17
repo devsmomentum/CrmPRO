@@ -17,6 +17,42 @@ export async function getLeads(empresaId, currentUserId, isAdminOrOwner = false)
   return data
 }
 
+// Nuevo: obtención paginada y ordenada, con filtros opcionales
+export async function getLeadsPaged({
+  empresaId,
+  currentUserId,
+  isAdminOrOwner = false,
+  limit = 200,
+  offset = 0,
+  pipelineId,
+  stageId,
+  order = 'desc',
+} = {}) {
+  let query = supabase
+    .from('lead')
+    .select('*', { count: 'exact' })
+    .eq('empresa_id', empresaId)
+
+  if (pipelineId) {
+    query = query.eq('pipeline_id', pipelineId)
+  }
+  if (stageId) {
+    query = query.eq('etapa_id', stageId)
+  }
+
+  if (!isAdminOrOwner && currentUserId) {
+    query = query.or(`asignado_a.eq.${currentUserId},asignado_a.eq.00000000-0000-0000-0000-000000000000,asignado_a.is.null`)
+  }
+
+  query = query
+    .order('created_at', { ascending: order === 'asc' })
+    .range(offset, Math.max(0, offset + limit - 1))
+
+  const { data, error, count } = await query
+  if (error) throw error
+  return { data, count }
+}
+
 export async function createLead(lead) {
   const { data, error } = await supabase
     .from('lead')
