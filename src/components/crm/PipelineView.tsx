@@ -14,7 +14,7 @@ import { ExcelImportDialog } from './ExcelImportDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -687,6 +687,43 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     }
   }
 
+  const handleMoveLead = async (lead: Lead, targetStageId: string) => {
+    if (!canEditLeads) {
+      toast.error('No tienes permisos para mover leads')
+      return
+    }
+
+    if (lead.stage === targetStageId) {
+      return
+    }
+
+    const updatedLead = {
+      ...lead,
+      stage: targetStageId
+    }
+
+    setLeads((current) =>
+      (current || []).map(l => l.id === lead.id ? updatedLead : l)
+    )
+
+    // Actualizar en BD
+    if (lead.id.length > 20) { // Check simple de UUID
+      try {
+        await updateLead(lead.id, { etapa_id: targetStageId })
+        toast.success('Lead movido a nueva etapa')
+      } catch (err: any) {
+        console.error('Error updating lead stage in DB:', err)
+        toast.error(`Error al mover lead: ${err.message || 'Error desconocido'}`)
+        // Revertir cambio local
+        setLeads((current) =>
+          (current || []).map(l => l.id === lead.id ? lead : l)
+        )
+      }
+    } else {
+      toast.success('Lead movido a nueva etapa (local)')
+    }
+  }
+
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     if (!canEditLeads) {
       e.preventDefault()
@@ -962,7 +999,26 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
-                              <DropdownMenuItem disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuItem>
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent>
+                                  {(currentPipeline?.stages || []).map(s => (
+                                    <DropdownMenuItem
+                                      key={s.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleMoveLead(lead, s.id)
+                                      }}
+                                      disabled={s.id === lead.stage}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                        {s.name}
+                                      </div>
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
                               {isAdminOrOwner && (
                                 <DropdownMenuItem
                                   className="text-destructive"

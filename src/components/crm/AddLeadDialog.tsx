@@ -34,6 +34,58 @@ const loadPdfJs = async () => {
   return pdfjsLib
 }
 
+// Detecta fechas tipo DD/MM/YYYY o DD-MM-YYYY (con validación básica de día/mes/año)
+const isDateLike = (str: string) => {
+  if (!str) return false
+  const s = String(str).trim()
+  const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/)
+  if (!m) return false
+  const d = Number(m[1])
+  const mo = Number(m[2])
+  const yy = m[3]
+  const y = yy.length === 2 ? 2000 + Number(yy) : Number(yy)
+  if (Number.isNaN(d) || Number.isNaN(mo) || Number.isNaN(y)) return false
+  if (d < 1 || d > 31) return false
+  if (mo < 1 || mo > 12) return false
+  if (y < 1900 || y > 2100) return false
+  return true
+}
+
+// Detecta valores de fecha provenientes de Excel (string fecha, Date o serial numérico)
+const isDateValue = (val: any) => {
+  if (val == null) return false
+  if (val instanceof Date) return true
+  if (typeof val === 'number') {
+    // Rangos típicos de serial de Excel (aprox.)
+    return val > 20000 && val < 90000
+  }
+  return isDateLike(String(val))
+}
+
+// Si el valor empieza con una fecha (23/12/2025 Nombre), devuelve solo el resto.
+const stripLeadingDate = (val: any) => {
+  if (val == null) return ''
+  if (val instanceof Date) return ''
+  const s = String(val).trim()
+  if (!s) return ''
+  const m = s.match(/^(\d{1,2}[\/-]\d{1,2}[\/-](\d{2}|\d{4}))\s*[,:;\-]*\s*(.+)$/)
+  if (m) {
+    const rest = m[3].trim()
+    return rest
+  }
+  return s
+}
+
+// Quita un token de día suelto al inicio ("25 Carlos" -> "Carlos").
+const stripLeadingDayToken = (val: any) => {
+  if (val == null) return ''
+  const s = String(val).trim()
+  if (!s) return ''
+  return s.replace(/^\d{1,2}\s+/, '').trim()
+}
+
+const cleanNameValue = (val: any) => stripLeadingDayToken(stripLeadingDate(val))
+
 interface User {
   id: string
   email: string
@@ -168,6 +220,8 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     lines.forEach(line => {
       const trimmedLine = line.trim()
       if (!trimmedLine) return
+      // Omitir líneas que parezcan fechas (p.ej. 23/12/2025)
+      if (isDateLike(trimmedLine)) return
 
       // 1. Intento de parseo Clave: Valor (Prioridad Alta)
       if (trimmedLine.includes(':')) {
@@ -187,6 +241,9 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         } else if (['empresa', 'compañia', 'negocio', 'company'].some(k => key.includes(k))) {
           newCompany = value
           foundCompanyInText = true
+        } else if (['fecha', 'date', 'creado el', 'created at'].some(k => key.includes(k))) {
+          // Omitir clave fecha explícita
+          return
         } else if (['presupuesto', 'costo', 'valor', 'precio', 'budget'].some(k => key.includes(k))) {
           const num = value.replace(/[^0-9.]/g, '')
           const parsed = parseFloat(num)
@@ -257,7 +314,10 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       // Si no hemos encontrado nombre en este texto y el campo actual está vacío (o queremos priorizar el texto pegado)
       // Asumimos que la primera línea de texto libre es el Nombre
       if (!foundNameInText && !newName) {
-        newName = trimmedLine
+        // Evitar usar fechas como nombre
+        if (!isDateLike(trimmedLine)) {
+          newName = trimmedLine
+        }
         foundNameInText = true
         return
       }
@@ -384,13 +444,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     // Process reconstructed lines
     const lines = allLines.filter(l => l.trim())
 
-    // Helper to detect if a string looks like a date
-    const looksLikeDate = (str: string) => {
-      // Match patterns like: DD/MM/YYYY, MM/DD/YYYY, Date, etc.
-      return /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(str) ||
-        /^(date|fecha)/i.test(str) ||
-        /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(str)
-    }
+    // Usamos isDateLike global para detectar fechas
 
     for (const line of lines) {
       const trimmed = line.trim()
@@ -419,19 +473,24 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
       if (parts.length < 2) continue // Skip lines that don't look tabular
 
-      // Try to extract name, phone, email from the parts
+      // Normalizar partes: quitar prefijos de fecha y descartar celdas que son solo fecha
+      const cleanedParts = parts
+        .map(p => stripLeadingDate(p))
+        .filter(p => p && !isDateValue(p))
+
+      // Try to extract fields from the cleaned parts
       let nombre = ''
       let telefono = ''
       let correo = ''
+      let empresa = ''
+      let presupuesto = 0
+      const textParts: string[] = []
 
-      for (const part of parts) {
+      for (const part of cleanedParts) {
         const p = part.trim()
 
         // Skip empty parts
         if (!p) continue
-
-        // Skip if it looks like a date
-        if (looksLikeDate(p)) continue
 
         // Email detection (must have @ and .)
         if (p.includes('@') && p.includes('.') && p.length > 5) {
@@ -451,31 +510,41 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
             telefono = cleanPhone
           }
         }
-        // Name detection: text with letters, at least 3 chars, not a keyword
+        // Presupuesto / currency-like number (contains $ or thousand separators)
+        else if (/\$/.test(p) || /^(?:\d{1,3}(?:[\.,]\d{3})+|\d+)(?:[\.,]\d+)?$/.test(p)) {
+          const num = p.replace(/[^0-9.]/g, '')
+          const parsed = parseFloat(num)
+          if (!Number.isNaN(parsed)) {
+            presupuesto = parsed
+          }
+        }
+        // Name/Company token: text with letters, at least 3 chars, not a keyword
         else if (/[a-zA-ZáéíóúÁÉÍÓÚñÑ]/.test(p) && p.length > 2) {
           // Skip common keywords
           if (!/^(date|fecha|nombre|name|phone|telefono|email|correo)$/i.test(p)) {
-            if (!nombre) {
-              nombre = p
-            } else {
-              // If we already have a name, this might be a last name or company
-              nombre += ' ' + p
-            }
+            textParts.push(p)
           }
         }
       }
 
-      // Clean up the name (remove extra spaces, limit length)
-      nombre = nombre.trim().substring(0, 100)
+      // Assign name + optional company from textual parts
+      if (textParts.length > 0) {
+        nombre = cleanNameValue(textParts[0]).trim()
+        if (textParts.length > 1) {
+          empresa = stripLeadingDate(textParts[1]).trim()
+        }
+      }
+      // Clean up the name (limit length)
+      nombre = nombre.substring(0, 100)
 
       // Only add if we found at least a name
-      if (nombre && !looksLikeDate(nombre)) {
+      if (nombre && !isDateLike(nombre)) {
         mappedData.push({
           nombre_completo: nombre,
           telefono: telefono,
           correo_electronico: correo,
-          empresa: '',
-          presupuesto: 0,
+          empresa,
+          presupuesto,
           notas: '',
           isValid: !!nombre,
           error: !nombre ? 'Nombre es requerido' : undefined
@@ -563,19 +632,24 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
       const findValue = (keys: string[]) => {
         for (const k of keys) {
-          if (normalizedRow[k] !== undefined) return normalizedRow[k]
+          if (normalizedRow[k] !== undefined) {
+            const v = normalizedRow[k]
+            // Omitimos valores que sean claramente fechas (23/12/2025) o serial/Date
+            if (isDateValue(v)) continue
+            return v
+          }
         }
         return ''
       }
 
-      const nombre = findValue(['nombre', 'name', 'nombre completo', 'nombres', 'cliente', 'contacto', 'full name', 'titular'])
+      const nombre = cleanNameValue(findValue(['nombre', 'name', 'nombre completo', 'nombres', 'cliente', 'contacto', 'full name', 'titular']))
       const rawTelefono = findValue(['telefono', 'teléfono', 'phone', 'celular', 'cel', 'movil', 'mobile', 'whatsapp', 'tel'])
-      const correo = findValue(['correo', 'email', 'e-mail', 'mail', 'correo electronico', 'correo electrónico', 'email address'])
-      const empresa = findValue(['empresa', 'company', 'compañia', 'negocio', 'organizacion', 'razon social', 'entidad'])
+      const correo = stripLeadingDate(findValue(['correo', 'email', 'e-mail', 'mail', 'correo electronico', 'correo electrónico', 'email address']))
+      const empresa = stripLeadingDate(findValue(['empresa', 'company', 'compañia', 'negocio', 'organizacion', 'razon social', 'entidad']))
       const presupuesto = findValue(['presupuesto', 'budget', 'monto', 'valor', 'precio'])
       const notas = findValue(['notas', 'notes', 'comentarios', 'observaciones', 'description'])
 
-      const telefono = normalizePhone(String(rawTelefono))
+      const telefono = isDateValue(rawTelefono) ? '' : normalizePhone(stripLeadingDate(String(rawTelefono)))
 
       const isValid = !!nombre // Name is required minimally
 
@@ -628,7 +702,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       console.error('Error fetching existing leads for deduplication', err)
     }
 
-    const processedData = mappedData.map(row => {
+      const processedData = mappedData.map(row => {
       const email = row.correo_electronico?.toLowerCase().trim()
       const rawPhone = row.telefono ? String(row.telefono).replace(/\D/g, '') : ''
 
@@ -1022,6 +1096,8 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                         <TableHead>Nombre</TableHead>
                         <TableHead>Teléfono</TableHead>
                         <TableHead>Correo</TableHead>
+                        <TableHead>Empresa</TableHead>
+                        <TableHead>Presupuesto</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1039,11 +1115,13 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                           <TableCell className="font-medium text-xs sm:text-sm">{row.nombre_completo}</TableCell>
                           <TableCell className="text-xs">{row.telefono}</TableCell>
                           <TableCell className="text-xs">{row.correo_electronico}</TableCell>
+                          <TableCell className="text-xs">{row.empresa}</TableCell>
+                          <TableCell className="text-xs">{row.presupuesto}</TableCell>
                         </TableRow>
                       ))}
                       {previewData.length > 100 && (
                         <TableRow>
-                          <TableCell colSpan={4} className="text-center text-muted-foreground text-xs">
+                          <TableCell colSpan={6} className="text-center text-muted-foreground text-xs">
                             ... y {previewData.length - 100} más
                           </TableCell>
                         </TableRow>

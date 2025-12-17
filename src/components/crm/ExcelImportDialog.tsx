@@ -33,14 +33,60 @@ interface PreviewRow {
 }
 
 export function ExcelImportDialog({
-    pipelineType,
-    pipelineId,
-    defaultStageId,
-    companyId,
+                                    <TableHead>Estado</TableHead>
+                                    <TableHead>Nombre</TableHead>
+                                    <TableHead>Teléfono</TableHead>
+                                    <TableHead>Correo</TableHead>
+                                    <TableHead>Empresa</TableHead>
+                                    <TableHead>Presupuesto</TableHead>
     currentUserId,
     trigger,
     onSuccess
-}: ExcelImportDialogProps) {
+                                {previewData.slice(0, 100).map((row, i) => (
+    const isDateLike = (str: any) => {
+        if (str == null) return false
+        const s = String(str).trim()
+        const m = s.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2}|\d{4})$/)
+        if (!m) return false
+        const d = Number(m[1]); const mo = Number(m[2]); const yy = m[3]
+        const y = yy.length === 2 ? 2000 + Number(yy) : Number(yy)
+        if (Number.isNaN(d) || Number.isNaN(mo) || Number.isNaN(y)) return false
+                                        <TableCell>{row.nombre_completo}</TableCell>
+                                        <TableCell>{row.telefono}</TableCell>
+                                        <TableCell>{row.correo_electronico}</TableCell>
+                                        <TableCell>{row.empresa}</TableCell>
+                                        <TableCell>{row.presupuesto}</TableCell>
+        return true
+    }
+                                {previewData.length > 100 && (
+    const isDateValue = (val: any) => {
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground">
+        if (val instanceof Date) return true
+        if (typeof val === 'number') return val > 20000 && val < 90000
+        return isDateLike(String(val))
+    }
+
+    const stripLeadingDate = (val: any) => {
+        if (val == null) return ''
+        if (val instanceof Date) return ''
+        const s = String(val).trim()
+        if (!s) return ''
+        const m = s.match(/^(\d{1,2}[\/-]\d{1,2}[\/-](\d{2}|\d{4}))\s*[,:;\-]*\s*(.+)$/)
+        if (m) {
+            const rest = m[3].trim()
+            return rest
+        }
+        return s
+    }
+
+    const stripLeadingDayToken = (val: any) => {
+        if (val == null) return ''
+        const s = String(val).trim()
+        if (!s) return ''
+        return s.replace(/^\d{1,2}\s+/, '').trim()
+    }
+
+    const cleanNameValue = (val: any) => stripLeadingDayToken(stripLeadingDate(val))
     const [isOpen, setIsOpen] = useState(false)
     const [file, setFile] = useState<File | null>(null)
     const [previewData, setPreviewData] = useState<PreviewRow[]>([])
@@ -70,12 +116,17 @@ export function ExcelImportDialog({
                     return acc
                 }, {})
 
-                const nombre = normalizedRow['nombre'] || normalizedRow['name'] || normalizedRow['nombre completo'] || ''
-                const telefono = normalizedRow['telefono'] || normalizedRow['teléfono'] || normalizedRow['phone'] || normalizedRow['celular'] || ''
-                const correo = normalizedRow['correo'] || normalizedRow['email'] || normalizedRow['e-mail'] || normalizedRow['correo electronico'] || ''
-                const empresa = normalizedRow['empresa'] || normalizedRow['company'] || normalizedRow['compañia'] || ''
+                const nombreRaw = normalizedRow['nombre'] || normalizedRow['name'] || normalizedRow['nombre completo'] || ''
+                const telefonoRaw = normalizedRow['telefono'] || normalizedRow['teléfono'] || normalizedRow['phone'] || normalizedRow['celular'] || ''
+                const correoRaw = normalizedRow['correo'] || normalizedRow['email'] || normalizedRow['e-mail'] || normalizedRow['correo electronico'] || ''
+                const empresaRaw = normalizedRow['empresa'] || normalizedRow['company'] || normalizedRow['compañia'] || ''
                 const presupuesto = normalizedRow['presupuesto'] || normalizedRow['budget'] || 0
                 const notas = normalizedRow['notas'] || normalizedRow['notes'] || ''
+
+                const nombre = isDateValue(nombreRaw) ? '' : cleanNameValue(nombreRaw)
+                const telefono = isDateValue(telefonoRaw) ? '' : stripLeadingDate(String(telefonoRaw))
+                const correo = isDateValue(correoRaw) ? '' : stripLeadingDate(correoRaw)
+                const empresa = isDateValue(empresaRaw) ? '' : stripLeadingDate(empresaRaw)
 
                 const isValid = !!nombre // Name is required minimally
 

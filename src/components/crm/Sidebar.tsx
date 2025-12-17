@@ -49,8 +49,8 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
 
   return (
     <>
-      <div className="hidden md:flex md:w-64 bg-card border-r border-border flex-col">
-        <div className="p-6 border-b border-border space-y-2">
+      <div className="hidden md:flex md:w-64 bg-card border-r border-border flex-col h-full">
+        <div className="p-6 border-b border-border space-y-2 flex-none">
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
             {t.app.title}
           </h1>
@@ -79,7 +79,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           )}
         </div>
 
-        <nav className="flex-1 p-4">
+        <nav className="flex-1 p-4 overflow-y-auto min-h-0">
           <ul className="space-y-1">
             {menuItems.map((item) => {
               const Icon = item.icon
@@ -105,7 +105,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-border space-y-2">
+        <div className="p-4 border-t border-border space-y-2 flex-none">
           <button
             onClick={() => setShowVoiceRecorder(true)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors"
