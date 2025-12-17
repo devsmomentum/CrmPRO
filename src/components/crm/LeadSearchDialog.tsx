@@ -84,13 +84,13 @@ export function LeadSearchDialog({ leads, onSelectLead }: LeadSearchDialogProps)
                                     <button
                                         key={lead.id}
                                         onClick={() => handleSelectLead(lead)}
-                                        className="w-full text-left p-4 rounded-lg border border-border hover:border-primary hover:bg-muted/50 transition-all"
+                                        className="w-full text-left p-4 rounded-lg border border-border hover:border-primary hover:bg-muted/50 transition-all overflow-hidden"
                                     >
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="flex-1 min-w-0 space-y-2">
                                                 <div className="flex items-center gap-2 min-w-0">
                                                     <User size={16} className="text-muted-foreground shrink-0" />
-                                                    <span className="font-semibold truncate" title={lead.name}>{lead.name}</span>
+                                                    <span className="font-semibold line-clamp-2 text-balance-any flex-1 min-w-0" title={lead.name}>{lead.name}</span>
                                                     <Badge variant={
                                                         lead.priority === 'high' ? 'destructive' :
                                                             lead.priority === 'medium' ? 'default' : 'secondary'
@@ -102,7 +102,7 @@ export function LeadSearchDialog({ leads, onSelectLead }: LeadSearchDialogProps)
                                                 {lead.company && (
                                                     <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
                                                         <Buildings size={14} className="shrink-0" />
-                                                        <span className="truncate" title={lead.company}>{lead.company}</span>
+                                                        <span className="line-clamp-1 text-balance-any flex-1 min-w-0" title={lead.company}>{lead.company}</span>
                                                     </div>
                                                 )}
 
