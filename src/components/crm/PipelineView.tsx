@@ -319,46 +319,69 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     if (!currentPipelineObj?.id) return
 
     setIsLoadingMoreAll(true)
-    const PIPELINE_PAGE_SIZE = 500
+    const STAGE_PAGE_SIZE = 300
     try {
-      const { data, count } = await getLeadsPaged({
-        empresaId: companyId,
-        currentUserId: user?.id,
-        isAdminOrOwner,
-        limit: PIPELINE_PAGE_SIZE,
-        offset: pipelineOffset,
-        pipelineId: currentPipelineObj.id,
-        order: 'desc'
+      const stages = currentPipelineObj.stages || []
+      // Preparar cargas por etapa respetando su offset actual
+      const loads = stages.map((s) => {
+        const current = stagePages[s.id] || { offset: 0, hasMore: true }
+        if (!current.hasMore) return Promise.resolve({ stageId: s.id, data: [] as any[] })
+        return getLeadsPaged({
+          empresaId: companyId,
+          currentUserId: user?.id,
+          isAdminOrOwner,
+          limit: STAGE_PAGE_SIZE,
+          offset: current.offset,
+          pipelineId: currentPipelineObj.id,
+          stageId: s.id,
+          order: 'desc'
+        }).then(({ data }) => ({ stageId: s.id, data: data || [] }))
       })
-      const mapped = (data || []).map((l: any) => ({
-        id: l.id,
-        name: l.nombre_completo,
-        email: l.correo_electronico,
-        phone: l.telefono,
-        company: l.empresa,
-        budget: l.presupuesto,
-        stage: l.etapa_id,
-        pipeline: l.pipeline_id || 'sales',
-        priority: l.prioridad,
-        assignedTo: l.asignado_a,
-        tags: [],
-        createdAt: new Date(l.created_at),
-        lastContact: new Date(l.created_at)
-      }))
+
+      const results = await Promise.all(loads)
+
+      // Mapear y unificar leads nuevos
+      const mappedAll = results.flatMap(({ data }) =>
+        (data || []).map((l: any) => ({
+          id: l.id,
+          name: l.nombre_completo,
+          email: l.correo_electronico,
+          phone: l.telefono,
+          company: l.empresa,
+          budget: l.presupuesto,
+          stage: l.etapa_id,
+          pipeline: l.pipeline_id || 'sales',
+          priority: l.prioridad,
+          assignedTo: l.asignado_a,
+          tags: [],
+          createdAt: new Date(l.created_at),
+          lastContact: new Date(l.created_at)
+        }))
+      )
 
       setLeads((current) => {
         const byId = new Set((current || []).map(l => l.id))
-        const toAdd = mapped.filter(l => !byId.has(l.id))
+        const toAdd = mappedAll.filter(l => !byId.has(l.id))
         return [...(current || []), ...toAdd]
       })
-      const fetched = mapped.length
-      const newOffset = pipelineOffset + fetched
-      setPipelineOffset(newOffset)
-      if (typeof count === 'number') {
-        setPipelineHasMore(newOffset < count)
-      } else {
-        setPipelineHasMore(fetched === PIPELINE_PAGE_SIZE)
-      }
+
+      // Actualizar paginación por etapa y estado global de "hay más"
+      setStagePages((prev) => {
+        const next = { ...prev }
+        results.forEach(({ stageId, data }) => {
+          const fetched = (data || []).length
+          const current = prev[stageId] || { offset: 0, hasMore: true }
+          next[stageId] = {
+            offset: current.offset + fetched,
+            hasMore: fetched === STAGE_PAGE_SIZE
+          }
+        })
+        return next
+      })
+
+      // Si al menos una etapa tiene más, mantenemos el botón activo
+      const anyHasMore = results.some(({ data }) => (data || []).length === STAGE_PAGE_SIZE)
+      setPipelineHasMore(anyHasMore)
     } catch (err) {
       console.error('Error loading more leads (all):', err)
     } finally {
