@@ -14,7 +14,7 @@ import { ExcelImportDialog } from './ExcelImportDialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -319,46 +319,69 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     if (!currentPipelineObj?.id) return
 
     setIsLoadingMoreAll(true)
-    const PIPELINE_PAGE_SIZE = 500
+    const STAGE_PAGE_SIZE = 300
     try {
-      const { data, count } = await getLeadsPaged({
-        empresaId: companyId,
-        currentUserId: user?.id,
-        isAdminOrOwner,
-        limit: PIPELINE_PAGE_SIZE,
-        offset: pipelineOffset,
-        pipelineId: currentPipelineObj.id,
-        order: 'desc'
+      const stages = currentPipelineObj.stages || []
+      // Preparar cargas por etapa respetando su offset actual
+      const loads = stages.map((s) => {
+        const current = stagePages[s.id] || { offset: 0, hasMore: true }
+        if (!current.hasMore) return Promise.resolve({ stageId: s.id, data: [] as any[] })
+        return getLeadsPaged({
+          empresaId: companyId,
+          currentUserId: user?.id,
+          isAdminOrOwner,
+          limit: STAGE_PAGE_SIZE,
+          offset: current.offset,
+          pipelineId: currentPipelineObj.id,
+          stageId: s.id,
+          order: 'desc'
+        }).then(({ data }) => ({ stageId: s.id, data: data || [] }))
       })
-      const mapped = (data || []).map((l: any) => ({
-        id: l.id,
-        name: l.nombre_completo,
-        email: l.correo_electronico,
-        phone: l.telefono,
-        company: l.empresa,
-        budget: l.presupuesto,
-        stage: l.etapa_id,
-        pipeline: l.pipeline_id || 'sales',
-        priority: l.prioridad,
-        assignedTo: l.asignado_a,
-        tags: [],
-        createdAt: new Date(l.created_at),
-        lastContact: new Date(l.created_at)
-      }))
+
+      const results = await Promise.all(loads)
+
+      // Mapear y unificar leads nuevos
+      const mappedAll = results.flatMap(({ data }) =>
+        (data || []).map((l: any) => ({
+          id: l.id,
+          name: l.nombre_completo,
+          email: l.correo_electronico,
+          phone: l.telefono,
+          company: l.empresa,
+          budget: l.presupuesto,
+          stage: l.etapa_id,
+          pipeline: l.pipeline_id || 'sales',
+          priority: l.prioridad,
+          assignedTo: l.asignado_a,
+          tags: [],
+          createdAt: new Date(l.created_at),
+          lastContact: new Date(l.created_at)
+        }))
+      )
 
       setLeads((current) => {
         const byId = new Set((current || []).map(l => l.id))
-        const toAdd = mapped.filter(l => !byId.has(l.id))
+        const toAdd = mappedAll.filter(l => !byId.has(l.id))
         return [...(current || []), ...toAdd]
       })
-      const fetched = mapped.length
-      const newOffset = pipelineOffset + fetched
-      setPipelineOffset(newOffset)
-      if (typeof count === 'number') {
-        setPipelineHasMore(newOffset < count)
-      } else {
-        setPipelineHasMore(fetched === PIPELINE_PAGE_SIZE)
-      }
+
+      // Actualizar paginación por etapa y estado global de "hay más"
+      setStagePages((prev) => {
+        const next = { ...prev }
+        results.forEach(({ stageId, data }) => {
+          const fetched = (data || []).length
+          const current = prev[stageId] || { offset: 0, hasMore: true }
+          next[stageId] = {
+            offset: current.offset + fetched,
+            hasMore: fetched === STAGE_PAGE_SIZE
+          }
+        })
+        return next
+      })
+
+      // Si al menos una etapa tiene más, mantenemos el botón activo
+      const anyHasMore = results.some(({ data }) => (data || []).length === STAGE_PAGE_SIZE)
+      setPipelineHasMore(anyHasMore)
     } catch (err) {
       console.error('Error loading more leads (all):', err)
     } finally {
@@ -687,6 +710,43 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     }
   }
 
+  const handleMoveLead = async (lead: Lead, targetStageId: string) => {
+    if (!canEditLeads) {
+      toast.error('No tienes permisos para mover leads')
+      return
+    }
+
+    if (lead.stage === targetStageId) {
+      return
+    }
+
+    const updatedLead = {
+      ...lead,
+      stage: targetStageId
+    }
+
+    setLeads((current) =>
+      (current || []).map(l => l.id === lead.id ? updatedLead : l)
+    )
+
+    // Actualizar en BD
+    if (lead.id.length > 20) { // Check simple de UUID
+      try {
+        await updateLead(lead.id, { etapa_id: targetStageId })
+        toast.success('Lead movido a nueva etapa')
+      } catch (err: any) {
+        console.error('Error updating lead stage in DB:', err)
+        toast.error(`Error al mover lead: ${err.message || 'Error desconocido'}`)
+        // Revertir cambio local
+        setLeads((current) =>
+          (current || []).map(l => l.id === lead.id ? lead : l)
+        )
+      }
+    } else {
+      toast.success('Lead movido a nueva etapa (local)')
+    }
+  }
+
   const handleDragStart = (e: React.DragEvent, lead: Lead) => {
     if (!canEditLeads) {
       e.preventDefault()
@@ -962,7 +1022,26 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
-                              <DropdownMenuItem disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuItem>
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent>
+                                  {(currentPipeline?.stages || []).map(s => (
+                                    <DropdownMenuItem
+                                      key={s.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleMoveLead(lead, s.id)
+                                      }}
+                                      disabled={s.id === lead.stage}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                        {s.name}
+                                      </div>
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
                               {isAdminOrOwner && (
                                 <DropdownMenuItem
                                   className="text-destructive"
