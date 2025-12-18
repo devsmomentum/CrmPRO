@@ -33,6 +33,7 @@ interface PreviewRow {
     telefono?: string
     correo_electronico?: string
     empresa?: string
+    ubicacion?: string
     presupuesto?: number
     notas?: string
     isValid: boolean
@@ -113,17 +114,51 @@ export function ExcelImportDialog({
                     return acc
                 }, {})
 
-                const nombreRaw = normalizedRow['nombre'] || normalizedRow['name'] || normalizedRow['nombre completo'] || ''
-                const telefonoRaw = normalizedRow['telefono'] || normalizedRow['teléfono'] || normalizedRow['phone'] || normalizedRow['celular'] || ''
-                const correoRaw = normalizedRow['correo'] || normalizedRow['email'] || normalizedRow['e-mail'] || normalizedRow['correo electronico'] || ''
-                const empresaRaw = normalizedRow['empresa'] || normalizedRow['company'] || normalizedRow['compañia'] || ''
-                const presupuesto = normalizedRow['presupuesto'] || normalizedRow['budget'] || 0
-                const notas = normalizedRow['notas'] || normalizedRow['notes'] || ''
+                const usedKeys = new Set<string>()
+                const pickValue = (keys: string[]) => {
+                    for (const k of keys) {
+                        if (usedKeys.has(k)) continue
+                        if (normalizedRow[k] !== undefined) {
+                            const v = normalizedRow[k]
+                            if (isDateValue(v)) continue
+                            usedKeys.add(k)
+                            return v
+                        }
+                    }
+                    return ''
+                }
+
+                const nombreRaw = pickValue(['nombre', 'name', 'nombre completo'])
+                const telefonoRaw = pickValue(['telefono', 'teléfono', 'phone', 'celular'])
+                const correoRaw = pickValue(['correo', 'email', 'e-mail', 'correo electronico'])
+                const ubicacionRaw = pickValue(['ubicacion', 'ubicación', 'location', 'address', 'ciudad', 'city', 'pais', 'country', 'direccion', 'dirección', 'estado', 'provincia', 'municipio', 'sector', 'entidad', 'region', 'región', 'localidad', 'lugar', 'zona', 'sede', 'sucursal', 'agencia', 'oficina', 'plaza', 'poblacion', 'población'])
+                const empresaKeys = ['empresa', 'company', 'compañia', 'compañía', 'negocio', 'organizacion', 'organización', 'razon social', 'firma']
+                const empresaRaw = pickValue(empresaKeys)
+                const presupuesto = pickValue(['presupuesto', 'budget']) || 0
+                const notas = pickValue(['notas', 'notes']) || ''
 
                 const nombre = isDateValue(nombreRaw) ? '' : cleanNameValue(nombreRaw)
                 const telefono = isDateValue(telefonoRaw) ? '' : stripLeadingDate(String(telefonoRaw))
                 const correo = isDateValue(correoRaw) ? '' : stripLeadingDate(correoRaw)
-                const empresa = isDateValue(empresaRaw) ? '' : stripLeadingDate(empresaRaw)
+                let empresa = isDateValue(empresaRaw) ? '' : stripLeadingDate(empresaRaw)
+                let ubicacion = isDateValue(ubicacionRaw) ? '' : stripLeadingDate(ubicacionRaw)
+
+                // Fallback: si no se detectó ubicación pero existe una cabecera que contenga "ubic"
+                if (!ubicacion) {
+                    const ubicKey = Object.keys(normalizedRow).find(k => k.includes('ubic') || k.includes('direcc') || k.includes('lugar') || k.includes('zona'))
+                    if (ubicKey) {
+                        ubicacion = stripLeadingDate(normalizedRow[ubicKey])
+                        if (ubicKey === 'empresa') {
+                            empresa = ''
+                        }
+                    }
+                }
+
+                // Si no existe ninguna cabecera de empresa, fuerza empresa vacía
+                const hasEmpresaHeader = Object.keys(normalizedRow).some(k => empresaKeys.includes(k))
+                if (!hasEmpresaHeader) {
+                    empresa = ''
+                }
 
                 const isValid = !!nombre
 
@@ -132,6 +167,7 @@ export function ExcelImportDialog({
                     telefono: String(telefono),
                     correo_electronico: correo,
                     empresa,
+                    ubicacion,
                     presupuesto: Number(presupuesto) || 0,
                     notas,
                     isValid,
@@ -169,6 +205,7 @@ export function ExcelImportDialog({
                     telefono: row.telefono,
                     correo_electronico: row.correo_electronico,
                     empresa: row.empresa,
+                    ubicacion: row.ubicacion,
                     presupuesto: row.presupuesto,
                     empresa_id: companyId,
                     pipeline_id: pipelineId,
@@ -274,6 +311,7 @@ export function ExcelImportDialog({
                                             <TableHead>Teléfono</TableHead>
                                             <TableHead>Correo</TableHead>
                                             <TableHead>Empresa</TableHead>
+                                            <TableHead>Ubicación</TableHead>
                                             <TableHead>Presupuesto</TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -295,12 +333,13 @@ export function ExcelImportDialog({
                                                 <TableCell>{row.telefono}</TableCell>
                                                 <TableCell className="break-all">{row.correo_electronico}</TableCell>
                                                 <TableCell>{row.empresa}</TableCell>
+                                                <TableCell>{row.ubicacion}</TableCell>
                                                 <TableCell>{row.presupuesto}</TableCell>
                                             </TableRow>
                                         ))}
                                         {previewData.length > 200 && (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={7} className="text-center text-muted-foreground">
                                                     Mostrando 200 de {previewData.length} filas
                                                 </TableCell>
                                             </TableRow>

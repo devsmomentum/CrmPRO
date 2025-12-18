@@ -98,6 +98,7 @@ interface AddLeadDialogProps {
   stages: Stage[]
   teamMembers: TeamMember[]
   onAdd: (lead: Lead) => void
+  onImport?: (leads: Lead[]) => void
   trigger?: React.ReactNode
   defaultStageId?: string
   companies?: Company[]
@@ -111,6 +112,7 @@ interface PreviewRow {
   telefono?: string
   correo_electronico?: string
   empresa?: string
+  ubicacion?: string
   presupuesto?: number
   notas?: string
   isValid: boolean
@@ -120,7 +122,7 @@ interface PreviewRow {
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
 
-export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, onAdd, trigger, defaultStageId, companies = [], currentUser, companyName, companyId }: AddLeadDialogProps) {
+export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, onAdd, onImport, trigger, defaultStageId, companies = [], currentUser, companyName, companyId }: AddLeadDialogProps) {
   const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [localUser] = usePersistentState<User | null>('current-user', null)
@@ -133,6 +135,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [company, setCompany] = useState('')
+  const [location, setLocation] = useState('')
   const [budget, setBudget] = useState('')
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
 
@@ -363,6 +366,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       email: email.trim(),
       phone: phone.trim(),
       company: company.trim(),
+      location: location.trim(),
       pipeline: pipelineType,
       stage: stageId,
       tags: [],
@@ -444,6 +448,10 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     // Process reconstructed lines
     const lines = allLines.filter(l => l.trim())
 
+    let hasEmpresaHeader = false
+    let hasUbicacionHeader = false
+    let headerDetected = false
+
     // Usamos isDateLike global para detectar fechas
 
     for (const line of lines) {
@@ -452,7 +460,15 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       // Skip empty lines or very short lines
       if (trimmed.length < 5) continue
 
-      // Skip lines that look like headers or metadata
+      // Check for header
+      if (!headerDetected && /^(nombre|name|telefono|phone|email|correo|fecha|date|empresa|company|ubicacion|location|direccion|lugar)/i.test(trimmed)) {
+         if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
+         if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
+         headerDetected = true
+         continue // Skip the header line itself
+      }
+
+      // Skip lines that look like headers or metadata (if we already detected one or just to be safe)
       if (/^(nombre|name|telefono|phone|email|correo|fecha|date)/i.test(trimmed)) continue
 
       // Try multiple splitting strategies
@@ -483,6 +499,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       let telefono = ''
       let correo = ''
       let empresa = ''
+      let ubicacion = ''
       let presupuesto = 0
       const textParts: string[] = []
 
@@ -531,7 +548,20 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       if (textParts.length > 0) {
         nombre = cleanNameValue(textParts[0]).trim()
         if (textParts.length > 1) {
-          empresa = stripLeadingDate(textParts[1]).trim()
+          const secondPart = stripLeadingDate(textParts[1]).trim()
+          
+          if (hasUbicacionHeader && !hasEmpresaHeader) {
+             ubicacion = secondPart
+          } else if (hasEmpresaHeader && !hasUbicacionHeader) {
+             empresa = secondPart
+          } else {
+             // Default behavior if ambiguous or both present (assuming company comes first usually)
+             // But if we have 3 parts, maybe 2nd is company and 3rd is location?
+             empresa = secondPart
+             if (textParts.length > 2) {
+                ubicacion = stripLeadingDate(textParts[2]).trim()
+             }
+          }
         }
       }
       // Clean up the name (limit length)
@@ -544,6 +574,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
           telefono: telefono,
           correo_electronico: correo,
           empresa,
+          ubicacion,
           presupuesto,
           notas: '',
           isValid: !!nombre,
@@ -575,7 +606,8 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     const headerKeywords = [
       'nombre', 'nombres', 'name', 'names', 'cliente', 'completo', 'titular', 'contacto',
       'telefono', 'teléfono', 'phone', 'celular', 'cel', 'movil', 'mobile', 'whatsapp', 'wsp', 'tel',
-      'correo', 'email', 'e-mail', 'mail', 'direccion', 'empresa', 'company', 'budget', 'presupuesto'
+      'correo', 'email', 'e-mail', 'mail', 'direccion', 'dirección', 'empresa', 'company', 'budget', 'presupuesto',
+      'ubicacion', 'ubicación', 'location', 'address', 'ciudad', 'city', 'pais', 'country', 'estado', 'provincia', 'municipio', 'sector'
     ]
 
     let bestMatchIndex = -1
@@ -619,35 +651,69 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       // Helper for fuzzy matching
       const normalizePhone = (phone: string | number) => {
         let p = String(phone).replace(/\D/g, '') // Remove non-digits
-        // If starts with 0 (e.g., 0412...), replace 0 with 58 -> 58412...
         if (p.startsWith('0')) {
           p = '58' + p.substring(1)
-        }
-        // If it looks like a local mobile number without 0 (e.g., 412...), add 58 -> 58412...
-        else if (p.length === 10 && (p.startsWith('4') || p.startsWith('2'))) {
+        } else if (p.length === 10 && (p.startsWith('4') || p.startsWith('2'))) {
           p = '58' + p
         }
         return p
       }
 
-      const findValue = (keys: string[]) => {
+      // Pick a value ensuring we don't reuse the same header for two fields
+      const pickValue = (keys: string[], used: Set<string>) => {
         for (const k of keys) {
+          if (used.has(k)) continue
           if (normalizedRow[k] !== undefined) {
             const v = normalizedRow[k]
-            // Omitimos valores que sean claramente fechas (23/12/2025) o serial/Date
             if (isDateValue(v)) continue
-            return v
+            used.add(k)
+            return { value: v, key: k }
           }
         }
-        return ''
+        return { value: '', key: '' }
       }
 
-      const nombre = cleanNameValue(findValue(['nombre', 'name', 'nombre completo', 'nombres', 'cliente', 'contacto', 'full name', 'titular']))
-      const rawTelefono = findValue(['telefono', 'teléfono', 'phone', 'celular', 'cel', 'movil', 'mobile', 'whatsapp', 'tel'])
-      const correo = stripLeadingDate(findValue(['correo', 'email', 'e-mail', 'mail', 'correo electronico', 'correo electrónico', 'email address']))
-      const empresa = stripLeadingDate(findValue(['empresa', 'company', 'compañia', 'negocio', 'organizacion', 'razon social', 'entidad']))
-      const presupuesto = findValue(['presupuesto', 'budget', 'monto', 'valor', 'precio'])
-      const notas = findValue(['notas', 'notes', 'comentarios', 'observaciones', 'description'])
+      const usedKeys = new Set<string>()
+
+      const nombre = cleanNameValue(
+        pickValue(['nombre', 'name', 'nombre completo', 'nombres', 'cliente', 'contacto', 'full name', 'titular'], usedKeys).value
+      )
+      const rawTelefono = pickValue(['telefono', 'teléfono', 'phone', 'celular', 'cel', 'movil', 'mobile', 'whatsapp', 'tel'], usedKeys).value
+      const correo = stripLeadingDate(
+        pickValue(['correo', 'email', 'e-mail', 'mail', 'correo electronico', 'correo electrónico', 'email address'], usedKeys).value
+      )
+      const ubicacionPick = pickValue([
+        'ubicacion', 'ubicación', 'location', 'address', 'ciudad', 'city', 'pais', 'country', 'direccion', 'dirección',
+        'estado', 'provincia', 'municipio', 'sector', 'entidad', 'region', 'región', 'localidad',
+        'lugar', 'zona', 'sede', 'sucursal', 'agencia', 'oficina', 'plaza', 'poblacion', 'población'
+      ], usedKeys)
+      const empresaKeys = ['empresa', 'company', 'compañia', 'compañía', 'negocio', 'organizacion', 'organización', 'razon social', 'firma']
+      const empresaPick = pickValue(empresaKeys, usedKeys)
+
+      let empresa = stripLeadingDate(empresaPick.value)
+      let ubicacion = stripLeadingDate(ubicacionPick.value)
+
+      // Fallback: si no se detectó ubicación pero existe una columna con "ubic" o "direcc" en el nombre
+      if (!ubicacion) {
+        const ubicKey = Object.keys(normalizedRow).find(k => 
+          k.includes('ubic') || k.includes('direcc') || k.includes('lugar') || k.includes('zona')
+        )
+        if (ubicKey) {
+          ubicacion = stripLeadingDate(normalizedRow[ubicKey])
+          // Evitar duplicar en empresa si proviene de la misma columna
+          if (empresaPick.key === ubicKey) {
+            empresa = ''
+          }
+        }
+      }
+
+      // Si no existe ninguna cabecera de empresa, fuerza empresa vacía
+      const hasEmpresaHeader = Object.keys(normalizedRow).some(k => empresaKeys.includes(k))
+      if (!hasEmpresaHeader) {
+        empresa = ''
+      }
+      const presupuesto = pickValue(['presupuesto', 'budget', 'monto', 'valor', 'precio'], usedKeys).value
+      const notas = pickValue(['notas', 'notes', 'comentarios', 'observaciones', 'description'], usedKeys).value
 
       const telefono = isDateValue(rawTelefono) ? '' : normalizePhone(stripLeadingDate(String(rawTelefono)))
 
@@ -663,6 +729,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         telefono: String(telefono).trim(),
         correo_electronico: String(correo).trim(),
         empresa: String(empresa).trim(),
+        ubicacion: String(ubicacion).trim(),
         presupuesto: Number(presupuesto) || 0,
         notas: String(notas).trim(),
         isValid,
@@ -736,13 +803,16 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
   }
 
   const handleImport = async () => {
-    // Attempt fallback if companyId is missing
-    const effectiveCompanyId = companyId || (companies && companies.length > 0 ? companies[0].id : undefined)
+    // No fallback: companyId must be provided to avoid inserting en la empresa equivocada
+    const effectiveCompanyId = companyId
+    const effectivePipelineId = pipelineId
+    const NIL_UUID = '00000000-0000-0000-0000-000000000000'
 
     console.log('handleImport debug:', {
       propCompanyId: companyId,
       effectiveCompanyId,
       stageId,
+      pipelineId: effectivePipelineId,
       companiesLen: companies?.length
     })
 
@@ -751,8 +821,20 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       return
     }
 
+    const stageExists = stages.some(s => s.id === stageId)
+    if (!stageExists) {
+      toast.error('La etapa seleccionada no existe o no está sincronizada. Guarda el pipeline y vuelve a intentar.')
+      return
+    }
+
+    if (!effectivePipelineId) {
+      toast.error('Error crítico: Falta ID de pipeline. Guarda el pipeline o recarga antes de importar.')
+      console.error('Missing pipelineId', { pipelineId, pipelineType })
+      return
+    }
+
     if (!effectiveCompanyId) {
-      toast.error('Error crítico: Falta ID de compañía. (Prop: ' + (companyId || 'undefined') + ', Fallback: ' + (effectiveCompanyId || 'undefined') + ')')
+      toast.error('Error crítico: Falta ID de compañía. No se puede importar.')
       console.error('Missing companyId', { companyId, companies })
       return
     }
@@ -774,11 +856,12 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         telefono: row.telefono,
         correo_electronico: row.correo_electronico,
         empresa: row.empresa,
+        ubicacion: row.ubicacion,
         presupuesto: row.presupuesto,
         empresa_id: effectiveCompanyId,
-        pipeline_id: pipelineId,
+        pipeline_id: effectivePipelineId,
         etapa_id: stageId,
-        asignado_a: null,
+        asignado_a: NIL_UUID,
         prioridad: 'medium'
       }))
 
@@ -795,14 +878,15 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
               email: r.correo_electronico || '',
               phone: r.telefono || '',
               company: r.empresa || '',
+              location: r.ubicacion || '',
               budget: r.presupuesto || 0,
-              stage: stageId,
-              pipeline: pipelineId || 'sales',
-              priority: 'medium',
-              assignedTo: '',
+              stage: r.etapa_id || stageId,
+              pipeline: r.pipeline_id || pipelineId || pipelineType,
+              priority: (r.prioridad as 'low' | 'medium' | 'high') || 'medium',
+              assignedTo: r.asignado_a || '',
               tags: [],
-              createdAt: new Date(),
-              lastContact: new Date()
+              createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+              lastContact: r.created_at ? new Date(r.created_at) : new Date()
             })
           })
         }
@@ -837,6 +921,14 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     setImportStatus('success')
     toast.success(`Importación finalizada: ${successCount} leads creados. ${errorsCount > 0 ? `${errorsCount} errores.` : ''}`)
 
+    if (successCount === 0) {
+      toast.error('No se creó ningún lead. Verifica que el pipeline y la etapa estén guardados y vuelve a intentar.')
+    }
+
+    if (importedLeads.length > 0 && onImport) {
+      onImport(importedLeads)
+    }
+
     // Call onAdd for each imported lead (or refactor onAdd to accept array)
     // For now, since onAdd expects single lead, we might just rely on parent refresh or refresh locally?
     // The parent PipelineView usually has a realtime listener or we can trigger a refresh.
@@ -862,6 +954,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     setEmail('')
     setPhone('')
     setCompany('')
+    setLocation('')
     setBudget('')
     setPriority('medium')
     setAssignedTo(teamMembers[0]?.id || effectiveUser?.id || '')
@@ -940,6 +1033,15 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
                 placeholder="Nombre de la empresa"
+              />
+            </div>
+            <div>
+              <Label htmlFor="lead-location">Ubicación</Label>
+              <Input
+                id="lead-location"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Ej. Ciudad, País o Dirección"
               />
             </div>
             <div>
@@ -1097,6 +1199,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                         <TableHead>Teléfono</TableHead>
                         <TableHead>Correo</TableHead>
                         <TableHead>Empresa</TableHead>
+                        <TableHead>Ubicación</TableHead>
                         <TableHead>Presupuesto</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1116,12 +1219,13 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                           <TableCell className="text-xs">{row.telefono}</TableCell>
                           <TableCell className="text-xs">{row.correo_electronico}</TableCell>
                           <TableCell className="text-xs">{row.empresa}</TableCell>
+                          <TableCell className="text-xs">{row.ubicacion}</TableCell>
                           <TableCell className="text-xs">{row.presupuesto}</TableCell>
                         </TableRow>
                       ))}
                       {previewData.length > 100 && (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center text-muted-foreground text-xs">
+                          <TableCell colSpan={7} className="text-center text-muted-foreground text-xs">
                             ... y {previewData.length - 100} más
                           </TableCell>
                         </TableRow>

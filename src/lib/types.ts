@@ -78,6 +78,7 @@ export interface Lead {
   assignedTo: string
   createdAt: Date
   lastContact: Date
+  location?: string
   customFields?: Record<string, any>
 }
 
