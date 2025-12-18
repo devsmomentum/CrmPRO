@@ -93,16 +93,19 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   useLeadsRealtime({
     companyId: companyId || '',
     onInsert: (lead) => {
+      let added = false
       setLeads((current) => {
         // Evitar duplicados
-        if (current.find(l => l.id === lead.id)) return current;
-        return [...current, lead];
-      });
+        if (current.find(l => l.id === lead.id)) return current
+        added = true
+        return [...current, lead]
+      })
+      if (!added) return
       setStageCounts(prev => ({
         ...prev,
         [lead.stage]: (prev[lead.stage] || 0) + 1
       }))
-      toast.success(`Nuevo lead agregado: ${lead.name}`);
+      toast.success(`Nuevo lead agregado: ${lead.name}`)
     },
     onUpdate: (lead) => {
       const oldLead = leadsRef.current.find(l => l.id === lead.id)
@@ -675,6 +678,44 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     }
   }
 
+  const handleImportLeads = (importedLeads: Lead[]) => {
+    if (!importedLeads || importedLeads.length === 0) return
+
+    const stageIncrements: Record<string, number> = {}
+
+    setLeads((current) => {
+      const byId = new Map<string, Lead>()
+      const currentPipeline = pipelines.find(p => p.type === activePipeline)
+
+      ;(current || []).forEach(l => byId.set(l.id, l))
+
+      importedLeads.forEach((lead) => {
+        const normalizedLead = {
+          ...lead,
+          pipeline: lead.pipeline || currentPipeline?.id || activePipeline
+        }
+
+        if (!byId.has(normalizedLead.id)) {
+          stageIncrements[normalizedLead.stage] = (stageIncrements[normalizedLead.stage] || 0) + 1
+        }
+
+        byId.set(normalizedLead.id, normalizedLead)
+      })
+
+      return Array.from(byId.values())
+    })
+
+    if (Object.keys(stageIncrements).length > 0) {
+      setStageCounts((prev) => {
+        const next = { ...prev }
+        Object.entries(stageIncrements).forEach(([stageId, count]) => {
+          next[stageId] = (next[stageId] || 0) + count
+        })
+        return next
+      })
+    }
+  }
+
   const handleDeleteLead = async (leadId: string) => {
     try {
       // Intentar borrar de BD si parece un UUID
@@ -934,6 +975,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                       stages={currentPipeline?.stages || []}
                       teamMembers={teamMembers}
                       onAdd={handleAddLead}
+                      onImport={handleImportLeads}
                       companies={companies}
                       currentUser={user}
                       companyName={currentCompany?.name}
@@ -1035,10 +1077,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                           stages={currentPipeline?.stages || []}
                           teamMembers={teamMembers}
                           onAdd={handleAddLead}
+                          onImport={handleImportLeads}
                           defaultStageId={stage.id}
                           companies={companies}
                           currentUser={user}
                           companyName={currentCompany?.name}
+                          companyId={companyId}
                           trigger={
                             <Button
                               variant="ghost"

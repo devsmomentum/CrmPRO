@@ -98,6 +98,7 @@ interface AddLeadDialogProps {
   stages: Stage[]
   teamMembers: TeamMember[]
   onAdd: (lead: Lead) => void
+  onImport?: (leads: Lead[]) => void
   trigger?: React.ReactNode
   defaultStageId?: string
   companies?: Company[]
@@ -120,7 +121,7 @@ interface PreviewRow {
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
 
-export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, onAdd, trigger, defaultStageId, companies = [], currentUser, companyName, companyId }: AddLeadDialogProps) {
+export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, onAdd, onImport, trigger, defaultStageId, companies = [], currentUser, companyName, companyId }: AddLeadDialogProps) {
   const t = useTranslation('es')
   const [open, setOpen] = useState(false)
   const [localUser] = usePersistentState<User | null>('current-user', null)
@@ -736,13 +737,16 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
   }
 
   const handleImport = async () => {
-    // Attempt fallback if companyId is missing
-    const effectiveCompanyId = companyId || (companies && companies.length > 0 ? companies[0].id : undefined)
+    // No fallback: companyId must be provided to avoid inserting en la empresa equivocada
+    const effectiveCompanyId = companyId
+    const effectivePipelineId = pipelineId
+    const NIL_UUID = '00000000-0000-0000-0000-000000000000'
 
     console.log('handleImport debug:', {
       propCompanyId: companyId,
       effectiveCompanyId,
       stageId,
+      pipelineId: effectivePipelineId,
       companiesLen: companies?.length
     })
 
@@ -751,8 +755,20 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       return
     }
 
+    const stageExists = stages.some(s => s.id === stageId)
+    if (!stageExists) {
+      toast.error('La etapa seleccionada no existe o no está sincronizada. Guarda el pipeline y vuelve a intentar.')
+      return
+    }
+
+    if (!effectivePipelineId) {
+      toast.error('Error crítico: Falta ID de pipeline. Guarda el pipeline o recarga antes de importar.')
+      console.error('Missing pipelineId', { pipelineId, pipelineType })
+      return
+    }
+
     if (!effectiveCompanyId) {
-      toast.error('Error crítico: Falta ID de compañía. (Prop: ' + (companyId || 'undefined') + ', Fallback: ' + (effectiveCompanyId || 'undefined') + ')')
+      toast.error('Error crítico: Falta ID de compañía. No se puede importar.')
       console.error('Missing companyId', { companyId, companies })
       return
     }
@@ -776,9 +792,9 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         empresa: row.empresa,
         presupuesto: row.presupuesto,
         empresa_id: effectiveCompanyId,
-        pipeline_id: pipelineId,
+        pipeline_id: effectivePipelineId,
         etapa_id: stageId,
-        asignado_a: null,
+        asignado_a: NIL_UUID,
         prioridad: 'medium'
       }))
 
@@ -796,13 +812,13 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
               phone: r.telefono || '',
               company: r.empresa || '',
               budget: r.presupuesto || 0,
-              stage: stageId,
-              pipeline: pipelineId || 'sales',
-              priority: 'medium',
-              assignedTo: '',
+              stage: r.etapa_id || stageId,
+              pipeline: r.pipeline_id || pipelineId || pipelineType,
+              priority: (r.prioridad as 'low' | 'medium' | 'high') || 'medium',
+              assignedTo: r.asignado_a || '',
               tags: [],
-              createdAt: new Date(),
-              lastContact: new Date()
+              createdAt: r.created_at ? new Date(r.created_at) : new Date(),
+              lastContact: r.created_at ? new Date(r.created_at) : new Date()
             })
           })
         }
@@ -836,6 +852,14 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
     setImportStatus('success')
     toast.success(`Importación finalizada: ${successCount} leads creados. ${errorsCount > 0 ? `${errorsCount} errores.` : ''}`)
+
+    if (successCount === 0) {
+      toast.error('No se creó ningún lead. Verifica que el pipeline y la etapa estén guardados y vuelve a intentar.')
+    }
+
+    if (importedLeads.length > 0 && onImport) {
+      onImport(importedLeads)
+    }
 
     // Call onAdd for each imported lead (or refactor onAdd to accept array)
     // For now, since onAdd expects single lead, we might just rely on parent refresh or refresh locally?
