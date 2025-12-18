@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useLeadsRealtime } from '@/hooks/useLeadsRealtime';
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,7 @@ import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } fr
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
 import { LeadSearchDialog } from './LeadSearchDialog'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 interface User {
   id: string
@@ -76,6 +78,15 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const [pipelineHasMore, setPipelineHasMore] = useState(false)
   const [isLoadingMoreAll, setIsLoadingMoreAll] = useState(false)
   const [stagePages, setStagePages] = useState<Record<string, { offset: number; hasMore: boolean }>>({})
+  const [stageCounts, setStageCounts] = useState<Record<string, number>>({})
+  const isMobile = useIsMobile()
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const [moveDialogLead, setMoveDialogLead] = useState<Lead | null>(null)
+
+  const leadsRef = useRef(leads)
+  useEffect(() => {
+    leadsRef.current = leads
+  }, [leads])
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
@@ -87,18 +98,40 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   useLeadsRealtime({
     companyId: companyId || '',
     onInsert: (lead) => {
+      let added = false
       setLeads((current) => {
         // Evitar duplicados
-        if (current.find(l => l.id === lead.id)) return current;
-        return [...current, lead];
-      });
-      toast.success(`Nuevo lead agregado: ${lead.name}`);
+        if (current.find(l => l.id === lead.id)) return current
+        added = true
+        return [...current, lead]
+      })
+      if (!added) return
+      setStageCounts(prev => ({
+        ...prev,
+        [lead.stage]: (prev[lead.stage] || 0) + 1
+      }))
+      toast.success(`Nuevo lead agregado: ${lead.name}`)
     },
     onUpdate: (lead) => {
+      const oldLead = leadsRef.current.find(l => l.id === lead.id)
+      if (oldLead && oldLead.stage !== lead.stage) {
+        setStageCounts(prev => ({
+          ...prev,
+          [oldLead.stage]: Math.max(0, (prev[oldLead.stage] || 0) - 1),
+          [lead.stage]: (prev[lead.stage] || 0) + 1
+        }))
+      }
       setLeads((current) => current.map(l => l.id === lead.id ? lead : l));
       toast.info(`Lead actualizado: ${lead.name}`);
     },
     onDelete: (leadId) => {
+      const leadToDelete = leadsRef.current.find(l => l.id === leadId)
+      if (leadToDelete) {
+        setStageCounts(prev => ({
+          ...prev,
+          [leadToDelete.stage]: Math.max(0, (prev[leadToDelete.stage] || 0) - 1)
+        }))
+      }
       setLeads((current) => current.filter(l => l.id !== leadId));
       toast.error(`Lead eliminado`);
     }
@@ -193,7 +226,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
     Promise.all(
       stages.map(async (s) => {
-        const { data } = await getLeadsPaged({
+        const { data, count } = await getLeadsPaged({
           empresaId: companyId,
           currentUserId: user?.id,
           isAdminOrOwner,
@@ -203,7 +236,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           stageId: s.id,
           order: 'desc'
         })
-        return { stageId: s.id, data: data || [] }
+        return { stageId: s.id, data: data || [], count: count || 0 }
       })
     )
       .then((results) => {
@@ -214,6 +247,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             email: l.correo_electronico,
             phone: l.telefono,
             company: l.empresa,
+            location: l.ubicacion,
             budget: l.presupuesto,
             stage: l.etapa_id,
             pipeline: l.pipeline_id || 'sales',
@@ -231,14 +265,18 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         setLeads(unique)
 
         const nextStagePages: Record<string, { offset: number; hasMore: boolean }> = {}
+        const nextStageCounts: Record<string, number> = {}
         stages.forEach((s) => {
-          const fetchedForStage = results.find(r => r.stageId === s.id)?.data?.length || 0
+          const result = results.find(r => r.stageId === s.id)
+          const fetchedForStage = result?.data?.length || 0
           nextStagePages[s.id] = {
             offset: fetchedForStage,
             hasMore: fetchedForStage === BASE_STAGE_LIMIT,
           }
+          nextStageCounts[s.id] = result?.count || 0
         })
         setStagePages(nextStagePages)
+        setStageCounts(nextStageCounts)
 
         // Calcular si quedan más a nivel pipeline
         getLeadsPaged({
@@ -269,9 +307,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     const current = stagePages[stageId] || { offset: 0, hasMore: true }
     if (!current.hasMore) return
 
-    const STAGE_PAGE_SIZE = 300
+    const STAGE_PAGE_SIZE = 100
     try {
-      const { data } = await getLeadsPaged({
+      const { data, count } = await getLeadsPaged({
         empresaId: companyId,
         currentUserId: user?.id,
         isAdminOrOwner,
@@ -287,6 +325,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         email: l.correo_electronico,
         phone: l.telefono,
         company: l.empresa,
+        location: l.ubicacion,
         budget: l.presupuesto,
         stage: l.etapa_id,
         pipeline: l.pipeline_id || 'sales',
@@ -307,6 +346,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         ...prev,
         [stageId]: { offset: current.offset + fetched, hasMore: fetched === STAGE_PAGE_SIZE }
       }))
+      if (typeof count === 'number') {
+        setStageCounts((prev) => ({
+          ...prev,
+          [stageId]: count
+        }))
+      }
       setPipelineOffset((prev) => prev + fetched)
     } catch (err) {
       console.error('Error loading more leads for stage:', err)
@@ -319,7 +364,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     if (!currentPipelineObj?.id) return
 
     setIsLoadingMoreAll(true)
-    const STAGE_PAGE_SIZE = 300
+    const STAGE_PAGE_SIZE = 100
     try {
       const stages = currentPipelineObj.stages || []
       // Preparar cargas por etapa respetando su offset actual
@@ -348,6 +393,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           email: l.correo_electronico,
           phone: l.telefono,
           company: l.empresa,
+          location: l.ubicacion,
           budget: l.presupuesto,
           stage: l.etapa_id,
           pipeline: l.pipeline_id || 'sales',
@@ -571,6 +617,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         correo_electronico: lead.email,
         telefono: lead.phone,
         empresa: lead.company,
+        ubicacion: lead.location,
         presupuesto: lead.budget,
         etapa_id: lead.stage,
         pipeline_id: pipelineIdToSave,
@@ -606,6 +653,10 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         if (!isStageUUID) {
           toast.warning('No se puede guardar en BD: La etapa no está sincronizada (ID inválido). Se guardará localmente.')
           setLeads((current) => [...(current || []), lead])
+          setStageCounts(prev => ({
+            ...prev,
+            [lead.stage]: (prev[lead.stage] || 0) + 1
+          }))
           return
         }
 
@@ -623,6 +674,10 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       } else {
         // Fallback local para defaults
         setLeads((current) => [...(current || []), lead])
+        setStageCounts(prev => ({
+          ...prev,
+          [lead.stage]: (prev[lead.stage] || 0) + 1
+        }))
         toast.warning('Lead guardado localmente (Pipeline default)')
       }
 
@@ -632,13 +687,63 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     }
   }
 
+  const handleImportLeads = (importedLeads: Lead[]) => {
+    if (!importedLeads || importedLeads.length === 0) return
+
+    const stageIncrements: Record<string, number> = {}
+
+    setLeads((current) => {
+      const byId = new Map<string, Lead>()
+      const currentPipeline = pipelines.find(p => p.type === activePipeline)
+
+      ;(current || []).forEach(l => byId.set(l.id, l))
+
+      importedLeads.forEach((lead) => {
+        const normalizedLead = {
+          ...lead,
+          pipeline: lead.pipeline || currentPipeline?.id || activePipeline
+        }
+
+        if (!byId.has(normalizedLead.id)) {
+          stageIncrements[normalizedLead.stage] = (stageIncrements[normalizedLead.stage] || 0) + 1
+        }
+
+        byId.set(normalizedLead.id, normalizedLead)
+      })
+
+      return Array.from(byId.values())
+    })
+
+    if (Object.keys(stageIncrements).length > 0) {
+      setStageCounts((prev) => {
+        const next = { ...prev }
+        Object.entries(stageIncrements).forEach(([stageId, count]) => {
+          next[stageId] = (next[stageId] || 0) + count
+        })
+        return next
+      })
+    }
+  }
+
   const handleDeleteLead = async (leadId: string) => {
     try {
       // Intentar borrar de BD si parece un UUID
       if (leadId.length > 20) { // Simple check
         await deleteLead(leadId)
       }
-      setLeads((current) => (current || []).filter(l => l.id !== leadId))
+      
+      // Encontrar el lead antes de borrarlo para saber su etapa
+      setLeads((current) => {
+        const lead = current?.find(l => l.id === leadId)
+        if (lead) {
+          setStageCounts(prev => ({
+            ...prev,
+            [lead.stage]: Math.max(0, (prev[lead.stage] || 0) - 1)
+          }))
+        }
+        return (current || []).filter(l => l.id !== leadId)
+      })
+      
       setSelectedLead((current) => current?.id === leadId ? null : current)
       toast.success(t.messages.leadDeleted)
     } catch (error: any) {
@@ -729,6 +834,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       (current || []).map(l => l.id === lead.id ? updatedLead : l)
     )
 
+    // Actualizar conteos optimísticamente
+    setStageCounts(prev => ({
+      ...prev,
+      [lead.stage]: Math.max(0, (prev[lead.stage] || 0) - 1),
+      [targetStageId]: (prev[targetStageId] || 0) + 1
+    }))
+
     // Actualizar en BD
     if (lead.id.length > 20) { // Check simple de UUID
       try {
@@ -785,6 +897,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       (current || []).map(l => l.id === draggedLead.id ? updatedLead : l)
     )
 
+    // Actualizar conteos optimísticamente
+    setStageCounts(prev => ({
+      ...prev,
+      [draggedLead.stage]: Math.max(0, (prev[draggedLead.stage] || 0) - 1),
+      [targetStageId]: (prev[targetStageId] || 0) + 1
+    }))
+
     // Actualizar en BD
     if (draggedLead.id.length > 20) { // Check simple de UUID
       updateLead(draggedLead.id, { etapa_id: targetStageId })
@@ -813,15 +932,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               leads={leads}
               onSelectLead={(lead) => setSelectedLead(lead)}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleLoadMoreAll}
-              disabled={!pipelineHasMore || isLoadingMoreAll}
-              title="Cargar más leads del pipeline"
-            >
-              {isLoadingMoreAll ? 'Cargando...' : 'Cargar más (todos)'}
-            </Button>
+            {/* Eliminado el botón global "Cargar más (todos)" */}
 
             {currentPipeline && (
               <>
@@ -873,6 +984,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                       stages={currentPipeline?.stages || []}
                       teamMembers={teamMembers}
                       onAdd={handleAddLead}
+                      onImport={handleImportLeads}
                       companies={companies}
                       currentUser={user}
                       companyName={currentCompany?.name}
@@ -931,6 +1043,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           <div className="flex flex-col md:flex-row gap-6 md:gap-4 h-auto md:h-full md:min-w-max">
             {(currentPipeline?.stages || []).map(stage => {
               const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
+              const totalStageLeads = stageCounts[stage.id] ?? allPipelineLeads.filter(l => l.stage === stage.id).length
 
               return (
                 <div
@@ -943,7 +1056,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                     <div className="flex items-center gap-2 min-w-0">
                       <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
                       <h3 className="font-semibold text-sm md:text-base truncate">{stage.name}</h3>
-                      <Badge variant="secondary" className="text-xs shrink-0">{stageLeads.length}</Badge>
+                      <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
@@ -973,10 +1086,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                           stages={currentPipeline?.stages || []}
                           teamMembers={teamMembers}
                           onAdd={handleAddLead}
+                          onImport={handleImportLeads}
                           defaultStageId={stage.id}
                           companies={companies}
                           currentUser={user}
                           companyName={currentCompany?.name}
+                          companyId={companyId}
                           trigger={
                             <Button
                               variant="ghost"
@@ -1022,26 +1137,38 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  {(currentPipeline?.stages || []).map(s => (
-                                    <DropdownMenuItem
-                                      key={s.id}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleMoveLead(lead, s.id)
-                                      }}
-                                      disabled={s.id === lead.stage}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                                        {s.name}
-                                      </div>
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
+                              {isMobile ? (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setMoveDialogLead(lead)
+                                    setMoveDialogOpen(true)
+                                  }}
+                                >
+                                  Mover a Etapa
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    {(currentPipeline?.stages || []).map(s => (
+                                      <DropdownMenuItem
+                                        key={s.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleMoveLead(lead, s.id)
+                                        }}
+                                        disabled={s.id === lead.stage}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                          {s.name}
+                                        </div>
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              )}
                               {isAdminOrOwner && (
                                 <DropdownMenuItem
                                   className="text-destructive"
@@ -1176,6 +1303,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 empresa: updated.company,
                 correo_electronico: updated.email,
                 telefono: updated.phone,
+                ubicacion: updated.location,
                 prioridad: updated.priority,
                 presupuesto: updated.budget,
                 asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
@@ -1206,6 +1334,36 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           currentUser={user}
         />
       )}
+
+      {/* Mobile: Move to Stage dialog */}
+      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mover a Etapa</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {(currentPipeline?.stages || []).map((s) => (
+              <Button
+                key={s.id}
+                variant={moveDialogLead?.stage === s.id ? 'secondary' : 'outline'}
+                className="justify-start"
+                disabled={!moveDialogLead || moveDialogLead.stage === s.id}
+                onClick={() => {
+                  if (!moveDialogLead) return
+                  handleMoveLead(moveDialogLead, s.id)
+                  setMoveDialogOpen(false)
+                  setMoveDialogLead(null)
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  {s.name}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

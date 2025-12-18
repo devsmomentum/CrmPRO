@@ -530,6 +530,13 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   disabled={!canEdit}
                   placeholder="+1 234 567 8900"
                 />
+                <InlineEdit
+                  value={lead.location || ''}
+                  onSave={(value) => updateField('location', value)}
+                  displayClassName="text-xs"
+                  disabled={!canEdit}
+                  placeholder="Ubicación"
+                />
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:items-end">
