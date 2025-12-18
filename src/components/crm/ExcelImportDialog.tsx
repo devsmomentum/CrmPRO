@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Upload, Check, Warning, Spinner } from '@phosphor-icons/react'
+import { Upload, Check, Warning, Spinner, Trash } from '@phosphor-icons/react'
 import * as XLSX from 'xlsx'
 import { toast } from 'sonner'
 import { createLead } from '@/supabase/services/leads'
@@ -114,10 +114,29 @@ export function ExcelImportDialog({
                     return acc
                 }, {})
 
+                // Detectar qué columnas existen realmente en el archivo
+                const availableColumns = Object.keys(normalizedRow)
+
+                // Definir todas las posibles keys para cada campo
+                const nombreKeys = ['nombre', 'name', 'nombre completo']
+                const empresaKeys = ['empresa', 'company', 'compañia', 'compañía', 'negocio', 'organizacion', 'organización', 'razon social', 'firma']
+                const telefonoKeys = ['telefono', 'teléfono', 'phone', 'celular', 'numero de telefono', 'número de teléfono']
+                const correoKeys = ['correo', 'email', 'e-mail', 'correo electronico', 'correo electrónico']
+                const ubicacionKeys = ['ubicacion', 'ubicación', 'location', 'address', 'ciudad', 'city', 'pais', 'country', 'direccion', 'dirección', 'estado', 'provincia', 'municipio', 'sector', 'entidad', 'region', 'región', 'localidad', 'lugar', 'zona', 'sede', 'sucursal', 'agencia', 'oficina', 'plaza', 'poblacion', 'población']
+                const presupuestoKeys = ['presupuesto', 'budget']
+                const notasKeys = ['notas', 'notes', 'observaciones', 'comentarios']
+
+                // Verificar si existe columna de empresa
+                const hasEmpresaColumn = availableColumns.some(col => empresaKeys.includes(col))
+                const hasNombreColumn = availableColumns.some(col => nombreKeys.includes(col))
+
                 const usedKeys = new Set<string>()
-                const pickValue = (keys: string[]) => {
+
+                // Función mejorada que evita confusión entre columnas
+                const pickValue = (keys: string[], excludeKeys: string[] = []) => {
                     for (const k of keys) {
                         if (usedKeys.has(k)) continue
+                        if (excludeKeys.includes(k)) continue
                         if (normalizedRow[k] !== undefined) {
                             const v = normalizedRow[k]
                             if (isDateValue(v)) continue
@@ -128,14 +147,19 @@ export function ExcelImportDialog({
                     return ''
                 }
 
-                const nombreRaw = pickValue(['nombre', 'name', 'nombre completo'])
-                const telefonoRaw = pickValue(['telefono', 'teléfono', 'phone', 'celular'])
-                const correoRaw = pickValue(['correo', 'email', 'e-mail', 'correo electronico'])
-                const ubicacionRaw = pickValue(['ubicacion', 'ubicación', 'location', 'address', 'ciudad', 'city', 'pais', 'country', 'direccion', 'dirección', 'estado', 'provincia', 'municipio', 'sector', 'entidad', 'region', 'región', 'localidad', 'lugar', 'zona', 'sede', 'sucursal', 'agencia', 'oficina', 'plaza', 'poblacion', 'población'])
-                const empresaKeys = ['empresa', 'company', 'compañia', 'compañía', 'negocio', 'organizacion', 'organización', 'razon social', 'firma']
-                const empresaRaw = pickValue(empresaKeys)
-                const presupuesto = pickValue(['presupuesto', 'budget']) || 0
-                const notas = pickValue(['notas', 'notes']) || ''
+                // IMPORTANTE: Extraer empresa PRIMERO para evitar que se use como nombre
+                let empresaRaw = ''
+                if (hasEmpresaColumn) {
+                    empresaRaw = pickValue(empresaKeys)
+                }
+
+                // Ahora extraer nombre, excluyendo las keys de empresa
+                const nombreRaw = pickValue(nombreKeys, empresaKeys)
+                const telefonoRaw = pickValue(telefonoKeys)
+                const correoRaw = pickValue(correoKeys)
+                const ubicacionRaw = pickValue(ubicacionKeys)
+                const presupuesto = pickValue(presupuestoKeys) || 0
+                const notas = pickValue(notasKeys) || ''
 
                 const nombre = isDateValue(nombreRaw) ? '' : cleanNameValue(nombreRaw)
                 const telefono = isDateValue(telefonoRaw) ? '' : stripLeadingDate(String(telefonoRaw))
@@ -154,9 +178,8 @@ export function ExcelImportDialog({
                     }
                 }
 
-                // Si no existe ninguna cabecera de empresa, fuerza empresa vacía
-                const hasEmpresaHeader = Object.keys(normalizedRow).some(k => empresaKeys.includes(k))
-                if (!hasEmpresaHeader) {
+                // Si no existe columna de empresa en el archivo, fuerza empresa vacía
+                if (!hasEmpresaColumn) {
                     empresa = ''
                 }
 
@@ -236,6 +259,28 @@ export function ExcelImportDialog({
         }, 1200)
     }
 
+    const handleCellEdit = (index: number, field: keyof PreviewRow, value: any) => {
+        const updatedData = [...previewData]
+        updatedData[index] = {
+            ...updatedData[index],
+            [field]: value
+        }
+
+        // Re-validate the row
+        const row = updatedData[index]
+        row.isValid = !!row.nombre_completo
+        row.error = !row.isValid ? 'Nombre es requerido' : undefined
+
+        setPreviewData(updatedData)
+    }
+
+    const handleDeleteRow = (index: number) => {
+        const updatedData = previewData.filter((_, i) => i !== index)
+        setPreviewData(updatedData)
+        toast.info('Fila eliminada')
+    }
+
+
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
@@ -306,13 +351,14 @@ export function ExcelImportDialog({
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Estado</TableHead>
+                                            <TableHead className="w-[60px]">Estado</TableHead>
                                             <TableHead>Nombre</TableHead>
                                             <TableHead>Teléfono</TableHead>
                                             <TableHead>Correo</TableHead>
                                             <TableHead>Empresa</TableHead>
                                             <TableHead>Ubicación</TableHead>
-                                            <TableHead>Presupuesto</TableHead>
+                                            <TableHead className="w-[100px]">Presupuesto</TableHead>
+                                            <TableHead className="w-[60px]">Acciones</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -329,17 +375,71 @@ export function ExcelImportDialog({
                                                         </span>
                                                     )}
                                                 </TableCell>
-                                                <TableCell>{row.nombre_completo}</TableCell>
-                                                <TableCell>{row.telefono}</TableCell>
-                                                <TableCell className="break-all">{row.correo_electronico}</TableCell>
-                                                <TableCell>{row.empresa}</TableCell>
-                                                <TableCell>{row.ubicacion}</TableCell>
-                                                <TableCell>{row.presupuesto}</TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        value={row.nombre_completo || ''}
+                                                        onChange={(e) => handleCellEdit(i, 'nombre_completo', e.target.value)}
+                                                        className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white"
+                                                        placeholder="Nombre completo"
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        value={row.telefono || ''}
+                                                        onChange={(e) => handleCellEdit(i, 'telefono', e.target.value)}
+                                                        className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white"
+                                                        placeholder="Teléfono"
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        value={row.correo_electronico || ''}
+                                                        onChange={(e) => handleCellEdit(i, 'correo_electronico', e.target.value)}
+                                                        className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white"
+                                                        placeholder="Email"
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        value={row.empresa || ''}
+                                                        onChange={(e) => handleCellEdit(i, 'empresa', e.target.value)}
+                                                        className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white"
+                                                        placeholder="Empresa"
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        value={row.ubicacion || ''}
+                                                        onChange={(e) => handleCellEdit(i, 'ubicacion', e.target.value)}
+                                                        className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white"
+                                                        placeholder="Ubicación"
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Input
+                                                        type="number"
+                                                        value={row.presupuesto || 0}
+                                                        onChange={(e) => handleCellEdit(i, 'presupuesto', Number(e.target.value))}
+                                                        className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white"
+                                                        placeholder="0"
+                                                    />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={() => handleDeleteRow(i)}
+                                                        title="Eliminar fila"
+                                                    >
+                                                        <Trash size={16} />
+                                                    </Button>
+                                                </TableCell>
                                             </TableRow>
                                         ))}
                                         {previewData.length > 200 && (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={8} className="text-center text-muted-foreground">
                                                     Mostrando 200 de {previewData.length} filas
                                                 </TableCell>
                                             </TableRow>

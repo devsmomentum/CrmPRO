@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Upload, FileX, Check, Warning, Spinner } from '@phosphor-icons/react'
+import { Plus, Upload, FileX, Check, Warning, Spinner, Trash } from '@phosphor-icons/react'
 import { Lead, PipelineType, Stage, TeamMember } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
@@ -462,10 +462,10 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
       // Check for header
       if (!headerDetected && /^(nombre|name|telefono|phone|email|correo|fecha|date|empresa|company|ubicacion|location|direccion|lugar)/i.test(trimmed)) {
-         if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
-         if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
-         headerDetected = true
-         continue // Skip the header line itself
+        if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
+        if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
+        headerDetected = true
+        continue // Skip the header line itself
       }
 
       // Skip lines that look like headers or metadata (if we already detected one or just to be safe)
@@ -549,18 +549,18 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
         nombre = cleanNameValue(textParts[0]).trim()
         if (textParts.length > 1) {
           const secondPart = stripLeadingDate(textParts[1]).trim()
-          
+
           if (hasUbicacionHeader && !hasEmpresaHeader) {
-             ubicacion = secondPart
+            ubicacion = secondPart
           } else if (hasEmpresaHeader && !hasUbicacionHeader) {
-             empresa = secondPart
+            empresa = secondPart
           } else {
-             // Default behavior if ambiguous or both present (assuming company comes first usually)
-             // But if we have 3 parts, maybe 2nd is company and 3rd is location?
-             empresa = secondPart
-             if (textParts.length > 2) {
-                ubicacion = stripLeadingDate(textParts[2]).trim()
-             }
+            // Default behavior if ambiguous or both present (assuming company comes first usually)
+            // But if we have 3 parts, maybe 2nd is company and 3rd is location?
+            empresa = secondPart
+            if (textParts.length > 2) {
+              ubicacion = stripLeadingDate(textParts[2]).trim()
+            }
           }
         }
       }
@@ -695,7 +695,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
       // Fallback: si no se detectó ubicación pero existe una columna con "ubic" o "direcc" en el nombre
       if (!ubicacion) {
-        const ubicKey = Object.keys(normalizedRow).find(k => 
+        const ubicKey = Object.keys(normalizedRow).find(k =>
           k.includes('ubic') || k.includes('direcc') || k.includes('lugar') || k.includes('zona')
         )
         if (ubicKey) {
@@ -769,7 +769,7 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       console.error('Error fetching existing leads for deduplication', err)
     }
 
-      const processedData = mappedData.map(row => {
+    const processedData = mappedData.map(row => {
       const email = row.correo_electronico?.toLowerCase().trim()
       const rawPhone = row.telefono ? String(row.telefono).replace(/\D/g, '') : ''
 
@@ -949,6 +949,44 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     }, 1500)
   }
 
+  // Handlers for editable preview table
+  const handleCellEdit = (index: number, field: keyof PreviewRow, value: any) => {
+    const updatedData = [...previewData]
+    updatedData[index] = {
+      ...updatedData[index],
+      [field]: value
+    }
+
+    // Re-validate the row
+    const row = updatedData[index]
+    row.isValid = !!row.nombre_completo
+    row.error = !row.isValid ? 'Nombre es requerido' : undefined
+
+    setPreviewData(updatedData)
+  }
+
+  const handleDeleteRow = (index: number) => {
+    const updatedData = previewData.filter((_, i) => i !== index)
+    setPreviewData(updatedData)
+    toast.info('Fila eliminada')
+  }
+
+  const handleAddRow = () => {
+    const newRow: PreviewRow = {
+      nombre_completo: '',
+      telefono: '',
+      correo_electronico: '',
+      empresa: '',
+      ubicacion: '',
+      presupuesto: 0,
+      notas: '',
+      isValid: false,
+      error: 'Nombre es requerido'
+    }
+    setPreviewData([...previewData, newRow])
+    toast.info('Nueva fila añadida')
+  }
+
   const resetForm = () => {
     setName('')
     setEmail('')
@@ -978,7 +1016,10 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto sm:max-w-xl md:max-w-2xl">
+      <DialogContent className={`max-h-[90vh] overflow-y-auto transition-all duration-300 ${activeTab === 'excel' && previewData.length > 0
+        ? 'max-w-[95vw] md:max-w-5xl lg:max-w-6xl'
+        : 'max-w-md sm:max-w-xl md:max-w-2xl'
+        }`}>
         <DialogHeader>
           <DialogTitle>{t.pipeline.addLead}</DialogTitle>
         </DialogHeader>
@@ -1173,65 +1214,141 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
             {(importStatus === 'preview' || importStatus === 'importing' || importStatus === 'success') && (
               <div className="space-y-4 flex-1 flex flex-col min-h-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-sm truncate max-w-[150px]">{file?.name}</span>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-sm truncate max-w-[120px] sm:max-w-[150px]">{file?.name}</span>
                     <Badge variant="secondary">{previewData.length} contactos</Badge>
+                    <Badge variant="outline" className="text-xs text-muted-foreground sm:hidden">
+                      ← Desliza →
+                    </Badge>
                   </div>
                   {importStatus === 'preview' && (
-                    <Button variant="ghost" size="sm" onClick={() => {
-                      setFile(null)
-                      setPreviewData([])
-                      setImportStatus('idle')
-                    }}>
-                      <FileX className="mr-2" />
-                      Cancelar
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={handleAddRow}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        <Plus className="sm:mr-1" size={14} />
+                        <span className="hidden sm:inline">Añadir Fila</span>
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setFile(null)
+                        setPreviewData([])
+                        setImportStatus('idle')
+                      }}>
+                        <FileX className="sm:mr-1" size={14} />
+                        <span className="hidden sm:inline">Cancelar</span>
+                      </Button>
+                    </div>
                   )}
                 </div>
 
-                <ScrollArea className="h-[250px] border rounded-md w-full">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[50px]">Estado</TableHead>
-                        <TableHead>Nombre</TableHead>
-                        <TableHead>Teléfono</TableHead>
-                        <TableHead>Correo</TableHead>
-                        <TableHead>Empresa</TableHead>
-                        <TableHead>Ubicación</TableHead>
-                        <TableHead>Presupuesto</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {previewData.slice(0, 100).map((row, i) => (
-                        <TableRow key={i}>
-                          <TableCell>
-                            {row.isValid ? (
-                              <Check size={16} className="text-green-500" />
-                            ) : (
-                              <span title={row.error}>
-                                <Warning size={16} className="text-amber-500" />
-                              </span>
-                            )}
-                          </TableCell>
-                          <TableCell className="font-medium text-xs sm:text-sm">{row.nombre_completo}</TableCell>
-                          <TableCell className="text-xs">{row.telefono}</TableCell>
-                          <TableCell className="text-xs">{row.correo_electronico}</TableCell>
-                          <TableCell className="text-xs">{row.empresa}</TableCell>
-                          <TableCell className="text-xs">{row.ubicacion}</TableCell>
-                          <TableCell className="text-xs">{row.presupuesto}</TableCell>
+                {/* Mobile hint */}
+                <p className="text-xs text-muted-foreground sm:hidden text-center italic">
+                  Desliza horizontalmente para ver todas las columnas
+                </p>
+
+                <ScrollArea className="h-[250px] sm:h-[400px] border rounded-md w-full">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[800px]">
+                      <TableHeader className="sticky top-0 bg-background z-10">
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="w-[60px] text-center">Estado</TableHead>
+                          <TableHead className="min-w-[150px]">Nombre</TableHead>
+                          <TableHead className="min-w-[120px]">Teléfono</TableHead>
+                          <TableHead className="min-w-[180px]">Correo</TableHead>
+                          <TableHead className="min-w-[150px]">Empresa</TableHead>
+                          <TableHead className="min-w-[120px]">Ubicación</TableHead>
+                          <TableHead className="w-[100px]">Presupuesto</TableHead>
+                          <TableHead className="w-[60px] text-center">Acción</TableHead>
                         </TableRow>
-                      ))}
-                      {previewData.length > 100 && (
-                        <TableRow>
-                          <TableCell colSpan={7} className="text-center text-muted-foreground text-xs">
-                            ... y {previewData.length - 100} más
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {previewData.slice(0, 100).map((row, i) => (
+                          <TableRow key={i} className="hover:bg-muted/30">
+                            <TableCell className="text-center">
+                              {row.isValid ? (
+                                <Check size={18} className="text-green-500 mx-auto" />
+                              ) : (
+                                <span title={row.error} className="cursor-help">
+                                  <Warning size={18} className="text-amber-500 mx-auto" />
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                value={row.nombre_completo || ''}
+                                onChange={(e) => handleCellEdit(i, 'nombre_completo', e.target.value)}
+                                className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white min-w-[120px]"
+                                placeholder="Nombre"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                value={row.telefono || ''}
+                                onChange={(e) => handleCellEdit(i, 'telefono', e.target.value)}
+                                className="h-7 text-xs bg-blue-50/50 border-blue-200 focus:bg-white min-w-[100px]"
+                                placeholder="Teléfono"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                value={row.correo_electronico || ''}
+                                onChange={(e) => handleCellEdit(i, 'correo_electronico', e.target.value)}
+                                className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white min-w-[120px]"
+                                placeholder="Email"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                value={row.empresa || ''}
+                                onChange={(e) => handleCellEdit(i, 'empresa', e.target.value)}
+                                className="h-7 text-xs bg-blue-50/50 border-blue-200 focus:bg-white min-w-[100px]"
+                                placeholder="Empresa"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                value={row.ubicacion || ''}
+                                onChange={(e) => handleCellEdit(i, 'ubicacion', e.target.value)}
+                                className="h-7 text-xs bg-blue-50/50 border-blue-200 focus:bg-white min-w-[80px]"
+                                placeholder="Ubicación"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1">
+                              <Input
+                                type="number"
+                                value={row.presupuesto || 0}
+                                onChange={(e) => handleCellEdit(i, 'presupuesto', Number(e.target.value))}
+                                className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white w-[80px]"
+                                placeholder="0"
+                              />
+                            </TableCell>
+                            <TableCell className="p-1 text-center">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-red-500 hover:text-white hover:bg-red-500 rounded-full"
+                                onClick={() => handleDeleteRow(i)}
+                                title="Eliminar fila"
+                              >
+                                <Trash size={16} />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {previewData.length > 100 && (
+                          <TableRow>
+                            <TableCell colSpan={8} className="text-center text-muted-foreground text-xs">
+                              ... y {previewData.length - 100} más
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </ScrollArea>
 
                 <div className="pt-2">
