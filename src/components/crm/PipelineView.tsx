@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,7 @@ import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } fr
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
 import { LeadSearchDialog } from './LeadSearchDialog'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 interface User {
   id: string
@@ -77,6 +79,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const [isLoadingMoreAll, setIsLoadingMoreAll] = useState(false)
   const [stagePages, setStagePages] = useState<Record<string, { offset: number; hasMore: boolean }>>({})
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({})
+  const isMobile = useIsMobile()
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+  const [moveDialogLead, setMoveDialogLead] = useState<Lead | null>(null)
 
   const leadsRef = useRef(leads)
   useEffect(() => {
@@ -1128,26 +1133,38 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  {(currentPipeline?.stages || []).map(s => (
-                                    <DropdownMenuItem
-                                      key={s.id}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleMoveLead(lead, s.id)
-                                      }}
-                                      disabled={s.id === lead.stage}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                                        {s.name}
-                                      </div>
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
+                              {isMobile ? (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setMoveDialogLead(lead)
+                                    setMoveDialogOpen(true)
+                                  }}
+                                >
+                                  Mover a Etapa
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    {(currentPipeline?.stages || []).map(s => (
+                                      <DropdownMenuItem
+                                        key={s.id}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleMoveLead(lead, s.id)
+                                        }}
+                                        disabled={s.id === lead.stage}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                          {s.name}
+                                        </div>
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              )}
                               {isAdminOrOwner && (
                                 <DropdownMenuItem
                                   className="text-destructive"
@@ -1312,6 +1329,36 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           currentUser={user}
         />
       )}
+
+      {/* Mobile: Move to Stage dialog */}
+      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Mover a Etapa</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {(currentPipeline?.stages || []).map((s) => (
+              <Button
+                key={s.id}
+                variant={moveDialogLead?.stage === s.id ? 'secondary' : 'outline'}
+                className="justify-start"
+                disabled={!moveDialogLead || moveDialogLead.stage === s.id}
+                onClick={() => {
+                  if (!moveDialogLead) return
+                  handleMoveLead(moveDialogLead, s.id)
+                  setMoveDialogOpen(false)
+                  setMoveDialogLead(null)
+                }}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  {s.name}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
