@@ -462,10 +462,10 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
       // Check for header
       if (!headerDetected && /^(nombre|name|telefono|phone|email|correo|fecha|date|empresa|company|ubicacion|location|direccion|lugar)/i.test(trimmed)) {
-        if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
-        if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
-        headerDetected = true
-        continue // Skip the header line itself
+         if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
+         if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
+         headerDetected = true
+         continue // Skip the header line itself
       }
 
       // Skip lines that look like headers or metadata (if we already detected one or just to be safe)
