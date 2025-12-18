@@ -660,12 +660,14 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       }
 
       // Pick a value ensuring we don't reuse the same header for two fields
-      const pickValue = (keys: string[], used: Set<string>) => {
+      // skipDateCheck: if true, don't filter out values that look like dates (needed for budget/numeric fields)
+      const pickValue = (keys: string[], used: Set<string>, skipDateCheck = false) => {
         for (const k of keys) {
           if (used.has(k)) continue
           if (normalizedRow[k] !== undefined) {
             const v = normalizedRow[k]
-            if (isDateValue(v)) continue
+            // Skip date check for numeric fields like presupuesto
+            if (!skipDateCheck && isDateValue(v)) continue
             used.add(k)
             return { value: v, key: k }
           }
@@ -712,7 +714,44 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
       if (!hasEmpresaHeader) {
         empresa = ''
       }
-      const presupuesto = pickValue(['presupuesto', 'budget', 'monto', 'valor', 'precio'], usedKeys).value
+
+      // Expanded budget keywords - use skipDateCheck=true to avoid filtering numeric values
+      const presupuestoKeys = [
+        'presupuesto', 'budget', 'monto', 'valor', 'precio', 'costo', 'cost',
+        'amount', 'total', 'importe', 'cuota', 'fee', 'tarifa', 'rate',
+        'inversion', 'inversión', 'investment', 'pago', 'payment', 'cotizacion',
+        'cotización', 'quote', 'estimado', 'estimate', 'price'
+      ]
+      // IMPORTANT: Skip date check for budget - numbers like 25000, 50000 should not be treated as dates
+      const rawPresupuesto = pickValue(presupuestoKeys, usedKeys, true).value
+
+      // Parse budget - handle various formats
+      const parsePresupuesto = (val: any): number => {
+        if (val === null || val === undefined || val === '') return 0
+        if (typeof val === 'number') return val
+
+        let str = String(val).trim()
+        // Remove currency symbols and text
+        str = str.replace(/[^\d.,\-]/g, '')
+        if (!str) return 0
+
+        // Handle European format (1.000,50) vs US format (1,000.50)
+        const hasCommaAsDecimal = /\d,\d{1,2}$/.test(str)
+        const hasDotAsDecimal = /\d\.\d{1,2}$/.test(str)
+
+        if (hasCommaAsDecimal && !hasDotAsDecimal) {
+          // European: 1.000,50 -> 1000.50
+          str = str.replace(/\./g, '').replace(',', '.')
+        } else {
+          // US/Standard: 1,000.50 -> 1000.50
+          str = str.replace(/,/g, '')
+        }
+
+        const num = parseFloat(str)
+        return Number.isNaN(num) ? 0 : Math.abs(num)
+      }
+
+      const presupuesto = parsePresupuesto(rawPresupuesto)
       const notas = pickValue(['notas', 'notes', 'comentarios', 'observaciones', 'description'], usedKeys).value
 
       const telefono = isDateValue(rawTelefono) ? '' : normalizePhone(stripLeadingDate(String(rawTelefono)))
@@ -1320,8 +1359,9 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
                             <TableCell className="p-1">
                               <Input
                                 type="number"
+                                min="0"
                                 value={row.presupuesto || 0}
-                                onChange={(e) => handleCellEdit(i, 'presupuesto', Number(e.target.value))}
+                                onChange={(e) => handleCellEdit(i, 'presupuesto', Math.max(0, Number(e.target.value)))}
                                 className="h-8 text-xs bg-blue-50/50 border-blue-200 focus:bg-white w-[80px]"
                                 placeholder="0"
                               />
