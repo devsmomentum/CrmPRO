@@ -2,11 +2,22 @@ import { usePersistentState } from '@/hooks/usePersistentState'
 import { Lead, Task, Pipeline } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts'
+import { useEffect, useState } from 'react'
+import { getLeadsCount } from '@/supabase/services/leads'
 
 export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [leadsCount, setLeadsCount] = useState(0)
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
   const [pipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
+
+  useEffect(() => {
+    if (companyId) {
+      getLeadsCount(companyId)
+        .then((count: any) => setLeadsCount(count || 0))
+        .catch(err => console.error('Error fetching leads count:', err))
+    }
+  }, [companyId])
 
   // Generar pipelineData dinámicamente desde los pipelines reales del CRM
   // Comparamos con pipeline.id ya que los leads almacenan el pipeline_id (UUID)
@@ -14,6 +25,9 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
     name: pipeline.name,
     count: (leads || []).filter(l => l.pipeline === pipeline.id).length
   }))
+
+  // Calcular ancho dinámico para la gráfica de pipelines si son muchos
+  const pipelineChartWidth = Math.max(100 + (pipelineData.length * 120), 600)
 
   const priorityData = [
     { name: 'High', value: (leads || []).filter(l => l.priority === 'high').length, color: '#ef4444' },
@@ -62,7 +76,7 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
             <CardTitle className="text-sm font-medium">Active Leads</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(leads || []).length}</div>
+            <div className="text-2xl font-bold">{leadsCount}</div>
             <p className="text-xs text-muted-foreground mt-1">All pipelines</p>
           </CardContent>
         </Card>
@@ -85,16 +99,18 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           <CardHeader>
             <CardTitle>Leads by Pipeline</CardTitle>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={pipelineData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="oklch(0.45 0.15 250)" />
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent className="overflow-x-auto pb-4">
+            <div style={{ width: pipelineChartWidth, height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={pipelineData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" interval={0} tick={{ fontSize: 12 }} height={60} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="oklch(0.45 0.15 250)" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
 

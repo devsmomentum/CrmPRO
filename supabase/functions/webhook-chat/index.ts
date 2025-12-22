@@ -92,7 +92,7 @@ serve(async (req) => {
 
   const secretToken = Deno.env.get("SUPER_API_SECRET_TOKEN") ?? "";
   const url = new URL(req.url);
-
+  console.log("AQUI PARA PROBAR",secretToken);
   try {
     if (req.method === "GET") {
       const verifyToken =

@@ -17,6 +17,16 @@ export async function getLeads(empresaId, currentUserId, isAdminOrOwner = false)
   return data
 }
 
+export async function getLeadsCount(empresaId) {
+  const { count, error } = await supabase
+    .from('lead')
+    .select('*', { count: 'exact', head: true })
+    .eq('empresa_id', empresaId)
+
+  if (error) throw error
+  return count
+}
+
 // Nuevo: obtención paginada y ordenada, con filtros opcionales
 export async function getLeadsPaged({
   empresaId,

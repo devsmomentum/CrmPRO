@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { getLeads } from '@/supabase/services/leads'
+import { getLeads, getLeadsCount } from '@/supabase/services/leads'
 import { getPipelines } from '@/supabase/helpers/pipeline'
 
 interface DashboardProps {
@@ -19,7 +19,8 @@ interface DashboardProps {
 
 export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
-  const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  // const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [leadsCount, setLeadsCount] = useState(0)
   const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
@@ -27,27 +28,12 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
 
   useEffect(() => {
     if (companyId) {
-      // Cargar leads
-      getLeads(companyId)
-        .then((data: any) => {
-          const mappedLeads = data.map((l: any) => ({
-            id: l.id,
-            name: l.nombre_completo,
-            email: l.correo_electronico,
-            phone: l.telefono,
-            company: l.empresa,
-            budget: l.presupuesto,
-            stage: l.etapa_id,
-            pipeline: l.pipeline_id || 'sales',
-            priority: l.prioridad,
-            assignedTo: l.asignado_a,
-            tags: [],
-            createdAt: new Date(l.created_at),
-            lastContact: new Date(l.created_at)
-          }))
-          setLeads(mappedLeads)
+      // Cargar leads count
+      getLeadsCount(companyId)
+        .then((count: any) => {
+          setLeadsCount(count || 0)
         })
-        .catch(err => console.error('Error fetching leads in Dashboard:', err))
+        .catch(err => console.error('Error fetching leads count in Dashboard:', err))
 
       // Cargar pipelines para contar
       getPipelines(companyId)
@@ -128,7 +114,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(leads || []).length}</div>
+            <div className="text-2xl font-bold">{leadsCount}</div>
             <p className="text-xs text-muted-foreground mt-1">Active in pipeline</p>
           </CardContent>
         </Card>
