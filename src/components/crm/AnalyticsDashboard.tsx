@@ -46,50 +46,50 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   return (
     <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground mt-1">Performance insights and metrics</p>
+        <h1 className="text-3xl font-bold">Analítica</h1>
+        <p className="text-muted-foreground mt-1">Información y métricas de rendimiento</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">Ingresos totales</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">In pipeline</p>
+            <p className="text-xs text-muted-foreground mt-1">En pipeline</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Avg Deal Size</CardTitle>
+            <CardTitle className="text-sm font-medium">Tamaño promedio de la oferta</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">${Math.round(avgDealSize).toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground mt-1">Per lead</p>
+            <p className="text-xs text-muted-foreground mt-1">Por lead</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Active Leads</CardTitle>
+            <CardTitle className="text-sm font-medium">Leads activos</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{leadsCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">All pipelines</p>
+            <p className="text-xs text-muted-foreground mt-1">Todos los pipelines</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Task Completion</CardTitle>
+            <CardTitle className="text-sm font-medium">Tareas Completadas</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {Math.round(((tasks || []).filter(t => t.completed).length / ((tasks || []).length || 1)) * 100)}%
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Tasks completed</p>
+            <p className="text-xs text-muted-foreground mt-1">Tareas completadas</p>
           </CardContent>
         </Card>
       </div>
@@ -97,7 +97,7 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Leads by Pipeline</CardTitle>
+            <CardTitle>Leads por Pipeline</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto pb-4">
             <div style={{ width: pipelineChartWidth, height: 300 }}>
@@ -116,7 +116,7 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Priority Distribution</CardTitle>
+            <CardTitle>Distribución prioritaria</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>

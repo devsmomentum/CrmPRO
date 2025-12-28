@@ -55,6 +55,18 @@ export async function updateEmpresaLogo(empresa_id, logo_url) {
   return data
 }
 
+export async function updateEmpresa(empresa_id, updates) {
+  if (!empresa_id) throw new Error('empresa_id requerido')
+  const { data, error } = await supabase
+    .from('empresa')
+    .update(updates)
+    .eq('id', empresa_id)
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function getEmpresasByUsuario(usuario_id) {
   console.log('[EMPRESA] getEmpresasByUsuario', usuario_id)
 
