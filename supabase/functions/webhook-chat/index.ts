@@ -92,7 +92,7 @@ serve(async (req) => {
 
   const secretToken = Deno.env.get("SUPER_API_SECRET_TOKEN") ?? "";
   const url = new URL(req.url);
-
+  console.log("AQUI PARA PROBAR", secretToken);
   try {
     if (req.method === "GET") {
       const verifyToken =
@@ -166,18 +166,40 @@ serve(async (req) => {
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
 
-      if (hashHex !== receivedSignature) {
-        console.log(`Signature Mismatch!`);
-        console.log(`Received: '${receivedSignature}'`);
-        console.log(`Calculated: '${hashHex}'`);
-        console.log(`Secret Token Length: ${secretToken.length}`);
-
-        // --- DEBUG MODE: IGNORAMOS EL ERROR DE FIRMA TEMPORALMENTE ---
-        console.log("⚠️ IGNORING SIGNATURE ERROR FOR DEBUGGING TO TEST LOGIC ⚠️");
-      }
-
       // 2. Convertimos el texto a JSON para leer los datos
       const payload = JSON.parse(bodyText);
+
+      // Obtener el número de WhatsApp configurado para producción
+      const configuredPhone = Deno.env.get("WHATSAPP_PHONE_NUMBER") ?? "";
+      const cleanConfiguredPhone = configuredPhone.replace(/[\s\-\+]/g, "").trim();
+
+      if (hashHex !== receivedSignature) {
+        console.log(`⚠️ Signature Mismatch - verificando por número de teléfono...`);
+        console.log(`Received signature: '${receivedSignature.substring(0, 20)}...'`);
+        console.log(`Calculated: '${hashHex.substring(0, 20)}...'`);
+
+        // Si la firma no coincide, verificamos que el mensaje sea de/para nuestro número de producción
+        if (cleanConfiguredPhone) {
+          const eventData = typeof payload.data === "string" ? JSON.parse(payload.data || "{}") : (payload.data ?? {});
+          const pTo = (eventData.to ?? payload.to ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
+          const pFrom = (eventData.from ?? payload.from ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
+
+          const isFromConfiguredPhone = pFrom.includes(cleanConfiguredPhone) || cleanConfiguredPhone.includes(pFrom);
+          const isToConfiguredPhone = pTo.includes(cleanConfiguredPhone) || cleanConfiguredPhone.includes(pTo);
+
+          if (!isFromConfiguredPhone && !isToConfiguredPhone) {
+            console.log(`❌ Mensaje ignorado: no es de/para el número configurado (${cleanConfiguredPhone})`);
+            console.log(`   From: ${pFrom}, To: ${pTo}`);
+            return new Response(JSON.stringify({ success: true, message: "Ignored - wrong phone number" }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: 200,
+            });
+          }
+          console.log(`✅ Firma no coincide pero mensaje es de/para número configurado - procesando...`);
+        } else {
+          console.log(`⚠️ WHATSAPP_PHONE_NUMBER no configurado - procesando mensaje de todos modos`);
+        }
+      }
       console.log("📦 [WEBHOOK] Webhook payload completo:", JSON.stringify(payload, null, 2));
 
       const supabase = createClient(

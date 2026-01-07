@@ -43,9 +43,9 @@ export function NotificationPanel({ open, onClose }: NotificationPanelProps) {
       <SheetContent>
         <SheetHeader className="mb-4">
           <div className="flex items-center justify-between">
-            <SheetTitle>Notifications</SheetTitle>
+            <SheetTitle>Notificaciones</SheetTitle>
             <Button variant="ghost" size="sm" onClick={markAllAsRead}>
-              Mark all read
+              Marcar todo como leído
             </Button>
           </div>
         </SheetHeader>
@@ -54,12 +54,12 @@ export function NotificationPanel({ open, onClose }: NotificationPanelProps) {
           <div className="space-y-3">
             {(notifications || []).length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
-                No notifications
+                Sin notificaciones
               </div>
             ) : (
               (notifications || []).map(notification => {
                 const Icon = getIcon(notification.type)
-                
+
                 return (
                   <div
                     key={notification.id}

@@ -624,21 +624,49 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                   <div className="text-sm">
                     <span className="text-muted-foreground">Pipelines</span>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {(member.pipelines || []).map(tp => {
-                        let label = tp
-                        if (tp === 'sales') label = 'Ventas'
-                        else if (tp === 'support') label = 'Soporte'
-                        else if (tp === 'administrative') label = 'Administrativo'
+                      {(() => {
+                        const allPipelines = member.pipelines || []
+                        const visiblePipelines = allPipelines.slice(0, 4)
+                        const hiddenPipelines = allPipelines.slice(4)
+
+                        const renderBadge = (tp: string) => {
+                          let label = tp
+                          if (tp === 'sales') label = 'Ventas'
+                          else if (tp === 'support') label = 'Soporte'
+                          else if (tp === 'administrative') label = 'Administrativo'
+                          return (
+                            <Badge key={tp} variant="outline" className="text-xs capitalize">
+                              {label}
+                            </Badge>
+                          )
+                        }
 
                         return (
-                          <Badge key={tp} variant="outline" className="text-xs capitalize">
-                            {label}
-                          </Badge>
+                          <>
+                            {visiblePipelines.map(renderBadge)}
+                            {hiddenPipelines.length > 0 && (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Badge variant="secondary" className="text-xs cursor-pointer hover:bg-secondary/80">
+                                    +{hiddenPipelines.length} más
+                                  </Badge>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64 p-3">
+                                  <div className="space-y-2">
+                                    <h4 className="font-medium text-sm">Pipelines adicionales</h4>
+                                    <div className="flex flex-wrap gap-1">
+                                      {hiddenPipelines.map(renderBadge)}
+                                    </div>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
+                            {allPipelines.length === 0 && (
+                              <span className="text-xs text-muted-foreground">Sin asignar</span>
+                            )}
+                          </>
                         )
-                      })}
-                      {(member.pipelines || []).length === 0 && (
-                        <span className="text-xs text-muted-foreground">Sin asignar</span>
-                      )}
+                      })()}
                     </div>
                   </div>
                   {roleInfo && roleInfo.permissions.length > 0 && (
