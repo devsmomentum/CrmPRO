@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Sidebar } from '@/components/crm/Sidebar'
 import { Dashboard } from '@/components/crm/Dashboard'
 import { PipelineView } from '@/components/crm/PipelineView'
+import { ChatsView } from '@/components/crm/ChatsView'
 import { AnalyticsDashboard } from '@/components/crm/AnalyticsDashboard'
 import { CalendarView } from '@/components/crm/CalendarView'
 import { TeamView } from '@/components/crm/TeamView'
@@ -25,7 +26,7 @@ import { Pipeline, PipelineType } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
 import { JoinTeam } from '@/components/crm/JoinTeam'
 
-type View = 'dashboard' | 'pipeline' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
+type View = 'dashboard' | 'pipeline' | 'chats' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
 type AuthView = 'login' | 'register'
 
 interface User {
@@ -424,6 +425,7 @@ function App() {
         </div>
         {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
         {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} user={user} />}
+        {currentView === 'chats' && <ChatsView companyId={currentCompanyId} />}
         {currentView === 'analytics' && <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'calendar' && <CalendarView key={currentCompanyId} companyId={currentCompanyId} />}
         {currentView === 'team' && <TeamView key={currentCompanyId} companyId={currentCompanyId} companies={companies} currentUserId={user.id} currentUserEmail={user.email} />}
