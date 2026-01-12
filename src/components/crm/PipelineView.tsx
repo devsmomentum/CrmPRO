@@ -253,7 +253,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             pipeline: l.pipeline_id || 'sales',
             priority: l.prioridad,
             assignedTo: l.asignado_a,
-            tags: [],
+            tags: l.tags || [],
             createdAt: new Date(l.created_at),
             lastContact: new Date(l.created_at)
           }))
@@ -331,7 +331,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         pipeline: l.pipeline_id || 'sales',
         priority: l.prioridad,
         assignedTo: l.asignado_a,
-        tags: [],
+        tags: l.tags || [],
         createdAt: new Date(l.created_at),
         lastContact: new Date(l.created_at)
       }))
@@ -399,7 +399,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           pipeline: l.pipeline_id || 'sales',
           priority: l.prioridad,
           assignedTo: l.asignado_a,
-          tags: [],
+          tags: l.tags || [],
           createdAt: new Date(l.created_at),
           lastContact: new Date(l.created_at)
         }))
@@ -696,7 +696,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       const byId = new Map<string, Lead>()
       const currentPipeline = pipelines.find(p => p.type === activePipeline)
 
-      ;(current || []).forEach(l => byId.set(l.id, l))
+        ; (current || []).forEach(l => byId.set(l.id, l))
 
       importedLeads.forEach((lead) => {
         const normalizedLead = {
@@ -731,7 +731,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       if (leadId.length > 20) { // Simple check
         await deleteLead(leadId)
       }
-      
+
       // Encontrar el lead antes de borrarlo para saber su etapa
       setLeads((current) => {
         const lead = current?.find(l => l.id === leadId)
@@ -743,7 +743,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         }
         return (current || []).filter(l => l.id !== leadId)
       })
-      
+
       setSelectedLead((current) => current?.id === leadId ? null : current)
       toast.success(t.messages.leadDeleted)
     } catch (error: any) {
@@ -1200,8 +1200,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                             <Badge
                               key={tag.id}
                               variant="outline"
-                              className="text-xs h-4 px-1"
+                              className="text-xs h-4 px-1 max-w-20 truncate"
                               style={{ borderColor: tag.color, color: tag.color }}
+                              title={tag.name}
                             >
                               {tag.name}
                             </Badge>
@@ -1296,6 +1297,14 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               toast.error('No tienes permisos para editar leads')
               return
             }
+
+            // Optimistic update: actualizar UI inmediatamente
+            setLeads((current) =>
+              (current || []).map(l => l.id === updated.id ? updated : l)
+            )
+            setSelectedLead(updated)
+
+            // Guardar en BD en segundo plano
             try {
               const NIL_UUID = '00000000-0000-0000-0000-000000000000'
               await updateLead(updated.id, {
@@ -1306,18 +1315,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 ubicacion: updated.location,
                 prioridad: updated.priority,
                 presupuesto: updated.budget,
-                asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
+                asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID,
+                tags: updated.tags || []
               })
-
-              // Actualizamos estado local (aunque el realtime debería hacerlo también)
-              setLeads((current) =>
-                (current || []).map(l => l.id === updated.id ? updated : l)
-              )
-              setSelectedLead(updated)
-              toast.success('Lead actualizado')
             } catch (error: any) {
               console.error('Error updating lead:', error)
-              toast.error('Error al actualizar lead')
+              toast.error('Error al guardar cambios')
+              // Opcionalmente podrías revertir el optimistic update aquí
             }
           }}
           onMarkAsRead={(leadId) => {
