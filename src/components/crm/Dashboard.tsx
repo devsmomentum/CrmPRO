@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { getLeads } from '@/supabase/services/leads'
+import { getLeads, getLeadsCount } from '@/supabase/services/leads'
 import { getPipelines } from '@/supabase/helpers/pipeline'
 
 interface DashboardProps {
@@ -19,7 +19,8 @@ interface DashboardProps {
 
 export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
-  const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  // const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [leadsCount, setLeadsCount] = useState(0)
   const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
@@ -27,27 +28,12 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
 
   useEffect(() => {
     if (companyId) {
-      // Cargar leads
-      getLeads(companyId)
-        .then((data: any) => {
-          const mappedLeads = data.map((l: any) => ({
-            id: l.id,
-            name: l.nombre_completo,
-            email: l.correo_electronico,
-            phone: l.telefono,
-            company: l.empresa,
-            budget: l.presupuesto,
-            stage: l.etapa_id,
-            pipeline: l.pipeline_id || 'sales',
-            priority: l.prioridad,
-            assignedTo: l.asignado_a,
-            tags: [],
-            createdAt: new Date(l.created_at),
-            lastContact: new Date(l.created_at)
-          }))
-          setLeads(mappedLeads)
+      // Cargar leads count
+      getLeadsCount(companyId)
+        .then((count: any) => {
+          setLeadsCount(count || 0)
         })
-        .catch(err => console.error('Error fetching leads in Dashboard:', err))
+        .catch(err => console.error('Error fetching leads count in Dashboard:', err))
 
       // Cargar pipelines para contar
       getPipelines(companyId)
@@ -100,7 +86,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           </Button>
           <Button onClick={onShowNotifications} variant="outline" size="sm" className="relative text-xs sm:text-sm">
             <Bell className="mr-2" size={20} />
-            Notifications
+            Notificaciones
             {unreadNotifications > 0 && (
               <Badge variant="destructive" className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 text-xs">
                 {unreadNotifications}
@@ -118,7 +104,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pipelinesCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Active pipelines</p>
+            <p className="text-xs text-muted-foreground mt-1">Pipelines activos</p>
           </CardContent>
         </Card>
 
@@ -128,30 +114,30 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{(leads || []).length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Active in pipeline</p>
+            <div className="text-2xl font-bold">{leadsCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">Active en pipeline</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Today's Tasks</CardTitle>
+            <CardTitle className="text-sm font-medium">Tareas de Hoy</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{todayTasks.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Due today</p>
+            <p className="text-xs text-muted-foreground mt-1">Vencimiento hoy</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Overdue</CardTitle>
+            <CardTitle className="text-sm font-medium">Tareas vencidas</CardTitle>
             <WarningCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{overdueTasks.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">Need attention</p>
+            <p className="text-xs text-muted-foreground mt-1">Necesitan atención</p>
           </CardContent>
         </Card>
       </div>
@@ -159,11 +145,11 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Today's Tasks</CardTitle>
+            <CardTitle>Tareas de Hoy</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {todayTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No tasks due today</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No hay tareas para hoy</p>
             ) : (
               todayTasks.slice(0, 5).map(task => (
                 <div key={task.id} className="flex items-start gap-2 p-2 rounded-lg border border-border hover:bg-muted/50 transition-colors">
@@ -175,7 +161,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
                       <Badge variant="outline" className={cn('text-xs h-5', getPriorityColor(task.priority))}>
                         {task.priority}
                       </Badge>
-                      <span className="text-xs text-muted-foreground truncate">Assigned to: {task.assignedTo}</span>
+                      <span className="text-xs text-muted-foreground truncate">Asignado a: {task.assignedTo}</span>
                     </div>
                   </div>
                 </div>
@@ -186,11 +172,11 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
 
         <Card>
           <CardHeader>
-            <CardTitle>Upcoming Appointments</CardTitle>
+            <CardTitle>Próximas citas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {todayAppointments.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No appointments today</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No hay citas para hoy</p>
             ) : (
               todayAppointments.map(appt => (
                 <div key={appt.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
@@ -212,7 +198,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
       <Dialog open={showVoiceRecorder} onOpenChange={setShowVoiceRecorder}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Task with Voice</DialogTitle>
+            <DialogTitle>Crear tarea con voz</DialogTitle>
           </DialogHeader>
           <VoiceRecorder onClose={() => setShowVoiceRecorder(false)} />
         </DialogContent>

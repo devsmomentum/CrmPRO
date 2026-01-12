@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone, Buildings } from '@phosphor-icons/react'
+import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone, Buildings, ChatCircleDots } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 // import { useKV } from '@github/spark/hooks'
@@ -41,6 +41,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
   const menuItems = [
     { id: 'dashboard', icon: House, label: t.nav.dashboard },
     { id: 'pipeline', icon: Kanban, label: t.nav.pipeline },
+    { id: 'chats', icon: ChatCircleDots, label: 'Chats' }, // Added Chats view
     { id: 'analytics', icon: ChartBar, label: t.nav.analytics },
     { id: 'calendar', icon: CalendarBlank, label: t.nav.calendar },
     { id: 'team', icon: Users, label: t.nav.team },

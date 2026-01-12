@@ -139,6 +139,16 @@ serve(async (req) => {
 
     if (insertError) throw insertError
 
+    // LOGICA LISTA DE TAREAS:
+    // Al responder nosotros ('team'), el chat debe "bajar" en prioridad visual
+    // pero actualizamos fecha para que sepan que es reciente.
+    // El orden en frontend será: Sender=lead (arriba), Sender=team (abajo)
+    await supabaseClient.from('lead').update({
+       last_message_at: new Date().toISOString(),
+       last_message_sender: 'team',
+       last_message: finalContent
+    }).eq("id", lead_id);
+
     return new Response(JSON.stringify(message), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,

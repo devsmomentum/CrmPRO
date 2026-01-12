@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash, SignOut } from '@phosphor-icons/react'
+import { Plus, Trash, SignOut, Pencil, Check, X } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -15,6 +15,8 @@ import { RolesManagement } from './RolesManagement'
 import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 import { IDsViewer } from './IDsViewer'
+import { updatePipeline } from '@/supabase/helpers/pipeline'
+import { toast } from 'sonner'
 
 interface SettingsViewProps {
   currentUserId?: string
@@ -33,11 +35,33 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
   const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${currentCompanyId}`, [])
   const [automations, setAutomations] = usePersistentState<AutomationRule[]>(`automations-${currentCompanyId}`, [])
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
+  const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null)
+  const [editPipelineName, setEditPipelineName] = useState('')
 
   const toggleAutomation = (id: string) => {
     setAutomations((current) =>
       (current || []).map(a => a.id === id ? { ...a, enabled: !a.enabled } : a)
     )
+  }
+
+  const handleUpdatePipeline = async (pipelineId: string) => {
+    if (!editPipelineName.trim()) {
+      toast.error('El nombre del pipeline no puede estar vacío')
+      return
+    }
+    try {
+      await updatePipeline(pipelineId, { nombre: editPipelineName.trim() })
+      setPipelines((current) =>
+        (current || []).map(p =>
+          p.id === pipelineId ? { ...p, name: editPipelineName.trim() } : p
+        )
+      )
+      setEditingPipelineId(null)
+      toast.success('Nombre del pipeline actualizado')
+    } catch (e: any) {
+      console.error('[SettingsView] Error actualizando pipeline', e)
+      toast.error('No se pudo actualizar el pipeline')
+    }
   }
 
   const handleAddPipeline = (pipeline: Pipeline) => {
@@ -48,8 +72,8 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
     <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="text-muted-foreground mt-1">Configure pipelines and automations</p>
+          <h1 className="text-3xl font-bold">Configuraciones</h1>
+          <p className="text-muted-foreground mt-1">Configura pipelines y automatizaciones</p>
         </div>
         <Button
           variant="outline"
@@ -67,8 +91,8 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
           {isAdminOrOwner && <TabsTrigger value="roles">Roles</TabsTrigger>}
-          {isAdminOrOwner && <TabsTrigger value="automations">Automations</TabsTrigger>}
-          {isAdminOrOwner && <TabsTrigger value="integrations">Integrations</TabsTrigger>}
+          {isAdminOrOwner && <TabsTrigger value="automations">Automatizaciones</TabsTrigger>}
+          {isAdminOrOwner && <TabsTrigger value="integrations">Integraciones</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="ids">IDs</TabsTrigger>}
         </TabsList>
 
@@ -104,25 +128,65 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
             {isAdminOrOwner && (
               <Button onClick={() => setShowPipelineDialog(true)}>
                 <Plus className="mr-2" size={20} />
-                New Pipeline
+                Nuevo Pipeline
               </Button>
             )}
           </div>
 
           {(pipelines || []).map(pipeline => (
-            <Card key={pipeline.id}>
+            <Card key={pipeline.id} className="group">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>{pipeline.name}</CardTitle>
+                  <div className="flex-1">
+                    {editingPipelineId === pipeline.id ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={editPipelineName}
+                          onChange={(e) => setEditPipelineName(e.target.value)}
+                          className="h-8 w-64"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleUpdatePipeline(pipeline.id)
+                            if (e.key === 'Escape') setEditingPipelineId(null)
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          onClick={() => handleUpdatePipeline(pipeline.id)}
+                        >
+                          <Check size={16} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => setEditingPipelineId(null)}
+                        >
+                          <X size={16} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <CardTitle>{pipeline.name}</CardTitle>
+                        {isAdminOrOwner && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => {
+                              setEditingPipelineId(pipeline.id)
+                              setEditPipelineName(pipeline.name)
+                            }}
+                          >
+                            <Pencil size={14} />
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     <Badge variant="outline" className="mt-2">{pipeline.type}</Badge>
                   </div>
-                  {isAdminOrOwner && (
-                    <Button variant="outline" size="sm">
-                      <Plus size={16} className="mr-2" />
-                      Add Stage
-                    </Button>
-                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -144,7 +208,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           ))}
 
           {(pipelines || []).length === 0 && (
-            <p className="text-center text-muted-foreground py-12">No pipelines configured</p>
+            <p className="text-center text-muted-foreground py-12">No hay pipelines configurados</p>
           )}
 
           {isAdminOrOwner && (
@@ -165,7 +229,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
             <h2 className="text-xl font-semibold">Automation Rules</h2>
             <Button>
               <Plus className="mr-2" size={20} />
-              New Automation
+              Nueva Automatización
             </Button>
           </div>
 
@@ -201,33 +265,33 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           ))}
 
           {(automations || []).length === 0 && (
-            <p className="text-center text-muted-foreground py-12">No automations configured</p>
+            <p className="text-center text-muted-foreground py-12">No hay automatizaciones configuradas</p>
           )}
         </TabsContent>
 
         <TabsContent value="integrations" className="space-y-4 mt-6">
-          <h2 className="text-xl font-semibold">API Integrations</h2>
+          <h2 className="text-xl font-semibold">Integraciones API</h2>
 
           <Card>
             <CardHeader>
-              <CardTitle>Email Service</CardTitle>
+              <CardTitle>Servicio de Email</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label>API Key</Label>
-                <Input type="password" placeholder="Enter API key" />
+                <Input type="password" placeholder="Ingrese la clave API" />
               </div>
               <div>
-                <Label>Sender Email</Label>
+                <Label>Correo del Remitente</Label>
                 <Input type="email" placeholder="noreply@company.com" />
               </div>
-              <Button>Save Configuration</Button>
+              <Button>Guardar Configuración</Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>SMS Service</CardTitle>
+              <CardTitle>Servicio de SMS</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -238,7 +302,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
                 <Label>Auth Token</Label>
                 <Input type="password" placeholder="Enter auth token" />
               </div>
-              <Button>Save Configuration</Button>
+              <Button>Guardar Configuración</Button>
             </CardContent>
           </Card>
 
@@ -248,14 +312,14 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label>Business Account ID</Label>
+                <Label>ID de Cuenta Empresarial</Label>
                 <Input placeholder="Enter business account ID" />
               </div>
               <div>
                 <Label>Access Token</Label>
                 <Input type="password" placeholder="Enter access token" />
               </div>
-              <Button>Save Configuration</Button>
+              <Button>Guardar Configuración</Button>
             </CardContent>
           </Card>
         </TabsContent>

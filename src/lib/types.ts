@@ -79,6 +79,9 @@ export interface Lead {
   createdAt: Date
   lastContact: Date
   location?: string
+  lastMessageAt?: Date
+  lastMessageSender?: 'lead' | 'team'
+  lastMessage?: string
   customFields?: Record<string, any>
 }
 

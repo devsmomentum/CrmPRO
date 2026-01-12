@@ -7,10 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Plus, Upload, Trash, Building, Check, Eye } from '@phosphor-icons/react'
+import { Plus, Upload, Trash, Building, Check, Eye, Pencil, X } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
-import { createEmpresa, deleteEmpresa, updateEmpresaLogo } from '@/supabase/services/empresa'
+import { createEmpresa, deleteEmpresa, updateEmpresaLogo, updateEmpresa } from '@/supabase/services/empresa'
 import { supabase } from '@/supabase/client'
 
 export interface Company {
@@ -38,6 +38,8 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [editingLogoCompanyId, setEditingLogoCompanyId] = useState<string | null>(null)
   const [viewingLogo, setViewingLogo] = useState<string | null>(null)
+  const [editingNameCompanyId, setEditingNameCompanyId] = useState<string | null>(null)
+  const [editNameValue, setEditNameValue] = useState('')
 
   const handleCreateCompany = async () => {
     if (!newCompanyName.trim()) {
@@ -136,6 +138,26 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
     } else {
       setNewCompanyLogo(publicUrl)
       toast.success('Logo listo para crear la empresa')
+    }
+  }
+
+  const handleUpdateName = async (companyId: string) => {
+    if (!editNameValue.trim()) {
+      toast.error('El nombre no puede estar vacío')
+      return
+    }
+    try {
+      await updateEmpresa(companyId, { nombre_empresa: editNameValue.trim() })
+      setCompanies((current) =>
+        (current || []).map(c =>
+          c.id === companyId ? { ...c, name: editNameValue.trim() } : c
+        )
+      )
+      setEditingNameCompanyId(null)
+      toast.success('Nombre de empresa actualizado')
+    } catch (e: any) {
+      console.error('[CompanyManagement] Error actualizando nombre', e)
+      toast.error('No se pudo actualizar el nombre')
     }
   }
 
@@ -310,7 +332,7 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
             </div>
           ) : (
             ownedCompanies.map((company) => (
-              <Card key={company.id} className={company.id === currentCompanyId ? 'ring-2 ring-primary' : ''}>
+              <Card key={company.id} className={`group ${company.id === currentCompanyId ? 'ring-2 ring-primary' : ''}`}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
                     <div className="relative">
@@ -352,7 +374,53 @@ export function CompanyManagement({ currentUserId, currentCompanyId, onCompanyCh
 
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-semibold">{company.name}</h3>
+                        {editingNameCompanyId === company.id ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={editNameValue}
+                              onChange={(e) => setEditNameValue(e.target.value)}
+                              className="h-8 w-48"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleUpdateName(company.id)
+                                if (e.key === 'Escape') setEditingNameCompanyId(null)
+                              }}
+                            />
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={() => handleUpdateName(company.id)}
+                            >
+                              <Check size={16} />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => setEditingNameCompanyId(null)}
+                            >
+                              <X size={16} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="font-semibold">{company.name}</h3>
+                            {company.role === 'owner' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => {
+                                  setEditingNameCompanyId(company.id)
+                                  setEditNameValue(company.name)
+                                }}
+                              >
+                                <Pencil size={12} />
+                              </Button>
+                            )}
+                          </>
+                        )}
                         {company.id === currentCompanyId && (
                           <Badge variant="default" className="h-5">
                             <Check size={12} className="mr-1" />

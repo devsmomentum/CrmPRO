@@ -207,3 +207,25 @@ export function subscribeToAllMessages(callback: (msg: Message) => void) {
     )
     .subscribe()
 }
+
+// Obtener el último mensaje por cada leadId proporcionado en una sola consulta
+export async function getLastMessagesForLeadIds(leadIds: string[]) {
+  if (!leadIds || leadIds.length === 0) return {} as Record<string, Message>
+
+  const { data, error } = await supabase
+    .from('mensajes')
+    .select('*')
+    .in('lead_id', leadIds)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  const latestByLead: Record<string, Message> = {}
+  for (const row of (data || []) as any[]) {
+    const lid = row.lead_id as string
+    if (!latestByLead[lid]) {
+      latestByLead[lid] = row as unknown as Message
+    }
+  }
+  return latestByLead
+}
