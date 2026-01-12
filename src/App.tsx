@@ -26,6 +26,7 @@ import { Pipeline, PipelineType } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
 import { JoinTeam } from '@/components/crm/JoinTeam'
 import { preloadChatsForCompany } from '@/lib/chatsCache'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 
 type View = 'dashboard' | 'pipeline' | 'chats' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
 type AuthView = 'login' | 'register'
@@ -109,11 +110,29 @@ function App() {
     }
   }
 
+  const [authInitialized, setAuthInitialized] = useState(false)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
+
   useEffect(() => {
-    if (user?.id) {
+    // Verificar sesión inicial
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Importante: Marcar como inicializado SIEMPRE, haya sesión o no
+      setAuthInitialized(true)
+    })
+
+    // Escuchar cambios de sesión
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthInitialized(true)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (user?.id && authInitialized) {
       fetchCompanies()
     }
-  }, [user?.id])
+  }, [user?.id, authInitialized])
 
   // Precargar chats en segundo plano cuando cambia la empresa
   useEffect(() => {
@@ -128,6 +147,7 @@ function App() {
 
   const handleLogin = async (email: string, password: string) => {
     try {
+      setIsLoggingIn(true)
       console.log('[LOGIN] iniciando login para', email)
       const authUser = await login(email, password)
       console.log('[LOGIN] authUser recibido', authUser)
@@ -181,8 +201,12 @@ function App() {
         }
       }
 
+      // UX: Esperar para mostrar la pantalla de carga de forma agradable
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      setIsLoggingIn(false)
       toast.success('¡Sesión iniciada exitosamente!')
     } catch (e: any) {
+      setIsLoggingIn(false)
       console.error('[LOGIN] error', e)
       if (e.message?.toLowerCase().includes('email not confirmed')) {
         toast.error('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
@@ -248,6 +272,10 @@ function App() {
     setUser(null)
     setCurrentCompanyId('')
     toast.success('¡Sesión cerrada!')
+  }
+
+  if (!authInitialized || isLoggingIn) {
+    return <LoadingScreen />
   }
 
   if (inviteToken) {

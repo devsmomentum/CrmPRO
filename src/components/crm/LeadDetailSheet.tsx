@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
 import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
+import { getNotasByLead, createNota, deleteNota } from '@/supabase/services/notas'
 import {
   PaperPlaneRight,
   Tag as TagIcon,
@@ -261,6 +262,21 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       }
     })
 
+    // Fetch notas from database
+    getNotasByLead(lead.id).then(dbNotas => {
+      const mapped: Note[] = dbNotas.map((n: any) => ({
+        id: n.id,
+        leadId: n.lead_id,
+        content: n.contenido,
+        createdBy: n.creador_nombre || 'Usuario',
+        createdAt: new Date(n.created_at)
+      }))
+      setNotes(mapped)
+      console.log('[Notas] notas cargadas:', mapped.length)
+    }).catch(err => {
+      console.error('[Notas] Error cargando notas:', err)
+    })
+
     // Subscribe to new messages
     const subscription = subscribeToMessages(lead.id, (newMsg) => {
       const mapped = {
@@ -382,28 +398,47 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     }
   }
 
-  const addNote = () => {
+  const addNote = async () => {
     if (!noteInput.trim()) return
 
-    const newNote: Note = {
-      id: Date.now().toString(),
-      leadId: lead.id,
-      content: noteInput,
-      createdBy: 'Current User',
-      createdAt: new Date()
-    }
+    try {
+      // Buscar nombre: primero en equipos, luego businessName, luego email
+      const teamMember = teamMembers.find(m => m.userId === currentUser?.id)
+      const creadorNombre = teamMember?.name || currentUser?.businessName || currentUser?.email || 'Usuario'
+      const dbNota = await createNota(lead.id, noteInput, creadorNombre)
 
-    setNotes((current) => [...(current || []), newNote])
-    setNoteInput('')
-    toast.success(t.messages.noteAdded)
+      const newNote: Note = {
+        id: dbNota.id,
+        leadId: lead.id,
+        content: noteInput,
+        createdBy: creadorNombre,
+        createdAt: new Date(dbNota.created_at)
+      }
+
+      setNotes((current) => [newNote, ...(current || [])])
+      setNoteInput('')
+      toast.success(t.messages.noteAdded)
+    } catch (err) {
+      console.error('[Notas] Error creando nota:', err)
+      toast.error('Error al guardar la nota')
+    }
   }
 
   const addNewTag = () => {
     if (!newTagName.trim()) return
 
+    // Validar longitud máxima (20 caracteres)
+    const MAX_TAG_LENGTH = 20
+    const trimmedName = newTagName.trim().slice(0, MAX_TAG_LENGTH)
+
+    if (trimmedName.length === 0) {
+      toast.error('El nombre de la etiqueta no puede estar vacío')
+      return
+    }
+
     const newTag: Tag = {
       id: Date.now().toString(),
-      name: newTagName,
+      name: trimmedName,
       color: newTagColor
     }
 
@@ -474,6 +509,17 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
   const handleAddBudget = (budget: Budget) => {
     setBudgets((current) => [...(current || []), budget])
+  }
+
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      await deleteNota(noteId)
+      setNotes((current) => (current || []).filter(n => n.id !== noteId))
+      toast.success('Nota eliminada')
+    } catch (err) {
+      console.error('[Notas] Error eliminando nota:', err)
+      toast.error('Error al eliminar la nota')
+    }
   }
 
   const handleAddMeeting = (meeting: Meeting) => {
@@ -604,7 +650,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     <Input
                       value={newTagName}
                       onChange={(e) => setNewTagName(e.target.value)}
-                      placeholder="Nombre de etiqueta"
+                      placeholder="Nombre (máx. 20 car.)"
+                      maxLength={20}
                       className="mt-2"
                     />
                   </div>
@@ -1200,8 +1247,21 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             <ScrollArea className="flex-1">
               <div className="space-y-3">
                 {leadNotes.map(note => (
-                  <div key={note.id} className="p-3 border border-border rounded-lg">
-                    <p className="text-sm">{note.content}</p>
+                  <div key={note.id} className="p-3 border border-border rounded-lg overflow-hidden">
+                    <div className="flex justify-between items-start gap-2">
+                      <p className="text-sm flex-1 min-w-0 break-all whitespace-pre-wrap overflow-hidden">{note.content}</p>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteNote(note.id)}
+                          title="Eliminar nota"
+                        >
+                          <Trash size={14} />
+                        </Button>
+                      )}
+                    </div>
                     <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                       <span>{note.createdBy}</span>
                       <span>{format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}</span>

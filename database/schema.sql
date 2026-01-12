@@ -860,3 +860,45 @@ create policy delete_persona_pipeline on persona_pipeline
          or e.id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
     )
   );
+
+
+  -- ============================================================
+-- 1. AGREGAR COLUMNA TAGS A LA TABLA LEAD
+-- ============================================================
+ALTER TABLE lead ADD COLUMN IF NOT EXISTS tags jsonb DEFAULT '[]';
+-- ============================================================
+-- 2. CREAR TABLA NOTA_LEAD
+-- ============================================================
+CREATE TABLE IF NOT EXISTS nota_lead (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL REFERENCES lead(id) ON DELETE CASCADE,
+  contenido text NOT NULL,
+  creado_por uuid REFERENCES auth.users(id),
+  created_at timestamptz DEFAULT now()
+);
+-- Índice para búsquedas por lead
+CREATE INDEX IF NOT EXISTS idx_nota_lead_lead_id ON nota_lead(lead_id);
+-- ============================================================
+-- 3. RLS PARA NOTA_LEAD (compatible con tu estructura)
+-- ============================================================
+ALTER TABLE nota_lead ENABLE ROW LEVEL SECURITY;
+-- Política: usuarios pueden CRUD en notas de leads de su empresa (owner o miembro)
+CREATE POLICY nota_lead_rw ON nota_lead
+  FOR ALL TO authenticated
+  USING (
+    lead_id IN (
+      SELECT l.id FROM lead l
+      WHERE l.empresa_id IN (SELECT id FROM empresa WHERE usuario_id = auth.uid())
+         OR l.empresa_id IN (SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid())
+    )
+  )
+  WITH CHECK (
+    lead_id IN (
+      SELECT l.id FROM lead l
+      WHERE l.empresa_id IN (SELECT id FROM empresa WHERE usuario_id = auth.uid())
+         OR l.empresa_id IN (SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid())
+    )
+  );
+
+  
+  alter table nota_lead ADD column if not exists creador_nombre text;
