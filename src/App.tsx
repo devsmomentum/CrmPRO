@@ -25,6 +25,7 @@ import { toast } from 'sonner'
 import { Pipeline, PipelineType } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
 import { JoinTeam } from '@/components/crm/JoinTeam'
+import { preloadChatsForCompany } from '@/lib/chatsCache'
 
 type View = 'dashboard' | 'pipeline' | 'chats' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
 type AuthView = 'login' | 'register'
@@ -113,6 +114,17 @@ function App() {
       fetchCompanies()
     }
   }, [user?.id])
+
+  // Precargar chats en segundo plano cuando cambia la empresa
+  useEffect(() => {
+    if (currentCompanyId && user?.id) {
+      // Pequeño delay para no interferir con la carga inicial del Dashboard
+      const timer = setTimeout(() => {
+        preloadChatsForCompany(currentCompanyId)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [currentCompanyId, user?.id])
 
   const handleLogin = async (email: string, password: string) => {
     try {
