@@ -31,7 +31,9 @@ import {
   Paperclip,
   Spinner,
   Microphone,
-  Stop
+  Stop,
+  Check,
+  WarningCircle
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -246,7 +248,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         content: m.content,
         timestamp: new Date(m.created_at),
         sender: m.sender as 'team' | 'lead',
-        read: m.read
+        read: m.read,
+        metadata: m.metadata
       }))
       setMessages(mapped)
       console.log('[Chat] mensajes iniciales cargados:', mapped.length)
@@ -286,7 +289,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         content: newMsg.content,
         timestamp: new Date(newMsg.created_at),
         sender: newMsg.sender as 'team' | 'lead',
-        read: newMsg.read
+        read: newMsg.read,
+        metadata: newMsg.metadata
       }
       console.log('[Chat] nuevo mensaje realtime:', mapped)
       setMessages(prev => {
@@ -1040,9 +1044,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                         }
                         return null;
                       })()}
-                      <p className="text-xs opacity-70 mt-1">
-                        {formatSafeDate(msg.timestamp, 'h:mm a')}
-                      </p>
+                      <div className="flex justify-between items-center mt-1 opacity-70">
+                        <span className="text-xs">{formatSafeDate(msg.timestamp, 'h:mm a')}</span>
+                        {msg.sender === 'team' && (
+                          (msg.metadata as any)?.error ? (
+                            <WarningCircle className="w-3.5 h-3.5 text-red-500 ml-1" weight="fill" title="Error enviando a WhatsApp (404 Client not found)" />
+                          ) : (
+                            msg.read ? <Check size={14} weight="bold" className="text-blue-500 ml-1" /> : <Check size={14} className="ml-1" />
+                          )
+                        )}
+                      </div>
                     </div>
                   ))}
                 <div ref={messagesEndRef} />

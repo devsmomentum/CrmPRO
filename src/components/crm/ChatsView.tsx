@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft } from '@phosphor-icons/react'
+import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -783,7 +783,16 @@ export function ChatsView({ companyId }: ChatsViewProps) {
                             }
                           })()}
 
-                          <div className={cn("text-[10px] mt-1 flex items-center gap-1 opacity-70", isTeam ? "justify-end" : "justify-start")}> {format(new Date(msg.created_at), 'HH:mm')}{isTeam && <Check className="w-3 h-3" />} </div>
+                          <div className={cn("text-[10px] mt-1 flex items-center gap-1 opacity-70", isTeam ? "justify-end" : "justify-start")}>
+                            {format(new Date(msg.created_at), 'HH:mm')}
+                            {isTeam && (
+                              (msg.metadata as any)?.error ? (
+                                <WarningCircle className="w-3 h-3 text-red-500" weight="fill" title="Error al enviar (Ver logs o reconectar WhatsApp)" />
+                              ) : (
+                                msg.read ? <Check className="w-3 h-3 text-blue-500" weight="bold" /> : <Check className="w-3 h-3" />
+                              )
+                            )}
+                          </div>
                         </div>
                       </div>
                     )

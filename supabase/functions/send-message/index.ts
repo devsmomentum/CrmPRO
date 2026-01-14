@@ -43,65 +43,74 @@ serve(async (req) => {
     // 2. Enviar a Super API
     const SUPER_API_URL = Deno.env.get('SUPER_API_URL')
     const SUPER_API_KEY = Deno.env.get('SUPER_API_KEY')
+    
+    let apiErrorDetails = null;
 
     if (SUPER_API_URL && SUPER_API_KEY) {
-      // Normalizar teléfono: quitar todo lo que no sea números
-      const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
+      try {
+        // Normalizar teléfono: quitar todo lo que no sea números
+        const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
 
-      // Mapear canal a plataforma de SuperAPI
-      let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
+        // Mapear canal a plataforma de SuperAPI
+        let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
 
-      // Construir chatId
-      let chatId = cleanPhone
-      if (platform === 'wws' && !chatId.includes('@c.us')) {
-        chatId = `${chatId}@c.us`
-      }
-
-      // Construir payload según Super API
-      const apiPayload: Record<string, unknown> = {
-        chatId: chatId,
-        platform: platform
-      }
-
-      // Si hay mensaje de texto, agregarlo
-      if (content) {
-        apiPayload.message = content
-      }
-
-      // Si hay media, agregarlo según formato Super API
-      if (media && media.downloadUrl) {
-        apiPayload.media = {
-          downloadUrl: media.downloadUrl,
-          fileName: media.fileName || 'attachment'
+        // Construir chatId
+        let chatId = cleanPhone
+        if (platform === 'wws' && !chatId.includes('@c.us')) {
+          chatId = `${chatId}@c.us`
         }
-      }
 
-      console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
-      console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
-      console.log(`[DEBUG] Final ChatId: '${chatId}'`);
-      console.log(`[DEBUG] Platform: '${platform}'`);
-      console.log(`[DEBUG] Has Media: ${!!media}`);
-      if (media) {
-        console.log(`[DEBUG] Media URL: ${media.downloadUrl}`);
-        console.log(`[DEBUG] Media FileName: ${media.fileName}`);
-      }
-      console.log(`[DEBUG] Payload:`, JSON.stringify(apiPayload));
+        // Construir payload según Super API
+        const apiPayload: Record<string, unknown> = {
+          chatId: chatId,
+          platform: platform
+        }
 
-      const response = await fetch(SUPER_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPER_API_KEY}`
-        },
-        body: JSON.stringify(apiPayload)
-      })
+        // Si hay mensaje de texto, agregarlo
+        if (content) {
+          apiPayload.message = content
+        }
 
-      const respText = await response.text()
-      if (!response.ok) {
-        console.error('Error enviando a Super API:', response.status, respText)
-        throw new Error(`Error de Super API: ${response.status} ${respText}`)
-      } else {
-        console.log('Envío a Super API OK:', response.status, respText)
+        // Si hay media, agregarlo según formato Super API
+        if (media && media.downloadUrl) {
+          apiPayload.media = {
+            downloadUrl: media.downloadUrl,
+            fileName: media.fileName || 'attachment'
+          }
+        }
+
+        console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
+        console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
+        console.log(`[DEBUG] Final ChatId: '${chatId}'`);
+        console.log(`[DEBUG] Platform: '${platform}'`);
+        console.log(`[DEBUG] Has Media: ${!!media}`);
+        if (media) {
+          console.log(`[DEBUG] Media URL: ${media.downloadUrl}`);
+          console.log(`[DEBUG] Media FileName: ${media.fileName}`);
+        }
+        console.log(`[DEBUG] Payload:`, JSON.stringify(apiPayload));
+
+        const response = await fetch(SUPER_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPER_API_KEY}`
+          },
+          body: JSON.stringify(apiPayload)
+        })
+
+        const respText = await response.text()
+        if (!response.ok) {
+          console.error('Error enviando a Super API:', response.status, respText)
+          // throw new Error(`Error de Super API: ${response.status} ${respText}`)
+          // NO LANZAMOS ERROR para permitir que se guarde el mensaje en BD y ver el log
+          apiErrorDetails = { status: response.status, message: respText };
+        } else {
+          console.log('Envío a Super API OK:', response.status, respText)
+        }
+      } catch (err) {
+        console.error('Excepción al conectar con Super API:', err)
+        apiErrorDetails = { error: err.message };
       }
     } else {
       console.warn('Variables de entorno SUPER_API_URL o SUPER_API_KEY no configuradas. Simulando envío.')
@@ -114,7 +123,7 @@ serve(async (req) => {
       : content
 
     // Metadata para archivos multimedia
-    const metadata = media
+    let metadata: any = media
       ? {
         type: 'media',
         data: {
@@ -122,7 +131,14 @@ serve(async (req) => {
           fileName: media.fileName
         }
       }
-      : null
+      : {}
+      
+    // Agregar error a metadata si existe
+    if (apiErrorDetails) {
+      metadata = { ...metadata, error: apiErrorDetails }
+    }
+    
+    if (Object.keys(metadata).length === 0) metadata = null;
 
     const { data: message, error: insertError } = await supabaseClient
       .from('mensajes')
