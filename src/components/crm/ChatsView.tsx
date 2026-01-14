@@ -984,6 +984,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
           onClose={() => setDetailSheetOpen(false)}
           onUpdate={handleLeadUpdate}
           teamMembers={[]}
+          companyId={companyId}
         />
       )}
     </div>

@@ -1389,6 +1389,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           teamMembers={teamMembers}
           canEdit={canEditLeads}
           currentUser={user}
+          companyId={companyId}
         />
       )}
 

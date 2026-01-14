@@ -32,15 +32,29 @@ export interface Task {
   createdBy: string
 }
 
+export type MeetingParticipantType = 'internal' | 'external'
+
+export interface MeetingParticipant {
+  id: string
+  meetingId: string
+  name: string
+  type?: MeetingParticipantType | null
+  createdAt: Date
+  updatedAt?: Date
+}
+
 export interface Meeting {
   id: string
   leadId: string
   title: string
   date: Date
   duration: number
-  participants: string[]
+  participants: MeetingParticipant[]
   notes: string
   createdAt: Date
+  updatedAt?: Date
+  empresaId?: string
+  createdBy?: string | null
 }
 
 export interface BudgetLineItem {

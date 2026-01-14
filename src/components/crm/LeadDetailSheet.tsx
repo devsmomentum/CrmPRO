@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
 import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import { getNotasByLead, createNota, deleteNota } from '@/supabase/services/notas'
+import { getLeadMeetings, createLeadMeeting, deleteLeadMeeting } from '@/supabase/services/reuniones'
 import {
   PaperPlaneRight,
   Tag as TagIcon,
@@ -54,7 +55,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { AddBudgetDialog } from './AddBudgetDialog'
-import { AddMeetingDialog } from './AddMeetingDialog'
+import { AddMeetingDialog, AddMeetingFormData } from './AddMeetingDialog'
 import { EditBudgetDialog } from './EditBudgetDialog'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
@@ -74,6 +75,7 @@ interface LeadDetailSheetProps {
   canEdit?: boolean
   currentUser?: User | null
   onMarkAsRead?: (leadId: string) => void
+  companyId?: string
 }
 
 // Helper function to safely format dates
@@ -87,7 +89,7 @@ const formatSafeDate = (date: Date | string | null | undefined, formatStr: strin
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead, companyId }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
   // Estados locales para evitar errores de autenticación del KV.
@@ -306,6 +308,29 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     }
   }, [lead.id, open])
 
+  useEffect(() => {
+    if (!lead.id) return
+    if (!open) {
+      setMeetings([])
+      return
+    }
+
+    let isMounted = true
+    getLeadMeetings(lead.id)
+      .then((data) => {
+        if (isMounted) {
+          setMeetings(data)
+        }
+      })
+      .catch((err) => {
+        console.error('[Meetings] Error cargando reuniones:', err)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [lead.id, open])
+
   // Auto-scroll al último mensaje cuando cambian los mensajes, se abre el chat o se cambia de canal
   useEffect(() => {
     if (!messagesEndRef.current) return
@@ -330,6 +355,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
+  const [deletingMeetingId, setDeletingMeetingId] = useState<string | null>(null)
 
   const leadMessages = messages // Now we fetch specific messages for this lead
   const leadNotes = (notes || []).filter(n => n.leadId === lead.id)
@@ -556,8 +582,45 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     }
   }
 
-  const handleAddMeeting = (meeting: Meeting) => {
-    setMeetings((current) => [...(current || []), meeting])
+  const handleAddMeeting = async (meeting: AddMeetingFormData) => {
+    if (!companyId) {
+      throw new Error('No hay empresa activa seleccionada')
+    }
+
+    try {
+      const created = await createLeadMeeting({
+        leadId: lead.id,
+        empresaId: companyId,
+        title: meeting.title,
+        date: meeting.date,
+        duration: meeting.duration,
+        participants: meeting.participants,
+        notes: meeting.notes,
+        createdBy: currentUser?.id || null
+      })
+
+      setMeetings((current) => {
+        const next = [...(current || []), created]
+        return next.sort((a, b) => a.date.getTime() - b.date.getTime())
+      })
+    } catch (error) {
+      console.error('[Meetings] Error creando reunión:', error)
+      throw error
+    }
+  }
+
+  const handleDeleteMeeting = async (meetingId: string) => {
+    setDeletingMeetingId(meetingId)
+    try {
+      await deleteLeadMeeting(meetingId)
+      setMeetings((current) => (current || []).filter(m => m.id !== meetingId))
+      toast.success('Reunión eliminada')
+    } catch (error) {
+      console.error('[Meetings] Error eliminando reunión:', error)
+      toast.error('No se pudo eliminar la reunión')
+    } finally {
+      setDeletingMeetingId(null)
+    }
   }
 
   const handleUpdateBudget = (updatedBudget: Budget) => {
@@ -1247,22 +1310,59 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 )}
               </div>
 
-              {leadMeetings.map(meeting => (
-                <div key={meeting.id} className="p-4 border border-border rounded-lg">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-medium">{meeting.title}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {formatSafeDate(meeting.date, 'MMM d, yyyy h:mm a')} • {meeting.duration}min
-                      </p>
+              {leadMeetings.map(meeting => {
+                const participantNames = meeting.participants.map(participant => participant.name).filter(Boolean)
+                const participantDisplay = participantNames.length > 0 ? participantNames.join(', ') : 'Sin participantes'
+
+                return (
+                  <div key={meeting.id} className="p-4 border border-border rounded-lg">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 className="font-medium">{meeting.title}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatSafeDate(meeting.date, 'MMM d, yyyy h:mm a')} • {meeting.duration}min
+                        </p>
+                      </div>
+                      {canEdit && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={deletingMeetingId === meeting.id}
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Eliminar reunión</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta acción eliminará la reunión permanentemente.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteMeeting(meeting.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                disabled={deletingMeetingId === meeting.id}
+                              >
+                                {deletingMeetingId === meeting.id ? 'Eliminando…' : 'Eliminar'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
+                    <p className="text-sm mt-2">{meeting.notes}</p>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {t.meeting.participants}: {participantDisplay}
                     </div>
                   </div>
-                  <p className="text-sm mt-2">{meeting.notes}</p>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {t.meeting.participants}: {meeting.participants.join(', ')}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {leadMeetings.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">{t.meeting.noMeetings}</p>
@@ -1330,6 +1430,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         open={showMeetingDialog}
         onClose={() => setShowMeetingDialog(false)}
         onAdd={handleAddMeeting}
+        teamMembers={teamMembers}
       />
 
       {editingBudget && (

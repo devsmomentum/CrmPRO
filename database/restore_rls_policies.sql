@@ -273,3 +273,131 @@ CREATE POLICY notificaciones_update_self ON notificaciones
   FOR UPDATE TO authenticated
   USING (usuario_email = (auth.jwt() ->> 'email'))
   WITH CHECK (usuario_email = (auth.jwt() ->> 'email'));
+
+-- EXTRA: Restaurar políticas para LEAD_REUNIONES
+ALTER TABLE lead_reuniones ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS lead_reuniones_select ON lead_reuniones;
+CREATE POLICY lead_reuniones_select ON lead_reuniones
+  FOR SELECT TO authenticated
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+      UNION
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS lead_reuniones_insert ON lead_reuniones;
+CREATE POLICY lead_reuniones_insert ON lead_reuniones
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+      UNION
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS lead_reuniones_update ON lead_reuniones;
+CREATE POLICY lead_reuniones_update ON lead_reuniones
+  FOR UPDATE TO authenticated
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+      UNION
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+      UNION
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS lead_reuniones_delete ON lead_reuniones;
+CREATE POLICY lead_reuniones_delete ON lead_reuniones
+  FOR DELETE TO authenticated
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+      UNION
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+-- EXTRA: Restaurar políticas para LEAD_REUNION_PARTICIPANTES
+ALTER TABLE lead_reunion_participantes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS lead_reunion_participantes_select ON lead_reunion_participantes;
+CREATE POLICY lead_reunion_participantes_select ON lead_reunion_participantes
+  FOR SELECT TO authenticated
+  USING (
+    reunion_id IN (
+      SELECT lr.id
+      FROM lead_reuniones lr
+      WHERE lr.empresa_id IN (
+        SELECT id FROM empresa WHERE usuario_id = auth.uid()
+        UNION
+        SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS lead_reunion_participantes_insert ON lead_reunion_participantes;
+CREATE POLICY lead_reunion_participantes_insert ON lead_reunion_participantes
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    reunion_id IN (
+      SELECT lr.id
+      FROM lead_reuniones lr
+      WHERE lr.empresa_id IN (
+        SELECT id FROM empresa WHERE usuario_id = auth.uid()
+        UNION
+        SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS lead_reunion_participantes_update ON lead_reunion_participantes;
+CREATE POLICY lead_reunion_participantes_update ON lead_reunion_participantes
+  FOR UPDATE TO authenticated
+  USING (
+    reunion_id IN (
+      SELECT lr.id
+      FROM lead_reuniones lr
+      WHERE lr.empresa_id IN (
+        SELECT id FROM empresa WHERE usuario_id = auth.uid()
+        UNION
+        SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+      )
+    )
+  )
+  WITH CHECK (
+    reunion_id IN (
+      SELECT lr.id
+      FROM lead_reuniones lr
+      WHERE lr.empresa_id IN (
+        SELECT id FROM empresa WHERE usuario_id = auth.uid()
+        UNION
+        SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS lead_reunion_participantes_delete ON lead_reunion_participantes;
+CREATE POLICY lead_reunion_participantes_delete ON lead_reunion_participantes
+  FOR DELETE TO authenticated
+  USING (
+    reunion_id IN (
+      SELECT lr.id
+      FROM lead_reuniones lr
+      WHERE lr.empresa_id IN (
+        SELECT id FROM empresa WHERE usuario_id = auth.uid()
+        UNION
+        SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+      )
+    )
+  );

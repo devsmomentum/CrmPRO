@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Meeting, TeamMember } from '@/lib/types'
+import { TeamMember } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 // Eliminamos useKV de Spark para evitar errores 401 Unauthorized
@@ -12,17 +12,25 @@ import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { X } from '@phosphor-icons/react'
 
+export interface AddMeetingFormData {
+  title: string
+  date: string
+  duration: number
+  participants: string[]
+  notes: string
+}
+
 interface AddMeetingDialogProps {
   leadId: string
   open: boolean
   onClose: () => void
-  onAdd: (meeting: Meeting) => void
+  onAdd: (meeting: AddMeetingFormData) => Promise<void> | void
+  teamMembers?: TeamMember[]
 }
 
-export function AddMeetingDialog({ leadId, open, onClose, onAdd }: AddMeetingDialogProps) {
+export function AddMeetingDialog(props: AddMeetingDialogProps) {
   const t = useTranslation('es')
-  // Usamos estado local en lugar de useKV para evitar errores 401
-  const [teamMembers] = useState<TeamMember[]>([])
+  const { open, onClose, onAdd, teamMembers = [] } = props
 
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
@@ -30,6 +38,7 @@ export function AddMeetingDialog({ leadId, open, onClose, onAdd }: AddMeetingDia
   const [notes, setNotes] = useState('')
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([])
   const [participantInput, setParticipantInput] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleAddParticipant = () => {
     if (participantInput.trim() && !selectedParticipants.includes(participantInput.trim())) {
@@ -42,27 +51,30 @@ export function AddMeetingDialog({ leadId, open, onClose, onAdd }: AddMeetingDia
     setSelectedParticipants(selectedParticipants.filter(p => p !== participant))
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!title.trim() || !date) {
       toast.error(t.messages.fillRequired)
       return
     }
 
-    const newMeeting: Meeting = {
-      id: Date.now().toString(),
-      leadId,
-      title: title.trim(),
-      date: new Date(date),
-      duration,
-      participants: selectedParticipants,
-      notes: notes.trim(),
-      createdAt: new Date()
+    setIsSubmitting(true)
+    try {
+      await onAdd({
+        title: title.trim(),
+        date,
+        duration,
+        participants: selectedParticipants,
+        notes: notes.trim()
+      })
+      toast.success(t.messages.meetingCreated)
+      resetForm()
+      onClose()
+    } catch (error) {
+      console.error('Error creating meeting', error)
+      toast.error('No se pudo crear la reunión')
+    } finally {
+      setIsSubmitting(false)
     }
-
-    onAdd(newMeeting)
-    resetForm()
-    onClose()
-    toast.success(t.messages.meetingCreated)
   }
 
   const resetForm = () => {
@@ -155,8 +167,10 @@ export function AddMeetingDialog({ leadId, open, onClose, onAdd }: AddMeetingDia
             />
           </div>
           <div className="flex gap-2">
-            <Button onClick={handleSubmit} className="flex-1">{t.meeting.save}</Button>
-            <Button onClick={onClose} variant="outline">{t.buttons.cancel}</Button>
+            <Button onClick={handleSubmit} className="flex-1" disabled={isSubmitting}>
+              {isSubmitting ? 'Guardando…' : t.meeting.save}
+            </Button>
+            <Button onClick={onClose} variant="outline" disabled={isSubmitting}>{t.buttons.cancel}</Button>
           </div>
         </div>
       </DialogContent>
