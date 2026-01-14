@@ -20,7 +20,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-
+    console.log(supabaseClient)
     // Ahora también aceptamos 'media' para archivos multimedia
     const { lead_id, content, channel, media } = await req.json() as {
       lead_id: string
@@ -42,75 +42,70 @@ serve(async (req) => {
 
     // 2. Enviar a Super API
     const SUPER_API_URL = Deno.env.get('SUPER_API_URL')
-    const SUPER_API_KEY = Deno.env.get('SUPER_API_KEY')
-    
-    let apiErrorDetails = null;
+    const SUPER_API_KEY = Deno.env.get('SUPER_API_SECRET_TOKEN')
+
+  console.log("SUPER_API_URL:",SUPER_API_URL)
+  console.log("SUPER_API_KEY:",SUPER_API_KEY)
+
 
     if (SUPER_API_URL && SUPER_API_KEY) {
-      try {
-        // Normalizar teléfono: quitar todo lo que no sea números
-        const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
+      // Normalizar teléfono: quitar todo lo que no sea números
+      const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
 
-        // Mapear canal a plataforma de SuperAPI
-        let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
+      // Mapear canal a plataforma de SuperAPI
+      let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
 
-        // Construir chatId
-        let chatId = cleanPhone
-        if (platform === 'wws' && !chatId.includes('@c.us')) {
-          chatId = `${chatId}@c.us`
+      // Construir chatId
+      let chatId = cleanPhone
+      if (platform === 'wws' && !chatId.includes('@c.us')) {
+        chatId = `${chatId}@c.us`
+      }
+
+      // Construir payload según Super API
+      const apiPayload: Record<string, unknown> = {
+        chatId: chatId,
+        platform: platform
+      }
+
+      // Si hay mensaje de texto, agregarlo
+      if (content) {
+        apiPayload.message = content
+      }
+
+      // Si hay media, agregarlo según formato Super API
+      if (media && media.downloadUrl) {
+        apiPayload.media = {
+          downloadUrl: media.downloadUrl,
+          fileName: media.fileName || 'attachment'
         }
+      }
 
-        // Construir payload según Super API
-        const apiPayload: Record<string, unknown> = {
-          chatId: chatId,
-          platform: platform
-        }
+      console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
+      console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
+      console.log(`[DEBUG] Final ChatId: '${chatId}'`);
+      console.log(`[DEBUG] Platform: '${platform}'`);
+      console.log(`[DEBUG] Has Media: ${!!media}`);
+      if (media) {
+        console.log(`[DEBUG] Media URL: ${media.downloadUrl}`);
+        console.log(`[DEBUG] Media FileName: ${media.fileName}`);
+      }
+      console.log(`[DEBUG] Payload:`, JSON.stringify(apiPayload));
 
-        // Si hay mensaje de texto, agregarlo
-        if (content) {
-          apiPayload.message = content
-        }
+      const response = await fetch(SUPER_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPER_API_KEY}`
+        },
+        body: JSON.stringify(apiPayload)
+      })
 
-        // Si hay media, agregarlo según formato Super API
-        if (media && media.downloadUrl) {
-          apiPayload.media = {
-            downloadUrl: media.downloadUrl,
-            fileName: media.fileName || 'attachment'
-          }
-        }
-
-        console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
-        console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
-        console.log(`[DEBUG] Final ChatId: '${chatId}'`);
-        console.log(`[DEBUG] Platform: '${platform}'`);
-        console.log(`[DEBUG] Has Media: ${!!media}`);
-        if (media) {
-          console.log(`[DEBUG] Media URL: ${media.downloadUrl}`);
-          console.log(`[DEBUG] Media FileName: ${media.fileName}`);
-        }
-        console.log(`[DEBUG] Payload:`, JSON.stringify(apiPayload));
-
-        const response = await fetch(SUPER_API_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPER_API_KEY}`
-          },
-          body: JSON.stringify(apiPayload)
-        })
-
-        const respText = await response.text()
-        if (!response.ok) {
-          console.error('Error enviando a Super API:', response.status, respText)
-          // throw new Error(`Error de Super API: ${response.status} ${respText}`)
-          // NO LANZAMOS ERROR para permitir que se guarde el mensaje en BD y ver el log
-          apiErrorDetails = { status: response.status, message: respText };
-        } else {
-          console.log('Envío a Super API OK:', response.status, respText)
-        }
-      } catch (err) {
-        console.error('Excepción al conectar con Super API:', err)
-        apiErrorDetails = { error: err.message };
+      const respText = await response.text()
+      if (!response.ok) {
+        console.error('Error enviando a Super API:', response.status, respText)
+        throw new Error(`Error de Super API: ${response.status} ${respText}`)
+      } else {
+        console.log('Envío a Super API OK:', response.status, respText)
       }
     } else {
       console.warn('Variables de entorno SUPER_API_URL o SUPER_API_KEY no configuradas. Simulando envío.')
@@ -123,7 +118,7 @@ serve(async (req) => {
       : content
 
     // Metadata para archivos multimedia
-    let metadata: any = media
+    const metadata = media
       ? {
         type: 'media',
         data: {
@@ -131,14 +126,7 @@ serve(async (req) => {
           fileName: media.fileName
         }
       }
-      : {}
-      
-    // Agregar error a metadata si existe
-    if (apiErrorDetails) {
-      metadata = { ...metadata, error: apiErrorDetails }
-    }
-    
-    if (Object.keys(metadata).length === 0) metadata = null;
+      : null
 
     const { data: message, error: insertError } = await supabaseClient
       .from('mensajes')
@@ -154,16 +142,6 @@ serve(async (req) => {
       .single()
 
     if (insertError) throw insertError
-
-    // LOGICA LISTA DE TAREAS:
-    // Al responder nosotros ('team'), el chat debe "bajar" en prioridad visual
-    // pero actualizamos fecha para que sepan que es reciente.
-    // El orden en frontend será: Sender=lead (arriba), Sender=team (abajo)
-    await supabaseClient.from('lead').update({
-       last_message_at: new Date().toISOString(),
-       last_message_sender: 'team',
-       last_message: finalContent
-    }).eq("id", lead_id);
 
     return new Response(JSON.stringify(message), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

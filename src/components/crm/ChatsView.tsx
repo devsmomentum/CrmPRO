@@ -5,10 +5,11 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle } from '@phosphor-icons/react'
+import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { LeadDetailSheet } from './LeadDetailSheet'
 import { getLeadsPaged } from '@/supabase/services/leads'
 import { getMessages, sendMessage, subscribeToMessages, getLastMessagesForLeadIds, subscribeToAllMessages, getUnreadMessagesCount, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import type { Message as DbMessage } from '@/supabase/services/mensajes'
@@ -17,12 +18,26 @@ import { getCachedLeads, setCachedLeads, updateCachedLeads } from '@/lib/chatsCa
 
 interface ChatsViewProps {
   companyId: string
+  onNavigateToPipeline?: (leadId: string) => void
 }
 
-export function ChatsView({ companyId }: ChatsViewProps) {
+// Helper para formatear fechas de forma segura en este componente
+const safeFormat = (date: Date | string | undefined | null, fmt: string, options?: any) => {
+  if (!date) return ''
+  try {
+    const d = new Date(date)
+    if (isNaN(d.getTime())) return ''
+    return format(d, fmt, options)
+  } catch (e) {
+    return ''
+  }
+}
+
+export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
   const [leads, setLeads] = useState<Lead[]>([])
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showContactInfo, setShowContactInfo] = useState(false)
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false)
   const [messages, setMessages] = useState<DbMessage[]>([])
   const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'instagram'>('all')
   const [unreadFilter, setUnreadFilter] = useState(false)
@@ -111,6 +126,7 @@ export function ChatsView({ companyId }: ChatsViewProps) {
         lastMessage: d.last_message || '',
         lastMessageAt: d.last_message_at ? new Date(d.last_message_at) : (d.created_at ? new Date(d.created_at) : undefined),
         lastMessageSender: d.last_message_sender || 'team',
+        lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
         avatar: d.avatar || undefined,
         company: d.empresa || d.company || undefined,
       }))
@@ -225,6 +241,7 @@ export function ChatsView({ companyId }: ChatsViewProps) {
         lastMessage: d.last_message || '',
         lastMessageAt: d.last_message_at ? new Date(d.last_message_at) : (d.created_at ? new Date(d.created_at) : undefined),
         lastMessageSender: d.last_message_sender || 'team',
+        lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
         avatar: d.avatar || undefined,
         company: d.empresa || d.company || undefined,
       }))
@@ -341,6 +358,10 @@ export function ChatsView({ companyId }: ChatsViewProps) {
 
   function updateLeadListOrder(leadId: string, msg: DbMessage) {
     setLeads(prev => prev.map(l => l.id === leadId ? { ...l, lastMessageAt: new Date(msg.created_at), lastMessageSender: msg.sender as any, lastMessage: msg.content } : l))
+  }
+
+  function handleLeadUpdate(updatedLead: Lead) {
+    setLeads(prev => prev.map(l => l.id === updatedLead.id ? { ...l, ...updatedLead } : l))
   }
 
   const startRecording = async () => {
@@ -594,7 +615,7 @@ export function ChatsView({ companyId }: ChatsViewProps) {
                         <div className="flex justify-between items-baseline mb-1">
                           <span className="font-semibold truncate text-base leading-none text-foreground">{lead.name}</span>
                           <span className={cn("text-xs whitespace-nowrap ml-2", unreadCounts[lead.id] > 0 ? "text-[#25D366] font-medium" : "text-muted-foreground")}>
-                            {lead.lastMessageAt ? format(new Date(lead.lastMessageAt), 'HH:mm', { locale: es }) : ''}
+                            {safeFormat(lead.lastMessageAt, 'HH:mm', { locale: es })}
                           </span>
                         </div>
 
@@ -784,7 +805,7 @@ export function ChatsView({ companyId }: ChatsViewProps) {
                           })()}
 
                           <div className={cn("text-[10px] mt-1 flex items-center gap-1 opacity-70", isTeam ? "justify-end" : "justify-start")}>
-                            {format(new Date(msg.created_at), 'HH:mm')}
+                            {safeFormat(msg.created_at, 'HH:mm')}
                             {isTeam && (
                               (msg.metadata as any)?.error ? (
                                 <WarningCircle className="w-3 h-3 text-red-500" weight="fill" title="Error al enviar (Ver logs o reconectar WhatsApp)" />
@@ -889,6 +910,22 @@ export function ChatsView({ companyId }: ChatsViewProps) {
                     </Avatar>
                     <h2 className="text-xl font-medium text-center text-foreground">{selectedLead.name}</h2>
                     <p className="text-muted-foreground mt-1 text-sm">{selectedLead.phone}</p>
+                    <div className="flex gap-2 mt-4">
+                      <Button variant="outline" size="sm" onClick={() => setDetailSheetOpen(true)}>
+                        <PencilSimple className="w-4 h-4 mr-2" />
+                        Editar Info
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => {
+                        if (onNavigateToPipeline && selectedLeadId) {
+                          onNavigateToPipeline(selectedLeadId)
+                        } else {
+                          toast.info('Navegación no configurada')
+                        }
+                      }}>
+                        <ArrowSquareOut className="w-4 h-4 mr-2" />
+                        Ver en Leads
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="p-4 bg-background border-b border-border/50 space-y-4">
@@ -940,6 +977,15 @@ export function ChatsView({ companyId }: ChatsViewProps) {
           </div>
         )}
       </div>
+      {selectedLead && (
+        <LeadDetailSheet
+          lead={selectedLead}
+          open={detailSheetOpen}
+          onClose={() => setDetailSheetOpen(false)}
+          onUpdate={handleLeadUpdate}
+          teamMembers={[]}
+        />
+      )}
     </div>
   )
 }

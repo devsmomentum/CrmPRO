@@ -494,7 +494,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     toast.success(t.messages.priorityUpdated)
   }
 
-  const updateField = (field: keyof Lead, value: string | number) => {
+  const updateField = async (field: keyof Lead, value: string | number) => {
     if (field === 'budget') {
       const numValue = typeof value === 'number' ? value : parseFloat(value)
       if (numValue < 0) {
@@ -507,8 +507,38 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       }
     }
 
+    // Actualizar optimísticamente en la UI
     onUpdate({ ...lead, [field]: value })
-    toast.success('Campo actualizado correctamente')
+
+    // Mapeo de campos frontend -> base de datos (snake_case)
+    const dbFieldMap: Record<string, string> = {
+      name: 'nombre_completo',
+      email: 'correo_electronico',
+      phone: 'telefono',
+      company: 'empresa',
+      budget: 'presupuesto',
+      priority: 'prioridad',
+      assignedTo: 'asignado_a',
+      pipeline_id: 'pipeline_id',
+      stage_id: 'etapa_id',
+      notes: 'notas',
+      source: 'fuente',
+      value: 'valor' 
+      // Agrega más mapeos según sea necesario si difieren
+    }
+
+    const dbField = dbFieldMap[field as string] || field
+
+    // Persistir en la BD
+    try {
+      const { updateLead } = await import('@/supabase/services/leads')
+      await updateLead(lead.id, { [dbField]: value })
+      // toast.success('Campo guardado') // Opcional, ya mostramos success local
+    } catch (e) {
+      console.error('Error updating lead field:', e)
+      toast.error('Error guardando cambios del lead')
+      // Revertir optimismo si fuera necesario, pero por ahora lo dejamos
+    }
   }
 
   const handleAddBudget = (budget: Budget) => {
@@ -721,11 +751,11 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.createdAt}</Label>
-                <p className="font-medium mt-1">{format(new Date(lead.createdAt), 'MMM d, yyyy')}</p>
+                <p className="font-medium mt-1">{formatSafeDate(lead.createdAt, 'MMM d, yyyy')}</p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.lastContact}</Label>
-                <p className="font-medium mt-1">{format(new Date(lead.lastContact), 'MMM d, yyyy')}</p>
+                <p className="font-medium mt-1">{lead.lastContact ? formatSafeDate(lead.lastContact, 'MMM d, yyyy') : 'No contactado'}</p>
               </div>
             </div>
 
@@ -1177,7 +1207,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     <div>
                       <h4 className="font-medium">{budget.name}</h4>
                       <p className="text-sm text-muted-foreground">
-                        {format(new Date(budget.createdAt), 'MMM d, yyyy')}
+                        {formatSafeDate(budget.createdAt, 'MMM d, yyyy')}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1223,7 +1253,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     <div>
                       <h4 className="font-medium">{meeting.title}</h4>
                       <p className="text-sm text-muted-foreground">
-                        {format(new Date(meeting.date), 'MMM d, yyyy h:mm a')} • {meeting.duration}min
+                        {formatSafeDate(meeting.date, 'MMM d, yyyy h:mm a')} • {meeting.duration}min
                       </p>
                     </div>
                   </div>
@@ -1275,7 +1305,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     </div>
                     <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                       <span>{note.createdBy}</span>
-                      <span>{format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                      <span>{formatSafeDate(note.createdAt, 'MMM d, yyyy h:mm a')}</span>
                     </div>
                   </div>
                 ))}
