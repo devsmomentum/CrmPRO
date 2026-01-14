@@ -45,6 +45,7 @@ function App() {
   const [companies, setCompanies] = usePersistentState<Company[]>('companies', [])
   const [currentCompanyId, setCurrentCompanyId] = usePersistentState<string>('current-company-id', '')
   const [pendingInvitationsCount, setPendingInvitationsCount] = useState(0)
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0)
   const [inviteToken, setInviteToken] = useState<string | null>(null)
   const [isLoggingInForInvite, setIsLoggingInForInvite] = useState(false)
 
@@ -83,6 +84,35 @@ function App() {
       getPendingInvitations(user.email)
         .then(invites => setPendingInvitationsCount(invites?.length || 0))
         .catch(err => console.error('Error fetching invitations count:', err))
+
+      // Contar notificaciones no leídas (invitation_response + lead_assigned)
+      supabase
+        .from('notificaciones')
+        .select('id', { count: 'exact', head: true })
+        .eq('usuario_email', user.email)
+        .eq('read', false)
+        .in('type', ['lead_assigned', 'invitation_response'])
+        .then(({ count, error }) => {
+          if (!error) setUnreadNotificationsCount(count || 0)
+        })
+
+      // Suscribirse a cambios para mantener el contador en tiempo real
+      const channel = supabase
+        .channel(`noti-counter-${user.email}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notificaciones', filter: `usuario_email=eq.${user.email}` }, async () => {
+          const { count } = await supabase
+            .from('notificaciones')
+            .select('id', { count: 'exact', head: true })
+            .eq('usuario_email', user.email)
+            .eq('read', false)
+            .in('type', ['lead_assigned', 'invitation_response'])
+          setUnreadNotificationsCount(count || 0)
+        })
+      channel.subscribe()
+
+      return () => {
+        channel.unsubscribe()
+      }
     }
   }, [user?.email])
 
@@ -363,7 +393,7 @@ function App() {
         currentCompanyId={currentCompanyId}
         onCompanyChange={setCurrentCompanyId}
         companies={companies}
-        notificationCount={pendingInvitationsCount}
+        notificationCount={unreadNotificationsCount}
       />
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
@@ -491,6 +521,13 @@ function App() {
                 try {
                   const invites = await getPendingInvitations(user.email)
                   setPendingInvitationsCount(invites?.length || 0)
+                  // Recontar no leídas al salir
+                  const { count } = await supabase
+                    .from('notificaciones')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('usuario_email', user.email)
+                    .eq('read', false)
+                  setUnreadNotificationsCount(count || 0)
                 } catch (err) {
                   console.error('Error refreshing invitations count:', err)
                 }

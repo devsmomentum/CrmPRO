@@ -37,6 +37,7 @@ import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
 import { createEtapa, deleteEtapa } from '@/supabase/helpers/etapas'
 import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } from '@/supabase/services/mensajes'
+import { supabase } from '@/lib/supabase'
 
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
@@ -166,7 +167,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               avatar: '',
               role: p.titulo_trabajo || '',
               teamId: p.equipo_id || undefined,
-              pipelines: memberPipelines
+              pipelines: memberPipelines,
+              userId: p.usuario_id || undefined
             }
           }))
           setTeamMembers(mapped)
@@ -671,6 +673,31 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         // setLeads((current) => [...(current || []), newLead])
         // Comentado para evitar duplicados en UI (Realtime lo agregará)
         toast.success('Lead guardado en BD')
+
+        // Notificar asignación si corresponde (solo admin/owner y asignado específico)
+        const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+        const assignedId = payload.asignado_a
+        if (isAdminOrOwner && assignedId && assignedId !== NIL_UUID) {
+          const recipient = teamMembers.find(m => m.id === assignedId)
+          if (recipient?.email) {
+            try {
+              await supabase.functions.invoke('send-lead-assigned', {
+                body: {
+                  leadId: created.id,
+                  leadName: lead.name,
+                  empresaId: companyId,
+                  empresaNombre: currentCompany?.name,
+                  assignedUserId: recipient?.userId || assignedId,
+                  assignedUserEmail: recipient?.email,
+                  assignedByEmail: user?.email,
+                  assignedByNombre: user?.businessName || currentCompany?.name || user?.email
+                }
+              })
+            } catch (e) {
+              console.error('[PipelineView] Error enviando notificación de asignación', e)
+            }
+          }
+        }
       } else {
         // Fallback local para defaults
         setLeads((current) => [...(current || []), lead])
@@ -1302,6 +1329,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             setLeads((current) =>
               (current || []).map(l => l.id === updated.id ? updated : l)
             )
+            const prevSelected = selectedLead
             setSelectedLead(updated)
 
             // Guardar en BD en segundo plano
@@ -1318,6 +1346,31 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID,
                 tags: updated.tags || []
               })
+
+              // Si cambió la asignación y aplica, enviar notificación
+              const assignmentChanged = prevSelected && prevSelected.assignedTo !== updated.assignedTo
+              const newAssignedId = (updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo) || NIL_UUID
+              if (assignmentChanged && isAdminOrOwner && newAssignedId && newAssignedId !== NIL_UUID) {
+                const recipient = teamMembers.find(m => m.id === newAssignedId)
+                if (recipient?.email) {
+                  try {
+                    await supabase.functions.invoke('send-lead-assigned', {
+                      body: {
+                        leadId: updated.id,
+                        leadName: updated.name,
+                        empresaId: companyId,
+                        empresaNombre: currentCompany?.name,
+                        assignedUserId: recipient?.userId || newAssignedId,
+                        assignedUserEmail: recipient?.email,
+                        assignedByEmail: user?.email,
+                        assignedByNombre: user?.businessName || currentCompany?.name || user?.email
+                      }
+                    })
+                  } catch (e) {
+                    console.error('[PipelineView] Error enviando notificación de asignación', e)
+                  }
+                }
+              }
             } catch (error: any) {
               console.error('Error updating lead:', error)
               toast.error('Error al guardar cambios')

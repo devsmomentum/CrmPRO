@@ -258,3 +258,18 @@ CREATE POLICY delete_persona_pipeline ON persona_pipeline
 -- ============================================================
 -- FIN DE LA RESTAURACIÓN
 -- ============================================================
+
+-- EXTRA: Restaurar políticas para NOTIFICACIONES
+-- (permite que el usuario autenticado lea/actualice sus propias filas)
+ALTER TABLE notificaciones ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS notificaciones_select_self ON notificaciones;
+CREATE POLICY notificaciones_select_self ON notificaciones
+  FOR SELECT TO authenticated
+  USING (usuario_email = (auth.jwt() ->> 'email'));
+
+DROP POLICY IF EXISTS notificaciones_update_self ON notificaciones;
+CREATE POLICY notificaciones_update_self ON notificaciones
+  FOR UPDATE TO authenticated
+  USING (usuario_email = (auth.jwt() ->> 'email'))
+  WITH CHECK (usuario_email = (auth.jwt() ->> 'email'));
