@@ -396,7 +396,7 @@ function App() {
         notificationCount={unreadNotificationsCount}
       />
 
-      <main className="flex-1 flex flex-col overflow-hidden relative">
+      <main className="flex-1 flex flex-col overflow-hidden relative pb-20 md:pb-0">
         {(() => {
           const currentCompany = companies.find(c => c.id === currentCompanyId)
           const isGuest = currentCompany && currentCompany.ownerId !== user.id

@@ -502,9 +502,10 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     try {
       const content = messageInput
       setMessageInput('')
-      await sendMessage(selectedLeadId, content, 'team', 'whatsapp')
+      const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
+      await sendMessage(selectedLeadId, content, 'team', channel)
       setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, lastMessageAt: new Date(), lastMessageSender: 'team', lastMessage: content } : l))
-      setLastChannelByLead(prev => ({ ...prev, [selectedLeadId]: 'whatsapp' }))
+      setLastChannelByLead(prev => ({ ...prev, [selectedLeadId]: channel }))
     } catch (e) {
       console.error('Error sending message:', e)
       toast.error('Error al enviar mensaje')
@@ -554,7 +555,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
   }, [messages]);
 
   return (
-    <div className="flex flex-1 h-full bg-background rounded-tl-2xl border-t border-l shadow-sm overflow-hidden">
+    <div className="flex flex-1 min-h-0 bg-background rounded-tl-2xl border-t border-l shadow-sm overflow-hidden w-full">
       <div className={cn("flex flex-col border-r bg-muted/10 h-full w-full md:w-96 shrink-0 transition-all duration-300", selectedLeadId ? "hidden md:flex" : "flex")}>
         <div className="p-4 space-y-4 bg-background border-b shrink-0">
           <div className="flex items-center gap-2"><h2 className="font-semibold text-lg">Chats</h2><Badge variant="secondary" className="ml-auto">{sortedLeads.length}</Badge></div>

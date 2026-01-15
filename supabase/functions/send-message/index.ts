@@ -49,16 +49,28 @@ serve(async (req) => {
 
 
     if (SUPER_API_URL && SUPER_API_KEY) {
-      // Normalizar teléfono: quitar todo lo que no sea números
-      const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
+      // Determinar plataforma y chatId
+      let platform = 'wws'; // Por defecto whatsapp
+      
+      if (channel === 'instagram') {
+        platform = 'instagram';
+      } else if (channel === 'whatsapp') {
+        platform = 'wws';
+      } else if (channel) {
+        platform = channel;
+      }
 
-      // Mapear canal a plataforma de SuperAPI
-      let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
+      let chatId = '';
+      const rawPhone = String(lead.telefono || '');
 
-      // Construir chatId
-      let chatId = cleanPhone
-      if (platform === 'wws' && !chatId.includes('@c.us')) {
-        chatId = `${chatId}@c.us`
+      if (platform === 'wws') {
+        // Lógica para WhatsApp
+        const cleanPhone = rawPhone.replace(/\D/g, '')
+        chatId = cleanPhone.includes('@c.us') ? cleanPhone : `${cleanPhone}@c.us`
+      } else {
+        // Lógica para Instagram (u otros)
+        // Usamos el valor tal cual, asumiendo que es el ID correcto
+        chatId = rawPhone.trim()
       }
 
       // Construir payload según Super API
@@ -81,7 +93,6 @@ serve(async (req) => {
       }
 
       console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
-      console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
       console.log(`[DEBUG] Final ChatId: '${chatId}'`);
       console.log(`[DEBUG] Platform: '${platform}'`);
       console.log(`[DEBUG] Has Media: ${!!media}`);
