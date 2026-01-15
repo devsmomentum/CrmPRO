@@ -76,7 +76,18 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
       if (cached && cached.leads.length > 0) {
         console.log('[ChatsView] ✅ Usando datos cacheados:', cached.leads.length, 'leads')
         setLeads(cached.leads as Lead[])
-        setLastChannelByLead(cached.lastChannelByLead)
+        
+        // Recalcular canales "on-the-fly" para corregir cachés antiguos
+        const computedChannelMap: Record<string, 'whatsapp' | 'instagram'> = {}
+        for (const l of cached.leads) {
+             const phone = (l.phone || '').replace(/\D/g, '')
+             let isInstagram = phone.length >= 15
+             if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
+             if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
+             computedChannelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
+        }
+        setLastChannelByLead(computedChannelMap)
+
         setUnreadCounts(cached.unreadCounts)
         setHasMore(cached.hasMore)
         setOffset(cached.offset)
@@ -134,7 +145,28 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
       console.log('[ChatsView] Leads mapeados:', mapped.length)
 
       const channelMap: Record<string, 'whatsapp' | 'instagram'> = {}
-      for (const l of mapped) channelMap[l.id] = 'whatsapp'
+      let igCount = 0;
+      let waCount = 0;
+
+      for (const l of mapped) {
+        // Validación básica: si el "teléfono" tiene > 15 caracteres, probablemente sea un ID de Instagram
+        const rawPhone = l.phone || '';
+        // Usar la misma lógica de "cleanPhone" que el webhook
+        const phone = rawPhone.replace(/\D/g, '') 
+        
+        // Determinar canal: Por longitud de ID (>=15), por nombre de empresa O por nombre del lead
+        let isInstagram = phone.length >= 15;
+        if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true;
+        if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true;
+        
+        // LOGGING SOLICITADO
+        console.log(`[ChatsView] Lead ${l.name} (${rawPhone}) -> Clean: ${phone} (Len: ${phone.length}) -> ${isInstagram ? 'INSTAGRAM' : 'WHATSAPP'}`)
+        
+        if (isInstagram) igCount++; else waCount++;
+
+        channelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
+      }
+      console.log(`[ChatsView] Resumen canales: ${igCount} Instagram, ${waCount} WhatsApp`)
 
       // ✅ MOSTRAR LEADS INMEDIATAMENTE (sin esperar consultas adicionales)
       setLeads(mapped)
@@ -262,7 +294,14 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
 
       setLastChannelByLead(prev => {
         const next = { ...prev }
-        for (const l of mapped) next[l.id] = next[l.id] || 'whatsapp'
+        for (const l of mapped) {
+             const phone = (l.phone || '').replace(/\D/g, '')
+             let isInstagram = phone.length >= 15
+             if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
+             if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
+             
+             next[l.id] = next[l.id] || (isInstagram ? 'instagram' : 'whatsapp')
+        }
         return next
       })
 
