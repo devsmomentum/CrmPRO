@@ -95,6 +95,8 @@ export async function preloadChatsForCompany(companyId: string): Promise<void> {
             lastMessageSender: d.last_message_sender || 'team',
             avatar: d.avatar || undefined,
             company: d.empresa || d.company || undefined,
+            archived: !!d.archived,
+            archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
         }))
 
         const channelMap: Record<string, 'whatsapp' | 'instagram'> = {}

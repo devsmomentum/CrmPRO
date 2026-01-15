@@ -1,10 +1,14 @@
 import { supabase } from '../client'
 
-export async function getLeads(empresaId, currentUserId, isAdminOrOwner = false) {
+export async function getLeads(empresaId, currentUserId, isAdminOrOwner = false, includeArchived = false) {
   let query = supabase
     .from('lead')
     .select('*')
     .eq('empresa_id', empresaId)
+
+  if (!includeArchived) {
+    query = query.eq('archived', false)
+  }
 
   if (!isAdminOrOwner && currentUserId) {
     // Mostrar solo mis leads y los asignados a todos (UUID nulo y también NULL por compatibilidad)
@@ -37,11 +41,18 @@ export async function getLeadsPaged({
   pipelineId,
   stageId,
   order = 'desc',
+  archived = false,
 } = {}) {
   let query = supabase
     .from('lead')
     .select('*', { count: 'exact' })
     .eq('empresa_id', empresaId)
+
+  if (archived === true) {
+    query = query.eq('archived', true)
+  } else if (archived === false) {
+    query = query.eq('archived', false)
+  }
 
   if (pipelineId) {
     query = query.eq('pipeline_id', pipelineId)
@@ -61,6 +72,20 @@ export async function getLeadsPaged({
   const { data, error, count } = await query
   if (error) throw error
   return { data, count }
+}
+
+export async function searchLeads(empresaId, searchTerm) {
+  if (!searchTerm || !empresaId) return []
+  
+  const { data, error } = await supabase
+    .from('lead')
+    .select('*')
+    .eq('empresa_id', empresaId)
+    .or(`nombre_completo.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%,correo_electronico.ilike.%${searchTerm}%,empresa.ilike.%${searchTerm}%`)
+    .limit(50)
+
+  if (error) throw error
+  return data
 }
 
 export async function createLead(lead) {
@@ -95,6 +120,14 @@ export async function updateLead(id, updates) {
 
   if (error) throw error
   return data
+}
+
+export async function setLeadArchived(id, archived) {
+  const updates = {
+    archived,
+    archived_at: archived ? new Date().toISOString() : null
+  }
+  return updateLead(id, updates)
 }
 
 export async function deleteLead(id) {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
     Dialog,
     DialogContent,
@@ -8,34 +8,128 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Lead } from '@/lib/types'
-import { MagnifyingGlass, User, Phone, Buildings } from '@phosphor-icons/react'
+import { MagnifyingGlass, User, Phone, Buildings, Trash, Spinner } from '@phosphor-icons/react'
+import { toast } from 'sonner'
+import { useDebounce } from '@/hooks/use-mobile' // Assuming we might have or can make a debounce hook, or just inline it
 
 interface LeadSearchDialogProps {
-    leads: Lead[]
+    leads?: Lead[]
     onSelectLead: (lead: Lead) => void
+    canDelete?: boolean
+    onDeleteLeads?: (ids: string[]) => Promise<void>
+    onSearch?: (term: string) => Promise<Lead[]>
 }
 
-export function LeadSearchDialog({ leads, onSelectLead }: LeadSearchDialogProps) {
+export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDeleteLeads, onSearch }: LeadSearchDialogProps) {
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
+    const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
+    const [isDeleting, setIsDeleting] = useState(false)
+    const [searchResults, setSearchResults] = useState<Lead[]>([])
+    const [isSearching, setIsSearching] = useState(false)
+    const searchTimeoutRef = useRef<NodeJS.Timeout>()
 
-    const filteredLeads = leads.filter(lead => {
-        if (!searchTerm.trim()) return false
+    // Local filtering fallback
+    const localFilteredLeads = leads.filter(lead => {
+        if (!searchTerm.trim() || onSearch) return false
 
         const search = searchTerm.toLowerCase()
         return (
-            lead.name?.toLowerCase().includes(search) ||
-            lead.email?.toLowerCase().includes(search) ||
-            lead.phone?.toLowerCase().includes(search) ||
-            lead.company?.toLowerCase().includes(search)
+            (lead.name || '').toLowerCase().includes(search) ||
+            (lead.email || '').toLowerCase().includes(search) ||
+            (lead.phone || '').toLowerCase().includes(search) ||
+            (lead.company || '').toLowerCase().includes(search)
         )
     })
+
+    const displayLeads = onSearch ? searchResults : localFilteredLeads
+
+    useEffect(() => {
+        if (!onSearch) return
+
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current)
+        }
+
+        if (!searchTerm.trim()) {
+            setSearchResults([])
+            return
+        }
+
+        setIsSearching(true)
+        searchTimeoutRef.current = setTimeout(async () => {
+            try {
+                const results = await onSearch(searchTerm)
+                setSearchResults(results)
+            } catch (error) {
+                console.error("Error searching leads:", error)
+            } finally {
+                setIsSearching(false)
+            }
+        }, 500)
+
+        return () => {
+            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+        }
+    }, [searchTerm, onSearch])
+
 
     const handleSelectLead = (lead: Lead) => {
         setOpen(false)
         setSearchTerm('')
+        setSearchResults([])
         onSelectLead(lead)
+    }
+
+    const toggleSelection = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation()
+        const next = new Set(selectedLeads)
+        if (next.has(id)) {
+            next.delete(id)
+        } else {
+            next.add(id)
+        }
+        setSelectedLeads(next)
+    }
+
+    const handleSelectAll = () => {
+        const allFilteredIds = displayLeads.map(l => l.id)
+        const allSelected = allFilteredIds.every(id => selectedLeads.has(id))
+        
+        const next = new Set(selectedLeads)
+        if (allSelected) {
+            allFilteredIds.forEach(id => next.delete(id))
+        } else {
+            allFilteredIds.forEach(id => next.add(id))
+        }
+        setSelectedLeads(next)
+    }
+
+    const handleDeleteSelected = async () => {
+        if (selectedLeads.size === 0 || !onDeleteLeads) return
+        
+        if (!confirm(`¿Estás seguro de que deseas eliminar ${selectedLeads.size} leads seleccionados? Esta acción no se puede deshacer.`)) {
+            return
+        }
+
+        setIsDeleting(true)
+        try {
+            await onDeleteLeads(Array.from(selectedLeads))
+            setSelectedLeads(new Set())
+            // If local, filtered list updates automatically via parent props triggering re-render
+            // If remote, we should remove them from results manually to feel responsive
+            if (onSearch) {
+                setSearchResults(prev => prev.filter(l => !selectedLeads.has(l.id)))
+            }
+            toast.success(`Se eliminaron ${selectedLeads.size} leads`)
+        } catch (error) {
+            console.error(error)
+            toast.error('Error al eliminar leads')
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     return (
@@ -66,7 +160,39 @@ export function LeadSearchDialog({ leads, onSelectLead }: LeadSearchDialogProps)
                                 className="pl-10"
                                 autoFocus
                             />
+                            {isSearching && (
+                                <div className="absolute right-3 top-3">
+                                    <Spinner className="animate-spin h-4 w-4 text-primary" />
+                                </div>
+                            )}
                         </div>
+
+                        {canDelete && displayLeads.length > 0 && (
+                            <div className="flex items-center justify-between px-2 py-2 bg-muted/50 rounded-md">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        checked={displayLeads.length > 0 && displayLeads.every(l => selectedLeads.has(l.id))}
+                                        onCheckedChange={handleSelectAll}
+                                        id="select-all"
+                                    />
+                                    <label htmlFor="select-all" className="text-sm text-muted-foreground cursor-pointer select-none">
+                                        Seleccionar todos ({displayLeads.length})
+                                    </label>
+                                </div>
+                                {selectedLeads.size > 0 && (
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        className="h-7 text-xs px-2"
+                                        onClick={handleDeleteSelected}
+                                        disabled={isDeleting}
+                                    >
+                                        <Trash className="mr-1.5 w-3.5 h-3.5" />
+                                        Eliminar ({selectedLeads.size})
+                                    </Button>
+                                )}
+                            </div>
+                        )}
 
                         <div className="max-h-[400px] overflow-y-auto space-y-2">
                             {searchTerm.trim() === '' ? (
@@ -74,19 +200,35 @@ export function LeadSearchDialog({ leads, onSelectLead }: LeadSearchDialogProps)
                                     <MagnifyingGlass size={48} className="mx-auto mb-3 opacity-50" />
                                     <p>Escribe para buscar leads</p>
                                 </div>
-                            ) : filteredLeads.length === 0 ? (
+                            ) : displayLeads.length === 0 && !isSearching ? (
                                 <div className="text-center py-12 text-muted-foreground">
                                     <p>No se encontraron resultados</p>
                                     <p className="text-sm mt-1">Prueba con otro término de búsqueda</p>
                                 </div>
                             ) : (
-                                filteredLeads.map(lead => (
-                                    <button
+                                displayLeads.map(lead => (
+                                    <div
                                         key={lead.id}
                                         onClick={() => handleSelectLead(lead)}
-                                        className="w-full text-left p-4 rounded-lg border border-border hover:border-primary hover:bg-muted/50 transition-all overflow-hidden"
+                                        className="w-full text-left p-4 rounded-lg border border-border hover:border-primary hover:bg-muted/50 transition-all overflow-hidden group cursor-pointer"
                                     >
-                                        <div className="flex items-start justify-between gap-3">
+                                        <div className="flex items-start gap-3">
+                                            {canDelete && (
+                                                <div 
+                                                    className="pt-1 pr-2 flex items-center justify-center shrink-0" 
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <Checkbox 
+                                                        checked={selectedLeads.has(lead.id)}
+                                                        onCheckedChange={(checked) => {
+                                                            const next = new Set(selectedLeads)
+                                                            if (checked) next.add(lead.id)
+                                                            else next.delete(lead.id)
+                                                            setSelectedLeads(next)
+                                                        }}
+                                                    />
+                                                </div>
+                                            )}
                                             <div className="flex-1 min-w-0 space-y-2">
                                                 <div className="flex items-center gap-2 min-w-0">
                                                     <User size={16} className="text-muted-foreground shrink-0" />
@@ -120,7 +262,7 @@ export function LeadSearchDialog({ leads, onSelectLead }: LeadSearchDialogProps)
                                                 )}
                                             </div>
                                         </div>
-                                    </button>
+                                    </div>
                                 ))
                             )}
                         </div>

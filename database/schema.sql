@@ -158,7 +158,9 @@ CREATE TABLE lead (
   prioridad text,
   asignado_a uuid, -- referencia a usuario/persona si lo deseas
   empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  archived boolean NOT NULL DEFAULT false,
+  archived_at timestamptz
 );
 
 -- Habilitar RLS

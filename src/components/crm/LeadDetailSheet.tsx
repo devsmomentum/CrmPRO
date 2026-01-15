@@ -76,6 +76,8 @@ interface LeadDetailSheetProps {
   currentUser?: User | null
   onMarkAsRead?: (leadId: string) => void
   companyId?: string
+  canDeleteLead?: boolean
+  onDeleteLead?: (leadId: string) => void | Promise<void>
 }
 
 // Helper function to safely format dates
@@ -89,7 +91,7 @@ const formatSafeDate = (date: Date | string | null | undefined, formatStr: strin
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead, companyId }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead, companyId, canDeleteLead = false, onDeleteLead }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
   // Estados locales para evitar errores de autenticación del KV.
@@ -631,6 +633,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   }
 
   const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   return (
     <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
@@ -693,6 +696,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   <SelectItem value="high">High Priority</SelectItem>
                 </SelectContent>
               </Select>
+              {canDeleteLead && (
+                <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)} className="mt-2 sm:mt-0">
+                  <Trash className="w-4 h-4 mr-2" />
+                  Eliminar Lead
+                </Button>
+              )}
             </div>
           </div>
 
@@ -766,6 +775,25 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </Dialog>
           </div>
         </SheetHeader>
+
+        {canDeleteLead && (
+          <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Eliminar lead</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción eliminará el lead y su conversación. No se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={async () => { try { await onDeleteLead?.(lead.id) } finally { setConfirmDeleteOpen(false) } }}>
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-4 sm:mx-6 mt-3 sm:mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/60 p-1">

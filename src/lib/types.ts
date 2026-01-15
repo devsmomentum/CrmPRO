@@ -96,6 +96,8 @@ export interface Lead {
   lastMessageAt?: Date
   lastMessageSender?: 'lead' | 'team'
   lastMessage?: string
+  archived?: boolean
+  archivedAt?: Date
   customFields?: Record<string, any>
 }
 

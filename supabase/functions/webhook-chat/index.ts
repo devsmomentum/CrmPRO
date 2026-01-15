@@ -85,6 +85,106 @@ async function downloadAndStoreMedia(
   }
 }
 
+// Marca todos los mensajes entrantes de un lead como leídos
+async function markLeadMessagesAsRead(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string
+) {
+  try {
+    const { error } = await supabase
+      .from("mensajes")
+      .update({ read: true })
+      .eq("lead_id", leadId)
+      .eq("sender", "lead")
+      .eq("read", false);
+
+    if (error) {
+      console.error(`❌ [read-status] Error marcando mensajes de ${leadId}:`, error);
+    } else {
+      console.log(`✅ [read-status] Mensajes marcados como leídos para lead ${leadId}`);
+    }
+  } catch (err) {
+    console.error(`❌ [read-status] Error inesperado con lead ${leadId}:`, err);
+  }
+}
+
+// Obtener palabras clave configuradas para una empresa
+async function getEmpresaKeywords(
+  supabase: ReturnType<typeof createClient>,
+  empresaId: string
+): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('chat_settings')
+      .select('keywords')
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`[chat-settings] Error obteniendo keywords para empresa ${empresaId}:`, error);
+      return [];
+    }
+    const keywords = (data?.keywords || []) as string[];
+    return Array.isArray(keywords) ? keywords.filter(k => typeof k === 'string') : [];
+  } catch (e) {
+    console.warn(`[chat-settings] Excepción obteniendo keywords para empresa ${empresaId}:`, e);
+    return [];
+  }
+}
+
+// Decidir si mantener no leídos los mensajes del lead según palabras clave
+async function shouldKeepUnreadForLead(
+  supabase: ReturnType<typeof createClient>,
+  empresaId: string,
+  leadId: string
+): Promise<boolean> {
+  const keywords = await getEmpresaKeywords(supabase, empresaId);
+  if (!keywords || keywords.length === 0) return false;
+
+  try {
+    // Buscar en los últimos 10 mensajes del lead, sin importar si ya están leídos
+    const { data: recentMsgs, error } = await supabase
+      .from('mensajes')
+      .select('id, content, read')
+      .eq('lead_id', leadId)
+      .eq('sender', 'lead')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.warn(`[read-rule] Error consultando mensajes recientes del lead ${leadId}:`, error);
+      return false;
+    }
+
+    const normalizedKeywords = keywords.map(k => k.trim().toLowerCase()).filter(Boolean);
+    let keywordFound = false;
+
+    for (const m of recentMsgs || []) {
+      const text = (m.content || '').toString().toLowerCase();
+      if (!text) continue;
+      
+      if (normalizedKeywords.some(kw => text.includes(kw))) {
+        keywordFound = true;
+        console.log(`[read-rule] Coincidencia de palabra clave en mensaje ${m.id} para lead ${leadId}.`);
+        
+        // Si el mensaje ya estaba leído, lo marcamos como NO LEÍDO para priorizarlo
+        if (m.read) {
+          await supabase
+            .from('mensajes')
+            .update({ read: false })
+            .eq('id', m.id);
+          console.log(`[read-rule] Mensaje ${m.id} marcado como NO LEÍDO por prioridad de palabra clave.`);
+        }
+      }
+    }
+    
+    return keywordFound;
+  } catch (e) {
+    console.warn(`[read-rule] Excepción evaluando palabras clave para lead ${leadId}:`, e);
+  }
+  return false;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -495,6 +595,14 @@ serve(async (req) => {
                 if (storedMediaUrl) {
                   console.log(`✅ Archivo multimedia guardado en Storage: ${storedMediaUrl}`);
                 }
+                if (payload.event === "ai_response") {
+                  const keepUnread = await shouldKeepUnreadForLead(supabase, lead.empresa_id, lead.id);
+                  if (!keepUnread) {
+                    await markLeadMessagesAsRead(supabase, lead.id);
+                  } else {
+                    console.log(`[read-status] Saltando auto-leído por palabras clave para lead ${lead.id}`);
+                  }
+                }
                 totalLeadsMatched++;
               }
             }
@@ -650,6 +758,14 @@ serve(async (req) => {
                   metadata: normalizedMetadata
                 });
                 console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para nuevo lead (${sourceType})`);
+                if (payload.event === "ai_response") {
+                  const keepUnread = await shouldKeepUnreadForLead(supabase, empresa_id, newLead.id);
+                  if (!keepUnread) {
+                    await markLeadMessagesAsRead(supabase, newLead.id);
+                  } else {
+                    console.log(`[read-status] Saltando auto-leído por palabras clave para nuevo lead ${newLead.id}`);
+                  }
+                }
 
                 // Crear notificación para el owner de la empresa
                 try {

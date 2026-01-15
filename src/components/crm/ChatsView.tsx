@@ -5,20 +5,22 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut } from '@phosphor-icons/react'
+import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut, Archive, Gear, Trash } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { LeadDetailSheet } from './LeadDetailSheet'
-import { getLeadsPaged } from '@/supabase/services/leads'
+import { getLeadsPaged, setLeadArchived, deleteLead } from '@/supabase/services/leads'
 import { getMessages, sendMessage, subscribeToMessages, getLastMessagesForLeadIds, subscribeToAllMessages, getUnreadMessagesCount, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import type { Message as DbMessage } from '@/supabase/services/mensajes'
 import { toast } from 'sonner'
-import { getCachedLeads, setCachedLeads, updateCachedLeads } from '@/lib/chatsCache'
+import { getCachedLeads, setCachedLeads, updateCachedLeads, invalidateLeadsCache } from '@/lib/chatsCache'
+import { ChatSettingsDialog } from './ChatSettingsDialog'
 
 interface ChatsViewProps {
   companyId: string
   onNavigateToPipeline?: (leadId: string) => void
+  canDeleteLead?: boolean
 }
 
 // Helper para formatear fechas de forma segura en este componente
@@ -33,7 +35,7 @@ const safeFormat = (date: Date | string | undefined | null, fmt: string, options
   }
 }
 
-export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
+export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = false }: ChatsViewProps) {
   const [leads, setLeads] = useState<Lead[]>([])
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showContactInfo, setShowContactInfo] = useState(false)
@@ -46,6 +48,9 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [lastChannelByLead, setLastChannelByLead] = useState<Record<string, 'whatsapp' | 'instagram'>>({})
+  const [chatScope, setChatScope] = useState<'active' | 'archived'>('active')
+  const [archivingLeadId, setArchivingLeadId] = useState<string | null>(null)
+  const [showChatSettings, setShowChatSettings] = useState(false)
   const listParentRef = useRef<HTMLDivElement | null>(null)
 
   const [isUploading, setIsUploading] = useState(false)
@@ -70,38 +75,46 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
 
   // Cargar leads: primero verificar caché, si no hay cargar de la BD
   useEffect(() => {
-    if (companyId) {
-      // Intentar cargar desde caché primero
-      const cached = getCachedLeads(companyId)
-      if (cached && cached.leads.length > 0) {
-        console.log('[ChatsView] ✅ Usando datos cacheados:', cached.leads.length, 'leads')
-        setLeads(cached.leads as Lead[])
-        
-        // Recalcular canales "on-the-fly" para corregir cachés antiguos
-        const computedChannelMap: Record<string, 'whatsapp' | 'instagram'> = {}
-        for (const l of cached.leads) {
-             const phone = (l.phone || '').replace(/\D/g, '')
-             let isInstagram = phone.length >= 15
-             if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
-             if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
-             computedChannelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
-        }
-        setLastChannelByLead(computedChannelMap)
+    if (!companyId) return
 
-        setUnreadCounts(cached.unreadCounts)
-        setHasMore(cached.hasMore)
-        setOffset(cached.offset)
-        setIsInitialLoading(false)
-        setLoadError(null)
-
-        // Actualizar conteos de no leídos en segundo plano (sin bloquear UI)
-        refreshUnreadCountsInBackground(cached.leads.map((l: any) => l.id))
-      } else {
-        // No hay caché, cargar desde la BD
-        void loadLeads()
-      }
+    if (chatScope === 'archived') {
+      console.log('[ChatsView] Cargando chats archivados para empresa', companyId)
+      setIsInitialLoading(true)
+      setLoadError(null)
+      setHasMore(true)
+      setOffset(0)
+      setLastChannelByLead({})
+      setUnreadCounts({})
+      void loadLeads({ scope: 'archived', forceRefresh: true })
+      return
     }
-  }, [companyId])
+
+    const cached = getCachedLeads(companyId)
+    if (cached && cached.leads.length > 0) {
+      console.log('[ChatsView] ✅ Usando datos cacheados:', cached.leads.length, 'leads')
+      setLeads(cached.leads as Lead[])
+
+      const computedChannelMap: Record<string, 'whatsapp' | 'instagram'> = {}
+      for (const l of cached.leads) {
+        const phone = (l.phone || '').replace(/\D/g, '')
+        let isInstagram = phone.length >= 15
+        if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
+        if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
+        computedChannelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
+      }
+      setLastChannelByLead(computedChannelMap)
+
+      setUnreadCounts(cached.unreadCounts)
+      setHasMore(cached.hasMore)
+      setOffset(cached.offset)
+      setIsInitialLoading(false)
+      setLoadError(null)
+
+      refreshUnreadCountsInBackground(cached.leads.map((l: any) => l.id), 'active')
+    } else {
+      void loadLeads({ scope: 'active' })
+    }
+  }, [companyId, chatScope])
 
   useEffect(() => {
     const el = document.getElementById('chat-scroll-area')
@@ -109,21 +122,22 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
   }, [messages, selectedLeadId])
 
   // Actualizar conteos de no leídos en segundo plano (usando batches)
-  async function refreshUnreadCountsInBackground(leadIds: string[]) {
+  async function refreshUnreadCountsInBackground(leadIds: string[], scope: 'active' | 'archived' = chatScope) {
     console.log('[ChatsView] Actualizando conteos de no leídos para', leadIds.length, 'leads...')
-    // Usar batches para evitar timeouts con muchos leads
-    loadUnreadCountsInBatches(leadIds)
+    loadUnreadCountsInBatches(leadIds, scope)
   }
 
-  async function loadLeads(forceRefresh = false) {
-    console.log('[ChatsView] Iniciando carga de leads para empresa:', companyId, forceRefresh ? '(forzado)' : '')
+  async function loadLeads({ scope = chatScope, forceRefresh = false }: { scope?: 'active' | 'archived'; forceRefresh?: boolean } = {}) {
+    if (!companyId) return
+    const targetScope = scope ?? 'active'
+    console.log('[ChatsView] Iniciando carga de leads para empresa:', companyId, '| scope:', targetScope, forceRefresh ? '(forzado)' : '')
     setIsInitialLoading(true)
     setLoadError(null)
 
     try {
       console.log('[ChatsView] Llamando getLeadsPaged...')
       const startTime = Date.now()
-      const { data: page } = await getLeadsPaged({ empresaId: companyId, limit: PAGE_SIZE, offset: 0 })
+      const { data: page } = await getLeadsPaged({ empresaId: companyId, limit: PAGE_SIZE, offset: 0, archived: targetScope === 'archived' })
       console.log('[ChatsView] getLeadsPaged respondió en', Date.now() - startTime, 'ms con', page?.length || 0, 'leads')
 
       const data = page || []
@@ -140,6 +154,8 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
         lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
         avatar: d.avatar || undefined,
         company: d.empresa || d.company || undefined,
+        archived: !!d.archived,
+        archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
       }))
 
       console.log('[ChatsView] Leads mapeados:', mapped.length)
@@ -149,51 +165,43 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
       let waCount = 0;
 
       for (const l of mapped) {
-        // Validación básica: si el "teléfono" tiene > 15 caracteres, probablemente sea un ID de Instagram
-        const rawPhone = l.phone || '';
-        // Usar la misma lógica de "cleanPhone" que el webhook
-        const phone = rawPhone.replace(/\D/g, '') 
-        
-        // Determinar canal: Por longitud de ID (>=15), por nombre de empresa O por nombre del lead
-        let isInstagram = phone.length >= 15;
-        if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true;
-        if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true;
-        
-        // LOGGING SOLICITADO
+        const rawPhone = l.phone || ''
+        const phone = rawPhone.replace(/\D/g, '')
+
+        let isInstagram = phone.length >= 15
+        if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
+        if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
+
         console.log(`[ChatsView] Lead ${l.name} (${rawPhone}) -> Clean: ${phone} (Len: ${phone.length}) -> ${isInstagram ? 'INSTAGRAM' : 'WHATSAPP'}`)
-        
-        if (isInstagram) igCount++; else waCount++;
+
+        if (isInstagram) igCount++; else waCount++
 
         channelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
       }
       console.log(`[ChatsView] Resumen canales: ${igCount} Instagram, ${waCount} WhatsApp`)
 
-      // ✅ MOSTRAR LEADS INMEDIATAMENTE (sin esperar consultas adicionales)
       setLeads(mapped)
       setLastChannelByLead(channelMap)
-      setUnreadCounts({}) // Empezar vacío, se llenarán en segundo plano
+      setUnreadCounts({})
       setOffset(mapped.length)
       setHasMore(mapped.length >= PAGE_SIZE)
-      setIsInitialLoading(false) // ← UI lista inmediatamente
+      setIsInitialLoading(false)
 
-      // Guardar en caché (versión básica)
-      setCachedLeads(companyId, {
-        leads: mapped,
-        lastChannelByLead: channelMap,
-        unreadCounts: {},
-        hasMore: mapped.length >= PAGE_SIZE,
-        offset: mapped.length
-      })
+      if (targetScope === 'active') {
+        setCachedLeads(companyId, {
+          leads: mapped,
+          lastChannelByLead: channelMap,
+          unreadCounts: {},
+          hasMore: mapped.length >= PAGE_SIZE,
+          offset: mapped.length
+        })
+      }
 
       console.log('[ChatsView] ✅ UI lista con', mapped.length, 'leads. Cargando datos adicionales en background...')
 
-      // 🔄 CARGAR DATOS ADICIONALES EN SEGUNDO PLANO (sin bloquear UI)
       const ids = mapped.map(l => l.id)
+      loadUnreadCountsInBatches(ids, targetScope)
 
-      // Cargar conteos de no leídos (en batches de 100 para evitar timeouts)
-      loadUnreadCountsInBatches(ids)
-
-      // Cargar últimos mensajes solo si hay pocos leads sin mensaje
       const missingIds = mapped.filter(l => !l.lastMessageAt || !l.lastMessage).map(l => l.id)
       if (missingIds.length > 0 && missingIds.length <= 100) {
         loadLastMessagesInBackground(missingIds, mapped)
@@ -207,8 +215,22 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     }
   }
 
+  function handleScopeChange(nextScope: 'active' | 'archived') {
+    if (nextScope === chatScope) return
+    setSelectedLeadId(null)
+    setMessages([])
+    setLeads([])
+    setUnreadCounts({})
+    setLastChannelByLead({})
+    setOffset(0)
+    setHasMore(true)
+    setLoadError(null)
+    setIsInitialLoading(true)
+    setChatScope(nextScope)
+  }
+
   // Cargar conteos de no leídos en batches para evitar timeouts
-  async function loadUnreadCountsInBatches(allIds: string[]) {
+  async function loadUnreadCountsInBatches(allIds: string[], scope: 'active' | 'archived' = chatScope) {
     const BATCH_SIZE = 100
     const batches: string[][] = []
     for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
@@ -220,16 +242,21 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     for (const batch of batches) {
       try {
         const counts = await getUnreadMessagesCount(batch)
-        allCounts = { ...allCounts, ...counts }
-        // Actualizar UI progresivamente
-        setUnreadCounts(prev => ({ ...prev, ...counts }))
+        // Prellenar con ceros para TODOS los ids del batch, luego sobreescribir con los no-cero
+        const filled: Record<string, number> = {}
+        for (const id of batch) filled[id] = 0
+        for (const [id, value] of Object.entries(counts)) filled[id] = value
+
+        allCounts = { ...allCounts, ...filled }
+        setUnreadCounts(prev => ({ ...prev, ...filled }))
       } catch (err) {
         console.warn('[ChatsView] Error en batch de conteos:', err)
       }
     }
 
-    // Actualizar caché con todos los conteos
-    updateCachedLeads(companyId, { unreadCounts: allCounts })
+    if (scope === 'active') {
+      updateCachedLeads(companyId, { unreadCounts: allCounts })
+    }
     console.log('[ChatsView] ✅ Conteos de no leídos cargados:', Object.keys(allCounts).length)
   }
 
@@ -257,11 +284,11 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     }
   }
 
-  async function fetchMoreLeads() {
+  async function fetchMoreLeads(scope: 'active' | 'archived' = chatScope) {
     if (!hasMore || isFetchingMore) return
     setIsFetchingMore(true)
     try {
-      const { data: page } = await getLeadsPaged({ empresaId: companyId, limit: PAGE_SIZE, offset })
+      const { data: page } = await getLeadsPaged({ empresaId: companyId, limit: PAGE_SIZE, offset, archived: scope === 'archived' })
       const data = page || []
       const mapped: Lead[] = data.map((d: any) => ({
         ...d,
@@ -276,6 +303,8 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
         lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
         avatar: d.avatar || undefined,
         company: d.empresa || d.company || undefined,
+        archived: !!d.archived,
+        archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
       }))
 
       const missingIds = mapped.filter(l => !l.lastMessageAt || !l.lastMessage).map(l => l.id)
@@ -318,12 +347,14 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
       setHasMore(newHasMore)
 
       // Actualizar caché con los nuevos leads
-      updateCachedLeads(companyId, {
-        leads: newLeads,
-        unreadCounts: { ...unreadCounts, ...counts },
-        hasMore: newHasMore,
-        offset: newOffset
-      })
+      if (scope === 'active') {
+        updateCachedLeads(companyId, {
+          leads: newLeads,
+          unreadCounts: { ...unreadCounts, ...counts },
+          hasMore: newHasMore,
+          offset: newOffset
+        })
+      }
     } catch (e) {
       console.error('Error fetching more leads:', e)
     } finally {
@@ -363,8 +394,8 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     const items = rowVirtualizer.getVirtualItems()
     const last = items[items.length - 1]
     if (!last) return
-    if (last.index >= sortedLeads.length - 10) fetchMoreLeads()
-  }, [rowVirtualizer.getVirtualItems()])
+    if (last.index >= sortedLeads.length - 10) fetchMoreLeads(chatScope)
+  }, [rowVirtualizer.getVirtualItems(), sortedLeads.length, chatScope])
 
   useEffect(() => {
     if (!selectedLeadId) return
@@ -388,8 +419,24 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     const ch = subscribeToAllMessages((msg) => {
       updateLeadListOrder(msg.lead_id, msg)
       if (msg?.lead_id && msg?.channel) setLastChannelByLead(prev => ({ ...prev, [msg.lead_id]: (msg.channel === 'instagram' ? 'instagram' : 'whatsapp') }))
-      if (selectedLeadId !== msg.lead_id) {
-        setUnreadCounts(prev => ({ ...prev, [msg.lead_id]: (prev[msg.lead_id] || 0) + 1 }))
+      if (msg.sender === 'lead') {
+        if (selectedLeadId !== msg.lead_id) {
+          setUnreadCounts(prev => ({ ...prev, [msg.lead_id]: (prev[msg.lead_id] || 0) + 1 }))
+        }
+      } else {
+        // Respuesta del equipo/IA:
+        // No marcamos como leídos aquí ciegamente, dejamos que el webhook decida (por keywords).
+        // Solo actualizamos el contador desde el servidor para reflejar la decisión del webhook.
+        (async () => {
+          try {
+            // Esperamos un momento para que el webhook procese
+            setTimeout(async () => {
+              const counts = await getUnreadMessagesCount([msg.lead_id])
+              const nextVal = counts[msg.lead_id] ?? 0
+              setUnreadCounts(prev => ({ ...prev, [msg.lead_id]: nextVal }))
+            }, 1000)
+          } catch {}
+        })()
       }
     })
     return () => { try { ch.unsubscribe() } catch { } }
@@ -401,6 +448,67 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
 
   function handleLeadUpdate(updatedLead: Lead) {
     setLeads(prev => prev.map(l => l.id === updatedLead.id ? { ...l, ...updatedLead } : l))
+  }
+
+  async function handleArchiveToggle(lead: Lead | undefined, nextState: boolean) {
+    if (!lead) return
+    setArchivingLeadId(lead.id)
+    try {
+      await setLeadArchived(lead.id, nextState)
+      invalidateLeadsCache(companyId)
+      toast.success(nextState ? 'Chat archivado' : 'Chat restaurado')
+
+      if ((nextState && chatScope === 'active') || (!nextState && chatScope === 'archived')) {
+        setLeads(prev => prev.filter(l => l.id !== lead.id))
+        setSelectedLeadId(prev => {
+          if (prev === lead.id) {
+            setMessages([])
+            return null
+          }
+          return prev
+        })
+        setUnreadCounts(prev => {
+          const next = { ...prev }
+          delete next[lead.id]
+          return next
+        })
+      } else {
+        setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, archived: nextState, archivedAt: nextState ? new Date() : undefined } : l))
+      }
+    } catch (err) {
+      console.error('[ChatsView] Error actualizando archivado:', err)
+      toast.error('No se pudo actualizar el estado del chat')
+    } finally {
+      setArchivingLeadId(null)
+    }
+  }
+
+  async function handleDeleteLead(lead: Lead | undefined) {
+    if (!lead) return
+    const confirmed = window.confirm(`¿Eliminar el lead "${lead.name || lead.phone || lead.id}"? Esta acción no se puede deshacer.`)
+    if (!confirmed) return
+    try {
+      await deleteLead(lead.id)
+      invalidateLeadsCache(companyId)
+      toast.success('Lead eliminado')
+
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      setSelectedLeadId(prev => {
+        if (prev === lead.id) {
+          setMessages([])
+          return null
+        }
+        return prev
+      })
+      setUnreadCounts(prev => {
+        const next = { ...prev }
+        delete next[lead.id]
+        return next
+      })
+    } catch (err) {
+      console.error('[ChatsView] Error eliminando lead:', err)
+      toast.error('No se pudo eliminar el lead')
+    }
   }
 
   const startRecording = async () => {
@@ -558,11 +666,40 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
     <div className="flex flex-1 min-h-0 bg-background rounded-tl-2xl border-t border-l shadow-sm overflow-hidden w-full">
       <div className={cn("flex flex-col border-r bg-muted/10 h-full w-full md:w-96 shrink-0 transition-all duration-300", selectedLeadId ? "hidden md:flex" : "flex")}>
         <div className="p-4 space-y-4 bg-background border-b shrink-0">
-          <div className="flex items-center gap-2"><h2 className="font-semibold text-lg">Chats</h2><Badge variant="secondary" className="ml-auto">{sortedLeads.length}</Badge></div>
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-lg">Chats</h2>
+            <Badge variant="outline">{chatScope === 'archived' ? 'Archivados' : 'Activos'}</Badge>
+            <Badge variant="secondary" className="ml-auto">{sortedLeads.length}</Badge>
+            <Button variant="ghost" size="icon" className="ml-1" onClick={() => setShowChatSettings(true)} title="Configuración de chat">
+              <Gear className="w-4 h-4" />
+            </Button>
+          </div>
           <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Buscar chat..." className="pl-9 bg-muted/50 border-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted">
             <button
-              onClick={() => { setUnreadFilter(false); setChannelFilter('all') }}
+              onClick={() => handleScopeChange('active')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
+                chatScope === 'active'
+                  ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+              )}
+            >
+              Activos
+            </button>
+            <button
+              onClick={() => handleScopeChange('archived')}
+              className={cn(
+                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
+                chatScope === 'archived'
+                  ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+              )}
+            >
+              Archivados
+            </button>
+            <button
+              onClick={() => { setUnreadFilter(false); setChannelFilter('all'); setSearchTerm(''); handleScopeChange('active') }}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
                 !unreadFilter && channelFilter === 'all'
@@ -573,7 +710,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
               Todos
             </button>
             <button
-              onClick={() => setUnreadFilter(!unreadFilter)}
+              onClick={() => { setUnreadFilter(!unreadFilter); handleScopeChange('active') }}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
                 unreadFilter
@@ -584,7 +721,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
               No leídos
             </button>
             <button
-              onClick={() => setChannelFilter(channelFilter === 'whatsapp' ? 'all' : 'whatsapp')}
+              onClick={() => { setChannelFilter(channelFilter === 'whatsapp' ? 'all' : 'whatsapp'); handleScopeChange('active') }}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1 border shrink-0",
                 channelFilter === 'whatsapp'
@@ -596,7 +733,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
               WhatsApp
             </button>
             <button
-              onClick={() => setChannelFilter(channelFilter === 'instagram' ? 'all' : 'instagram')}
+              onClick={() => { setChannelFilter(channelFilter === 'instagram' ? 'all' : 'instagram'); handleScopeChange('active') }}
               className={cn(
                 "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1 border shrink-0",
                 channelFilter === 'instagram'
@@ -627,7 +764,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
               </div>
               <p className="text-sm font-medium text-destructive">Error al cargar chats</p>
               <p className="text-xs text-muted-foreground max-w-xs">{loadError}</p>
-              <Button variant="outline" size="sm" onClick={() => loadLeads()}>
+              <Button variant="outline" size="sm" onClick={() => loadLeads({ scope: chatScope, forceRefresh: true })}>
                 Reintentar
               </Button>
             </div>
@@ -677,7 +814,11 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
                     </button>
                   )
                 })}
-                {sortedLeads.length === 0 && (<div className="p-8 text-center text-muted-foreground">No hay chats encontrados</div>)}
+                {sortedLeads.length === 0 && (
+                  <div className="p-8 text-center text-muted-foreground">
+                    {chatScope === 'archived' ? 'No hay chats archivados' : 'No hay chats encontrados'}
+                  </div>
+                )}
                 {isFetchingMore && (<div className="p-4 text-center text-muted-foreground">Cargando más...</div>)}
               </div>
             </div>
@@ -708,6 +849,11 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
                         </>
                       )}
                     </div>
+                    {selectedLead.archived && (
+                      <Badge variant="outline" className="mt-1 w-fit text-amber-600 border-amber-500/60 bg-amber-500/5">
+                        Archivado
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground shrink-0 pl-2">
@@ -749,7 +895,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
                     //Logica enviar audios, fotos etc
 
                     let contentType: string | null = null;
-                    let contentIcon: JSX.Element | null = null;
+                    let contentIcon: any = null;
                     if (mediaUrl) {
                       const lowerUrl = mediaUrl.toLowerCase();
                       const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
@@ -848,7 +994,7 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
                             {safeFormat(msg.created_at, 'HH:mm')}
                             {isTeam && (
                               (msg.metadata as any)?.error ? (
-                                <WarningCircle className="w-3 h-3 text-red-500" weight="fill" title="Error al enviar (Ver logs o reconectar WhatsApp)" />
+                                <WarningCircle className="w-3 h-3 text-red-500" weight="fill" />
                               ) : (
                                 msg.read ? <Check className="w-3 h-3 text-blue-500" weight="bold" /> : <Check className="w-3 h-3" />
                               )
@@ -965,6 +1111,29 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
                         <ArrowSquareOut className="w-4 h-4 mr-2" />
                         Ver en Leads
                       </Button>
+                      <Button
+                        variant={selectedLead.archived ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => handleArchiveToggle(selectedLead, !selectedLead.archived)}
+                        disabled={archivingLeadId === selectedLead.id}
+                      >
+                        {archivingLeadId === selectedLead.id ? (
+                          <Spinner className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Archive className="w-4 h-4 mr-2" weight={selectedLead.archived ? 'fill' : 'regular'} />
+                        )}
+                        {selectedLead.archived ? 'Desarchivar' : 'Archivar'}
+                      </Button>
+                      {canDeleteLead && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteLead(selectedLead)}
+                        >
+                          <Trash className="w-4 h-4 mr-2" />
+                          Eliminar
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -1025,8 +1194,11 @@ export function ChatsView({ companyId, onNavigateToPipeline }: ChatsViewProps) {
           onUpdate={handleLeadUpdate}
           teamMembers={[]}
           companyId={companyId}
+          canDeleteLead={canDeleteLead}
+          onDeleteLead={() => handleDeleteLead(selectedLead)}
         />
       )}
+      <ChatSettingsDialog open={showChatSettings} onClose={() => setShowChatSettings(false)} empresaId={companyId} />
     </div>
   )
 }

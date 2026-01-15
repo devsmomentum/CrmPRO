@@ -779,6 +779,29 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     }
   }
 
+  const handleDeleteMultipleLeads = async (ids: string[]) => {
+    // Optimistic delete or parallel delete
+    await Promise.all(ids.map(id => deleteLead(id)))
+
+    setLeads((current) => {
+      const leadsToDelete = current.filter(l => ids.includes(l.id))
+      
+      if (leadsToDelete.length > 0) {
+        setStageCounts(prev => {
+          const next = { ...prev }
+          leadsToDelete.forEach(l => {
+            next[l.stage] = Math.max(0, (next[l.stage] || 0) - 1)
+          })
+          return next
+        })
+      }
+      return current.filter(l => !ids.includes(l.id))
+    })
+    
+    // Si el seleccionado fue eliminado, cerrarlo
+    setSelectedLead((current) => current && ids.includes(current.id) ? null : current)
+  }
+
   const handleDeleteStage = async (stageId: string) => {
     if (!isAdminOrOwner) {
       toast.error('No tienes permisos para eliminar etapas')
@@ -958,6 +981,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             <LeadSearchDialog
               leads={leads}
               onSelectLead={(lead) => setSelectedLead(lead)}
+              canDelete={isAdminOrOwner}
+              onDeleteLeads={handleDeleteMultipleLeads}
             />
             {/* Eliminado el botón global "Cargar más (todos)" */}
 
@@ -1390,6 +1415,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           canEdit={canEditLeads}
           currentUser={user}
           companyId={companyId}
+          canDeleteLead={isAdminOrOwner}
+          onDeleteLead={handleDeleteLead}
         />
       )}
 

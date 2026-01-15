@@ -495,7 +495,12 @@ function App() {
         </div>
         {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
         {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} user={user} />}
-        {currentView === 'chats' && <ChatsView companyId={currentCompanyId} onNavigateToPipeline={(leadId) => {
+        {currentView === 'chats' && <ChatsView companyId={currentCompanyId} canDeleteLead={(function(){
+          const currentCompany = companies.find(c => c.id === currentCompanyId)
+          const isOwner = currentCompany?.ownerId === user.id
+          const isAdmin = (currentCompany?.role || '').toLowerCase() === 'admin'
+          return !!(isOwner || isAdmin)
+        })()} onNavigateToPipeline={(leadId) => {
           sessionStorage.setItem('openLeadId', leadId)
           setCurrentView('pipeline')
         }} />}
