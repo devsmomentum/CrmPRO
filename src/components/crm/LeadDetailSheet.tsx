@@ -10,6 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 // Eliminamos dependencias de KV para evitar 401 y enfocarnos en chat realtime
 import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import { getNotasByLead, createNota, deleteNota } from '@/supabase/services/notas'
+import { getLeadMeetings, createLeadMeeting, deleteLeadMeeting } from '@/supabase/services/reuniones'
 import {
   PaperPlaneRight,
   Tag as TagIcon,
@@ -31,7 +32,9 @@ import {
   Paperclip,
   Spinner,
   Microphone,
-  Stop
+  Stop,
+  Check,
+  WarningCircle
 } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -52,10 +55,11 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { AddBudgetDialog } from './AddBudgetDialog'
-import { AddMeetingDialog } from './AddMeetingDialog'
+import { AddMeetingDialog, AddMeetingFormData } from './AddMeetingDialog'
 import { EditBudgetDialog } from './EditBudgetDialog'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
+import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
 
 interface User {
   id: string
@@ -72,6 +76,9 @@ interface LeadDetailSheetProps {
   canEdit?: boolean
   currentUser?: User | null
   onMarkAsRead?: (leadId: string) => void
+  companyId?: string
+  canDeleteLead?: boolean
+  onDeleteLead?: (leadId: string) => void | Promise<void>
 }
 
 // Helper function to safely format dates
@@ -85,7 +92,7 @@ const formatSafeDate = (date: Date | string | null | undefined, formatStr: strin
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead, companyId, canDeleteLead = false, onDeleteLead }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
   // Estados locales para evitar errores de autenticación del KV.
@@ -94,6 +101,13 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
+
+  // Estados para PDFs de presupuestos
+  const [presupuestosPdf, setPresupuestosPdf] = useState<PresupuestoPdf[]>([])
+  const [pdfNombre, setPdfNombre] = useState('')
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false)
+  const pdfInputRef = useRef<HTMLInputElement | null>(null)
 
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
@@ -246,7 +260,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         content: m.content,
         timestamp: new Date(m.created_at),
         sender: m.sender as 'team' | 'lead',
-        read: m.read
+        read: m.read,
+        metadata: m.metadata
       }))
       setMessages(mapped)
       console.log('[Chat] mensajes iniciales cargados:', mapped.length)
@@ -286,7 +301,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         content: newMsg.content,
         timestamp: new Date(newMsg.created_at),
         sender: newMsg.sender as 'team' | 'lead',
-        read: newMsg.read
+        read: newMsg.read,
+        metadata: newMsg.metadata
       }
       console.log('[Chat] nuevo mensaje realtime:', mapped)
       setMessages(prev => {
@@ -300,6 +316,41 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       subscription.unsubscribe()
       console.log('[Chat] suscripción realtime cancelada')
     }
+  }, [lead.id, open])
+
+  useEffect(() => {
+    if (!lead.id) return
+    if (!open) {
+      setMeetings([])
+      return
+    }
+
+    let isMounted = true
+    getLeadMeetings(lead.id)
+      .then((data) => {
+        if (isMounted) {
+          setMeetings(data)
+        }
+      })
+      .catch((err) => {
+        console.error('[Meetings] Error cargando reuniones:', err)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [lead.id, open])
+
+  // Cargar PDFs de presupuestos
+  useEffect(() => {
+    if (!lead.id || !open) {
+      setPresupuestosPdf([])
+      return
+    }
+
+    getPresupuestosByLead(lead.id)
+      .then(setPresupuestosPdf)
+      .catch(err => console.error('[Presupuestos PDF] Error cargando:', err))
   }, [lead.id, open])
 
   // Auto-scroll al último mensaje cuando cambian los mensajes, se abre el chat o se cambia de canal
@@ -326,6 +377,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [newTagName, setNewTagName] = useState('')
   const [newTagColor, setNewTagColor] = useState('#3b82f6')
+  const [deletingMeetingId, setDeletingMeetingId] = useState<string | null>(null)
 
   const leadMessages = messages // Now we fetch specific messages for this lead
   const leadNotes = (notes || []).filter(n => n.leadId === lead.id)
@@ -490,7 +542,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     toast.success(t.messages.priorityUpdated)
   }
 
-  const updateField = (field: keyof Lead, value: string | number) => {
+  const updateField = async (field: keyof Lead, value: string | number) => {
     if (field === 'budget') {
       const numValue = typeof value === 'number' ? value : parseFloat(value)
       if (numValue < 0) {
@@ -503,8 +555,38 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       }
     }
 
+    // Actualizar optimísticamente en la UI
     onUpdate({ ...lead, [field]: value })
-    toast.success('Campo actualizado correctamente')
+
+    // Mapeo de campos frontend -> base de datos (snake_case)
+    const dbFieldMap: Record<string, string> = {
+      name: 'nombre_completo',
+      email: 'correo_electronico',
+      phone: 'telefono',
+      company: 'empresa',
+      budget: 'presupuesto',
+      priority: 'prioridad',
+      assignedTo: 'asignado_a',
+      pipeline_id: 'pipeline_id',
+      stage_id: 'etapa_id',
+      notes: 'notas',
+      source: 'fuente',
+      value: 'valor'
+      // Agrega más mapeos según sea necesario si difieren
+    }
+
+    const dbField = dbFieldMap[field as string] || field
+
+    // Persistir en la BD
+    try {
+      const { updateLead } = await import('@/supabase/services/leads')
+      await updateLead(lead.id, { [dbField]: value })
+      // toast.success('Campo guardado') // Opcional, ya mostramos success local
+    } catch (e) {
+      console.error('Error updating lead field:', e)
+      toast.error('Error guardando cambios del lead')
+      // Revertir optimismo si fuera necesario, pero por ahora lo dejamos
+    }
   }
 
   const handleAddBudget = (budget: Budget) => {
@@ -522,8 +604,45 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     }
   }
 
-  const handleAddMeeting = (meeting: Meeting) => {
-    setMeetings((current) => [...(current || []), meeting])
+  const handleAddMeeting = async (meeting: AddMeetingFormData) => {
+    if (!companyId) {
+      throw new Error('No hay empresa activa seleccionada')
+    }
+
+    try {
+      const created = await createLeadMeeting({
+        leadId: lead.id,
+        empresaId: companyId,
+        title: meeting.title,
+        date: meeting.date,
+        duration: meeting.duration,
+        participants: meeting.participants,
+        notes: meeting.notes,
+        createdBy: currentUser?.id || null
+      })
+
+      setMeetings((current) => {
+        const next = [...(current || []), created]
+        return next.sort((a, b) => a.date.getTime() - b.date.getTime())
+      })
+    } catch (error) {
+      console.error('[Meetings] Error creando reunión:', error)
+      throw error
+    }
+  }
+
+  const handleDeleteMeeting = async (meetingId: string) => {
+    setDeletingMeetingId(meetingId)
+    try {
+      await deleteLeadMeeting(meetingId)
+      setMeetings((current) => (current || []).filter(m => m.id !== meetingId))
+      toast.success('Reunión eliminada')
+    } catch (error) {
+      console.error('[Meetings] Error eliminando reunión:', error)
+      toast.error('No se pudo eliminar la reunión')
+    } finally {
+      setDeletingMeetingId(null)
+    }
   }
 
   const handleUpdateBudget = (updatedBudget: Budget) => {
@@ -533,7 +652,41 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     setEditingBudget(null)
   }
 
+  // Handlers para PDFs de presupuestos
+  const handleUploadPdf = async () => {
+    if (!pdfFile || !pdfNombre.trim()) {
+      toast.error('Selecciona un archivo PDF y escribe un nombre')
+      return
+    }
+    setIsUploadingPdf(true)
+    try {
+      const uploaded = await uploadPresupuestoPdf(lead.id, pdfFile, pdfNombre.trim())
+      setPresupuestosPdf(prev => [uploaded, ...prev])
+      setPdfFile(null)
+      setPdfNombre('')
+      if (pdfInputRef.current) pdfInputRef.current.value = ''
+      toast.success('PDF subido exitosamente')
+    } catch (err: any) {
+      console.error('[Presupuestos PDF] Error subiendo:', err)
+      toast.error(err.message || 'Error al subir el PDF')
+    } finally {
+      setIsUploadingPdf(false)
+    }
+  }
+
+  const handleDeletePdf = async (pdf: PresupuestoPdf) => {
+    try {
+      await deletePresupuestoPdf(pdf.id, pdf.url)
+      setPresupuestosPdf(prev => prev.filter(p => p.id !== pdf.id))
+      toast.success('PDF eliminado')
+    } catch (err) {
+      console.error('[Presupuestos PDF] Error eliminando:', err)
+      toast.error('Error al eliminar el PDF')
+    }
+  }
+
   const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   return (
     <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
@@ -596,6 +749,12 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   <SelectItem value="high">High Priority</SelectItem>
                 </SelectContent>
               </Select>
+              {canDeleteLead && (
+                <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)} className="mt-2 sm:mt-0">
+                  <Trash className="w-4 h-4 mr-2" />
+                  Eliminar Lead
+                </Button>
+              )}
             </div>
           </div>
 
@@ -670,6 +829,25 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </div>
         </SheetHeader>
 
+        {canDeleteLead && (
+          <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Eliminar lead</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta acción eliminará el lead y su conversación. No se puede deshacer.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={async () => { try { await onDeleteLead?.(lead.id) } finally { setConfirmDeleteOpen(false) } }}>
+                  Eliminar
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-4 sm:mx-6 mt-3 sm:mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/60 p-1">
             <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
@@ -717,11 +895,11 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.createdAt}</Label>
-                <p className="font-medium mt-1">{format(new Date(lead.createdAt), 'MMM d, yyyy')}</p>
+                <p className="font-medium mt-1">{formatSafeDate(lead.createdAt, 'MMM d, yyyy')}</p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">{t.lead.lastContact}</Label>
-                <p className="font-medium mt-1">{format(new Date(lead.lastContact), 'MMM d, yyyy')}</p>
+                <p className="font-medium mt-1">{lead.lastContact ? formatSafeDate(lead.lastContact, 'MMM d, yyyy') : 'No contactado'}</p>
               </div>
             </div>
 
@@ -1040,9 +1218,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                         }
                         return null;
                       })()}
-                      <p className="text-xs opacity-70 mt-1">
-                        {formatSafeDate(msg.timestamp, 'h:mm a')}
-                      </p>
+                      <div className="flex justify-between items-center mt-1 opacity-70">
+                        <span className="text-xs">{formatSafeDate(msg.timestamp, 'h:mm a')}</span>
+                        {msg.sender === 'team' && (
+                          (msg.metadata as any)?.error ? (
+                            <WarningCircle className="w-3.5 h-3.5 text-red-500 ml-1" weight="fill" title="Error enviando a WhatsApp (404 Client not found)" />
+                          ) : (
+                            msg.read ? <Check size={14} weight="bold" className="text-blue-500 ml-1" /> : <Check size={14} className="ml-1" />
+                          )
+                        )}
+                      </div>
                     </div>
                   ))}
                 <div ref={messagesEndRef} />
@@ -1148,49 +1333,149 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="budget" className="flex-1 p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">{t.budget.title}</h3>
+          <TabsContent value="budget" className="flex-1 p-6 overflow-y-auto">
+            <div className="space-y-6">
+              {/* Sección de PDFs de presupuestos */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">📄 Documentos de Presupuesto</h3>
+                </div>
+
+                {/* Formulario para subir PDF */}
                 {canEdit && (
-                  <Button size="sm" onClick={() => setShowBudgetDialog(true)}>
-                    <Plus size={16} className="mr-2" />
-                    {t.budget.newBudget}
-                  </Button>
+                  <div className="p-4 border border-dashed border-border rounded-lg bg-muted/30 space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Input
+                        value={pdfNombre}
+                        onChange={(e) => setPdfNombre(e.target.value)}
+                        placeholder="Nombre del presupuesto"
+                        className="flex-1"
+                      />
+                      <input
+                        ref={pdfInputRef}
+                        type="file"
+                        accept="*"
+                        onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => pdfInputRef.current?.click()}
+                        disabled={isUploadingPdf}
+                        className="gap-2"
+                      >
+                        <FilePdf size={16} />
+                        {pdfFile ? pdfFile.name.slice(0, 20) + (pdfFile.name.length > 20 ? '...' : '') : 'Seleccionar PDF'}
+                      </Button>
+                    </div>
+                    <Button
+                      onClick={handleUploadPdf}
+                      disabled={!pdfFile || !pdfNombre.trim() || isUploadingPdf}
+                      className="w-full"
+                    >
+                      {isUploadingPdf ? (
+                        <>
+                          <Spinner size={16} className="mr-2 animate-spin" />
+                          Subiendo...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={16} className="mr-2" />
+                          Subir PDF
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Lista de PDFs */}
+                {presupuestosPdf.length > 0 ? (
+                  <div className="space-y-2">
+                    {presupuestosPdf.map(pdf => (
+                      <div key={pdf.id} className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <FilePdf size={24} className="text-red-500 flex-shrink-0" weight="fill" />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{pdf.nombre}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatSafeDate(pdf.created_at, 'dd MMM yyyy, HH:mm')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(pdf.url, '_blank')}
+                          >
+                            <DownloadSimple size={16} className="mr-1" />
+                            Ver
+                          </Button>
+                          {canEdit && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeletePdf(pdf)}
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-muted-foreground py-4">
+                    No hay documentos de presupuesto
+                  </p>
                 )}
               </div>
 
-              {leadBudgets.map(budget => (
-                <div key={budget.id} className="p-4 border border-border rounded-lg">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-medium">{budget.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(budget.createdAt), 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge>{budget.status}</Badge>
-                      {canEdit && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setEditingBudget(budget)}
-                        >
-                          <PencilSimple size={16} />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right mt-4">
-                    <p className="text-2xl font-bold text-primary">${budget.total.toLocaleString()}</p>
-                  </div>
-                </div>
-              ))}
+              <Separator />
 
-              {leadBudgets.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">{t.budget.noBudgets}</p>
-              )}
+              {/* Sección antigua de presupuestos (marcada como no funcional) */}
+              <div className="space-y-4 opacity-60">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">{t.budget.title}</h3>
+                    <Badge variant="outline" className="text-amber-600 border-amber-300 text-xs">
+                      No funcional
+                    </Badge>
+                  </div>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" disabled onClick={() => setShowBudgetDialog(true)}>
+                      <Plus size={16} className="mr-2" />
+                      {t.budget.newBudget}
+                    </Button>
+                  )}
+                </div>
+
+                {leadBudgets.map(budget => (
+                  <div key={budget.id} className="p-4 border border-border rounded-lg">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 className="font-medium">{budget.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatSafeDate(budget.createdAt, 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge>{budget.status}</Badge>
+                      </div>
+                    </div>
+                    <div className="text-right mt-4">
+                      <p className="text-2xl font-bold text-primary">${budget.total.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+
+                {leadBudgets.length === 0 && (
+                  <p className="text-center text-muted-foreground py-4">
+                    {t.budget.noBudgets}
+                  </p>
+                )}
+              </div>
             </div>
           </TabsContent>
 
@@ -1206,22 +1491,59 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 )}
               </div>
 
-              {leadMeetings.map(meeting => (
-                <div key={meeting.id} className="p-4 border border-border rounded-lg">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-medium">{meeting.title}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {format(new Date(meeting.date), 'MMM d, yyyy h:mm a')} • {meeting.duration}min
-                      </p>
+              {leadMeetings.map(meeting => {
+                const participantNames = meeting.participants.map(participant => participant.name).filter(Boolean)
+                const participantDisplay = participantNames.length > 0 ? participantNames.join(', ') : 'Sin participantes'
+
+                return (
+                  <div key={meeting.id} className="p-4 border border-border rounded-lg">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 className="font-medium">{meeting.title}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatSafeDate(meeting.date, 'MMM d, yyyy h:mm a')} • {meeting.duration}min
+                        </p>
+                      </div>
+                      {canEdit && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              disabled={deletingMeetingId === meeting.id}
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Eliminar reunión</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta acción eliminará la reunión permanentemente.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteMeeting(meeting.id)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                disabled={deletingMeetingId === meeting.id}
+                              >
+                                {deletingMeetingId === meeting.id ? 'Eliminando…' : 'Eliminar'}
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
+                    <p className="text-sm mt-2">{meeting.notes}</p>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {t.meeting.participants}: {participantDisplay}
                     </div>
                   </div>
-                  <p className="text-sm mt-2">{meeting.notes}</p>
-                  <div className="mt-2 text-xs text-muted-foreground">
-                    {t.meeting.participants}: {meeting.participants.join(', ')}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
 
               {leadMeetings.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">{t.meeting.noMeetings}</p>
@@ -1264,7 +1586,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                     </div>
                     <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
                       <span>{note.createdBy}</span>
-                      <span>{format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                      <span>{formatSafeDate(note.createdAt, 'MMM d, yyyy h:mm a')}</span>
                     </div>
                   </div>
                 ))}
@@ -1289,6 +1611,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         open={showMeetingDialog}
         onClose={() => setShowMeetingDialog(false)}
         onAdd={handleAddMeeting}
+        teamMembers={teamMembers}
       />
 
       {editingBudget && (

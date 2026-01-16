@@ -211,13 +211,6 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
             <p className="text-center text-muted-foreground py-12">No hay pipelines configurados</p>
           )}
 
-          {isAdminOrOwner && (
-            <AddPipelineDialog
-              open={showPipelineDialog}
-              onOpenChange={setShowPipelineDialog}
-              onAdd={handleAddPipeline}
-            />
-          )}
         </TabsContent>
 
         <TabsContent value="roles" className="space-y-4 mt-6">

@@ -49,7 +49,9 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
     const t = useTranslation('es')
     const [invitations, setInvitations] = useState<Invitation[]>([])
     const [responseNotifications, setResponseNotifications] = useState<ResponseNotification[]>([])
+    const [leadAssignedNotifications, setLeadAssignedNotifications] = useState<ResponseNotification[]>([])
     const [loading, setLoading] = useState(true)
+    const [activeTab, setActiveTab] = useState<'leads' | 'team'>('leads')
 
     useEffect(() => {
         const loadData = async () => {
@@ -107,6 +109,19 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                     if (notifications) {
                         setResponseNotifications(notifications)
                     }
+
+                    // Cargar notificaciones de lead asignado
+                    const { data: leadNotis } = await supabase
+                        .from('notificaciones')
+                        .select('*')
+                        .eq('usuario_email', user.email)
+                        .eq('type', 'lead_assigned')
+                        .order('created_at', { ascending: false })
+                        .limit(10)
+
+                    if (leadNotis) {
+                        setLeadAssignedNotifications(leadNotis as any)
+                    }
                 }
             } catch (error) {
                 console.error('Error loading data:', error)
@@ -115,7 +130,94 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
             }
         }
         loadData()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeTab])
+
+    // Al entrar a la vista de Notificaciones, marcar como leídas
+    useEffect(() => {
+        markAsRead(true)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
+
+    useEffect(() => {
+        // Suscripción realtime a nuevas notificaciones
+        let channel: any = null
+
+        const subscribeRealtime = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (!user?.email) return
+
+                channel = supabase
+                    .channel(`notificaciones-${user.email}`)
+                    .on('postgres_changes', {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'notificaciones',
+                        filter: `usuario_email=eq.${user.email}`
+                    }, (payload: any) => {
+                        const notif = payload.new
+                        if (notif?.type === 'invitation_response') {
+                            setResponseNotifications(prev => [notif, ...prev])
+                        } else if (notif?.type === 'lead_assigned') {
+                            setLeadAssignedNotifications(prev => [notif, ...prev])
+                        }
+                    })
+
+                channel.subscribe()
+            } catch (e) {
+                console.warn('Realtime notifications subscribe failed', e)
+            }
+        }
+        
+        subscribeRealtime()
+
+        return () => {
+            if (channel) channel.unsubscribe()
+        }
+    }, [])
+
+    // Acción: Marcar como leídas
+    // forceAll = true -> Todo (botón)
+    // forceAll = false -> Solo tab activo (automático)
+    const markAsRead = async (forceAll: boolean = false) => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (!user?.email) return
+            
+            let query = supabase
+                .from('notificaciones')
+                .update({ read: true })
+                .eq('usuario_email', user.email)
+                .eq('read', false)
+
+            if (!forceAll) {
+                if (activeTab === 'leads') {
+                    query = query.in('type', ['lead_assigned'])
+                } else {
+                    query = query.in('type', ['invitation_response'])
+                }
+            } else {
+                query = query.in('type', ['lead_assigned', 'invitation_response'])
+            }
+            
+            await query
+            
+            // Actualizar estado local
+            if (forceAll || activeTab === 'leads') {
+                 setLeadAssignedNotifications(prev => prev.map(n => ({ ...n, read: true })))
+            }
+            if (forceAll || activeTab === 'team') {
+                 setResponseNotifications(prev => prev.map(n => ({ ...n, read: true })))
+            }
+
+            if (forceAll) {
+                toast.success('Todas las notificaciones marcadas como leídas')
+            }
+        } catch (e) {
+            console.error('Error marking notifications read', e)
+        }
+    }
 
     const handleAccept = async (id: string, token: string) => {
         try {
@@ -165,7 +267,100 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                     </div>
                 </div>
 
-                <div className="space-y-6">
+                {/* Mover Leads Asignados hacia arriba para mejor visibilidad */}
+                <div className="flex items-center justify-between">
+                    <div />
+                    <Button variant="outline" size="sm" onClick={() => markAsRead(true)}>
+                        Marcar todo como leído
+                    </Button>
+                </div>
+
+                {/* Controles de pestañas simples */}
+                <div className="flex items-center gap-2 mt-4">
+                    <Button variant={activeTab === 'leads' ? 'default' : 'outline'} size="sm" onClick={() => setActiveTab('leads')}>Leads Asignados</Button>
+                    <Button variant={activeTab === 'team' ? 'default' : 'outline'} size="sm" onClick={() => setActiveTab('team')}>Equipo</Button>
+                </div>
+
+                {/* Contenido de Leads */}
+                {activeTab === 'leads' && (
+                    <div className="space-y-6 mt-4">
+                        <h2 className="text-xl font-semibold flex items-center gap-2">
+                            Leads Asignados
+                            {leadAssignedNotifications.length > 0 && (
+                                <Badge variant="secondary" className="ml-2">
+                                    {leadAssignedNotifications.length}
+                                </Badge>
+                            )}
+                        </h2>
+
+                        {leadAssignedNotifications.length === 0 ? (
+                            <Card className="bg-muted/30 border-dashed">
+                                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                                    <div className="p-4 bg-muted rounded-full mb-4">
+                                        <Bell size={32} className="text-muted-foreground" />
+                                    </div>
+                                    <h3 className="text-lg font-medium">Sin asignaciones recientes</h3>
+                                    <p className="text-sm text-muted-foreground max-w-sm mt-2">
+                                        Cuando te asignen un lead, aparecerá aquí.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="grid gap-4">
+                                {leadAssignedNotifications.map((notification) => (
+                                    <Card
+                                        key={notification.id}
+                                        className="overflow-hidden transition-all hover:shadow-md border-l-4 border-l-primary bg-primary/5"
+                                    >
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
+                                            <div className="flex items-start gap-4">
+                                                <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
+                                                    <AvatarFallback className="bg-primary/10 text-primary font-bold">LD</AvatarFallback>
+                                                </Avatar>
+
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h3 className="font-semibold text-lg">
+                                                            {notification.title || 'Te asignaron un lead'}
+                                                        </h3>
+                                                        <Badge variant="secondary" className="text-xs font-normal">Asignación</Badge>
+                                                    </div>
+
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {notification.message}
+                                                    </p>
+
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-sm text-muted-foreground mt-2">
+                                                        <div className="flex items-center gap-1">
+                                                            <Buildings size={14} />
+                                                            <span className="font-medium text-foreground">
+                                                                {(notification as any).data?.empresa_nombre || 'Empresa'}
+                                                            </span>
+                                                        </div>
+                                                        <span className="hidden sm:inline">•</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <User size={14} />
+                                                            <span>{(notification as any).data?.assigned_by_nombre || (notification as any).data?.assigned_by_email || 'Propietario'}</span>
+                                                        </div>
+                                                        <span className="hidden sm:inline">•</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock size={14} />
+                                                            <span>{format(new Date(notification.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Contenido de Equipo */}
+                {activeTab === 'team' && (
+                <div className="space-y-6 mt-4">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         Invitaciones de Equipo
                         {pendingInvitations.length > 0 && (
@@ -244,9 +439,10 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                         </div>
                     )}
                 </div>
+                )}
 
                 {/* Respuestas a tus Invitaciones */}
-                {responseNotifications.length > 0 && (
+                {activeTab === 'team' && responseNotifications.length > 0 && (
                     <div className="space-y-6 mt-12">
                         <h2 className="text-xl font-semibold flex items-center gap-2">
                             Respuestas a tus Invitaciones
@@ -338,6 +534,8 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                         </div>
                     </div>
                 )}
+
+                {/* Leads Asignados (duplicado eliminado, ahora se muestran arriba) */}
             </div>
         </div>
     )

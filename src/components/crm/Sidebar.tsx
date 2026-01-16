@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Notification } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useTranslation } from '@/lib/i18n'
@@ -31,12 +30,12 @@ interface SidebarProps {
 
 export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [], notificationCount = 0 }: SidebarProps) {
   const t = useTranslation('es')
-  const [notifications] = usePersistentState<Notification[]>('notifications', [])
+  // Eliminamos contador local de KV; usaremos el prop notificationCount proveniente de BD
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   const [showCompanySelector, setShowCompanySelector] = useState(false)
   // const [companies] = usePersistentState<Company[]>('companies', [])
 
-  const unreadCount = (notifications || []).filter(n => !n.read).length + notificationCount
+  const unreadCount = notificationCount || 0
 
   const menuItems = [
     { id: 'dashboard', icon: House, label: t.nav.dashboard },

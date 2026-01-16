@@ -196,10 +196,8 @@ export function subscribeToAllMessages(callback: (msg: Message) => void) {
       (payload) => {
         try {
           const msg = payload.new as Message
-          // Solo notificar si es mensaje del lead (no del equipo)
-          if (msg.sender === 'lead') {
-            callback(msg)
-          }
+          // Notificar todos los nuevos mensajes (lead y team)
+          callback(msg)
         } catch (e) {
           console.error('[Realtime] error procesando payload de mensajes:', e, payload)
         }

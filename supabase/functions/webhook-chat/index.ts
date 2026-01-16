@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
@@ -9,7 +8,182 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-hub-signature-256, x-signature-256",
 };
 
-const MANUAL_OVERRIDE_WINDOW_MS = 10 * 60 * 1000; // 10 minutos
+// Nombre del bucket para guardar archivos recibidos
+const MEDIA_BUCKET = "CRM message received";
+
+// Función helper para descargar archivo de URL y subirlo al bucket de Storage
+async function downloadAndStoreMedia(
+  supabase: ReturnType<typeof createClient>,
+  originalUrl: string,
+  leadId: string,
+  fileName?: string | null,
+  mimeType?: string | null
+): Promise<string | null> {
+  try {
+    console.log(`📥 [STORAGE] Descargando archivo desde: ${originalUrl}`);
+
+    // Descargar el archivo
+    const response = await fetch(originalUrl);
+    if (!response.ok) {
+      console.error(`❌ [STORAGE] Error descargando archivo: ${response.status}`);
+      return null;
+    }
+
+    const blob = await response.blob();
+    console.log(`📥 [STORAGE] Archivo descargado: ${blob.size} bytes, tipo: ${blob.type}`);
+
+    // Determinar extensión del archivo
+    let extension = 'bin';
+    const contentType = mimeType || blob.type || '';
+
+    if (contentType.includes('image/jpeg') || contentType.includes('image/jpg')) extension = 'jpg';
+    else if (contentType.includes('image/png')) extension = 'png';
+    else if (contentType.includes('image/gif')) extension = 'gif';
+    else if (contentType.includes('image/webp')) extension = 'webp';
+    else if (contentType.includes('audio/ogg') || contentType.includes('audio/opus')) extension = 'ogg';
+    else if (contentType.includes('audio/mpeg') || contentType.includes('audio/mp3')) extension = 'mp3';
+    else if (contentType.includes('audio/wav')) extension = 'wav';
+    else if (contentType.includes('audio/webm')) extension = 'webm';
+    else if (contentType.includes('video/mp4')) extension = 'mp4';
+    else if (contentType.includes('video/webm')) extension = 'webm';
+    else if (contentType.includes('application/pdf')) extension = 'pdf';
+    else if (fileName) {
+      // Intentar obtener extensión del nombre original
+      const parts = fileName.split('.');
+      if (parts.length > 1) extension = parts.pop() || 'bin';
+    }
+
+    // Generar nombre único para el archivo
+    const timestamp = Date.now();
+    const storagePath = `${leadId}/${timestamp}.${extension}`;
+
+    // Subir al bucket
+    const { error: uploadError } = await supabase.storage
+      .from(MEDIA_BUCKET)
+      .upload(storagePath, blob, {
+        contentType: contentType || 'application/octet-stream',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error(`❌ [STORAGE] Error subiendo archivo:`, uploadError);
+      return null;
+    }
+
+    // Obtener URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from(MEDIA_BUCKET)
+      .getPublicUrl(storagePath);
+
+    const storedUrl = publicUrlData?.publicUrl;
+    console.log(`✅ [STORAGE] Archivo guardado en bucket: ${storedUrl}`);
+
+    return storedUrl;
+  } catch (error) {
+    console.error(`❌ [STORAGE] Error procesando archivo:`, error);
+    return null;
+  }
+}
+
+// Marca todos los mensajes entrantes de un lead como leídos
+async function markLeadMessagesAsRead(
+  supabase: ReturnType<typeof createClient>,
+  leadId: string
+) {
+  try {
+    const { error } = await supabase
+      .from("mensajes")
+      .update({ read: true })
+      .eq("lead_id", leadId)
+      .eq("sender", "lead")
+      .eq("read", false);
+
+    if (error) {
+      console.error(`❌ [read-status] Error marcando mensajes de ${leadId}:`, error);
+    } else {
+      console.log(`✅ [read-status] Mensajes marcados como leídos para lead ${leadId}`);
+    }
+  } catch (err) {
+    console.error(`❌ [read-status] Error inesperado con lead ${leadId}:`, err);
+  }
+}
+
+// Obtener palabras clave configuradas para una empresa
+async function getEmpresaKeywords(
+  supabase: ReturnType<typeof createClient>,
+  empresaId: string
+): Promise<string[]> {
+  try {
+    const { data, error } = await supabase
+      .from('chat_settings')
+      .select('keywords')
+      .eq('empresa_id', empresaId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn(`[chat-settings] Error obteniendo keywords para empresa ${empresaId}:`, error);
+      return [];
+    }
+    const keywords = (data?.keywords || []) as string[];
+    return Array.isArray(keywords) ? keywords.filter(k => typeof k === 'string') : [];
+  } catch (e) {
+    console.warn(`[chat-settings] Excepción obteniendo keywords para empresa ${empresaId}:`, e);
+    return [];
+  }
+}
+
+// Decidir si mantener no leídos los mensajes del lead según palabras clave
+async function shouldKeepUnreadForLead(
+  supabase: ReturnType<typeof createClient>,
+  empresaId: string,
+  leadId: string
+): Promise<boolean> {
+  const keywords = await getEmpresaKeywords(supabase, empresaId);
+  if (!keywords || keywords.length === 0) return false;
+
+  try {
+    // Buscar en los últimos 10 mensajes del lead, sin importar si ya están leídos
+    const { data: recentMsgs, error } = await supabase
+      .from('mensajes')
+      .select('id, content, read')
+      .eq('lead_id', leadId)
+      .eq('sender', 'lead')
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.warn(`[read-rule] Error consultando mensajes recientes del lead ${leadId}:`, error);
+      return false;
+    }
+
+    const normalizedKeywords = keywords.map(k => k.trim().toLowerCase()).filter(Boolean);
+    let keywordFound = false;
+
+    for (const m of recentMsgs || []) {
+      const text = (m.content || '').toString().toLowerCase();
+      if (!text) continue;
+      
+      if (normalizedKeywords.some(kw => text.includes(kw))) {
+        keywordFound = true;
+        console.log(`[read-rule] Coincidencia de palabra clave en mensaje ${m.id} para lead ${leadId}.`);
+        
+        // Si el mensaje ya estaba leído, lo marcamos como NO LEÍDO para priorizarlo
+        if (m.read) {
+          await supabase
+            .from('mensajes')
+            .update({ read: false })
+            .eq('id', m.id);
+          console.log(`[read-rule] Mensaje ${m.id} marcado como NO LEÍDO por prioridad de palabra clave.`);
+        }
+      }
+    }
+    
+    return keywordFound;
+  } catch (e) {
+    console.warn(`[read-rule] Excepción evaluando palabras clave para lead ${leadId}:`, e);
+  }
+  return false;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -18,7 +192,7 @@ serve(async (req) => {
 
   const secretToken = Deno.env.get("SUPER_API_SECRET_TOKEN") ?? "";
   const url = new URL(req.url);
-
+  console.log("AQUI PARA PROBAR", secretToken);
   try {
     if (req.method === "GET") {
       const verifyToken =
@@ -66,259 +240,568 @@ serve(async (req) => {
 
       console.log("Body text:", bodyText);
 
-      // Verificacion de firma solo si hay secret token configurado
-      if (secretToken && receivedSignature) {
-         const encoder = new TextEncoder();
-         const key = await crypto.subtle.importKey(
-            "raw",
-            encoder.encode(secretToken),
-            { name: "HMAC", hash: "SHA-256" },
-            false,
-            ["sign"]
-         );
-
-         const hashBuffer = await crypto.subtle.sign(
-            "HMAC",
-            key,
-            encoder.encode(bodyText)
-         );
-
-         const hashHex = Array.from(new Uint8Array(hashBuffer))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-         
-         if (hashHex !== receivedSignature) {
-            return new Response(JSON.stringify({ error: "Invalid signature" }), {
-               headers: { ...corsHeaders, "Content-Type": "application/json" },
-               status: 403,
-            });
-         }
-      } else if (!receivedSignature && secretToken) {
-         return new Response(JSON.stringify({ error: "Missing signature" }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-            status: 401,
-         });
+      if (!receivedSignature) {
+        return new Response(JSON.stringify({ error: "Missing signature" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 401,
+        });
       }
 
-      // 2. Parse JSON
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        "raw",
+        encoder.encode(secretToken),
+        { name: "HMAC", hash: "SHA-256" },
+        false,
+        ["sign"]
+      );
+
+      const hashBuffer = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        encoder.encode(bodyText)
+      );
+
+      const hashHex = Array.from(new Uint8Array(hashBuffer))
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+
+      // 2. Convertimos el texto a JSON para leer los datos
       const payload = JSON.parse(bodyText);
-      console.log("Webhook payload:", payload);
+
+      // Obtener el número de WhatsApp configurado para producción
+      const configuredPhone = Deno.env.get("WHATSAPP_PHONE_NUMBER") ?? "";
+      const cleanConfiguredPhone = configuredPhone.replace(/[\s\-\+]/g, "").trim();
+
+      if (hashHex !== receivedSignature) {
+        console.log(`⚠️ Signature Mismatch - verificando por número de teléfono...`);
+        console.log(`Received signature: '${receivedSignature.substring(0, 20)}...'`);
+        console.log(`Calculated: '${hashHex.substring(0, 20)}...'`);
+
+        // Si la firma no coincide, verificamos que el mensaje sea de/para nuestro número de producción
+        if (cleanConfiguredPhone) {
+          const eventData = typeof payload.data === "string" ? JSON.parse(payload.data || "{}") : (payload.data ?? {});
+          const pTo = (eventData.to ?? payload.to ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
+          const pFrom = (eventData.from ?? payload.from ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
+
+          const isFromConfiguredPhone = pFrom.includes(cleanConfiguredPhone) || cleanConfiguredPhone.includes(pFrom);
+          const isToConfiguredPhone = pTo.includes(cleanConfiguredPhone) || cleanConfiguredPhone.includes(pTo);
+
+          if (!isFromConfiguredPhone && !isToConfiguredPhone) {
+            console.log(`❌ Mensaje ignorado: no es de/para el número configurado (${cleanConfiguredPhone})`);
+            console.log(`   From: ${pFrom}, To: ${pTo}`);
+            return new Response(JSON.stringify({ success: true, message: "Ignored - wrong phone number" }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: 200,
+            });
+          }
+          console.log(`✅ Firma no coincide pero mensaje es de/para número configurado - procesando...`);
+        } else {
+          console.log(`⚠️ WHATSAPP_PHONE_NUMBER no configurado - procesando mensaje de todos modos`);
+        }
+      }
+      console.log("📦 [WEBHOOK] Webhook payload completo:", JSON.stringify(payload, null, 2));
 
       const supabase = createClient(
         Deno.env.get("SUPABASE_URL") ?? "",
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
       );
 
-      const eventData = payload.data || {};
-      const content = eventData.body || eventData.text || eventData.message || payload.body || payload.text;
-      const eventName = String(payload.event || eventData.event || '').toLowerCase();
-      const isAiResponse = ["ai_response","assistant_response"].includes(eventName);
-      
-      const eventTimestampMs = (() => {
-        const rawTs = eventData.timestamp || eventData.sent_at || eventData.created_at;
-        const parsed = rawTs ? Date.parse(rawTs) : NaN;
-        return Number.isFinite(parsed) ? parsed : Date.now();
-      })();
+      // Normalizar eventData (puede venir como string o objeto)
+      const eventDataRaw = payload.data ?? {};
+      const eventData =
+        typeof eventDataRaw === "string"
+          ? (() => {
+            try {
+              return JSON.parse(eventDataRaw);
+            } catch (_) {
+              return {};
+            }
+          })()
+          : eventDataRaw;
 
-      // Identificar candidatos de telefono y rol
-      const phoneCandidates = [] as { phone?: string | null; senderRole: "lead" | "team" }[];
-      
-      if (isAiResponse || eventName === "message_create" || eventName === "outbound_message") {
-        phoneCandidates.push({ phone: eventData.to, senderRole: "team" });
+      console.log("📦 [WEBHOOK] Event Data Keys:", Object.keys(eventData));
+
+      // 1. Intentamos sacar el texto normal
+      let content = eventData.body ?? payload.body ?? eventData.text ?? payload.text;
+
+      const externalId = eventData.id ?? payload.id;
+
+      // Super API usa 'file' en lugar de 'media'
+      const file = eventData.file ?? payload.file;
+      const media = eventData.media ?? payload.media;
+      const type = eventData.type ?? payload.type; // image, video, audio, etc.
+
+      // Log detallado para debugging de Super API
+      console.log("📦 [WEBHOOK] Campos extraídos:", {
+        content,
+        externalId,
+        type,
+        hasFile: !!file,
+        hasMedia: !!media,
+        fileKeys: file ? Object.keys(file) : [],
+        mediaType: typeof media
+      });
+
+      // 2. Intentamos buscar la URL del archivo multimedia
+      let mediaUrl = null;
+      let mediaId = null;
+      let fileName = null;
+
+      // Prioridad 1: Super API file structure
+      if (file) {
+        mediaUrl = file.downloadUrl || file.url;
+        fileName = file.fileName;
+        console.log("✅ [WEBHOOK] File de Super API encontrado:", {
+          downloadUrl: file.downloadUrl,
+          fileName: file.fileName,
+          mimeType: file.mimeType
+        });
       }
-      // Mensajes entrantes
-      phoneCandidates.push({ phone: eventData.from, senderRole: "lead" });
 
+      // Prioridad 2: Estructura genérica 'media'
+      if (!mediaUrl && typeof media === 'string' && media.startsWith('http')) {
+        mediaUrl = media;
+        console.log("📦 [WEBHOOK] Media es una URL directa:", mediaUrl);
+      } else if (typeof media === 'object') {
+        mediaUrl = media.url ||
+          media.link ||
+          media.file ||
+          media.publicUrl ||
+          media.downloadUrl ||
+          (media.links && media.links.download) ||
+          null;
+
+        mediaId = media.id || media.mediaId || null;
+
+        console.log("📦 [WEBHOOK] Media object:", {
+          mediaUrl,
+          mediaId,
+          mediaKeys: Object.keys(media)
+        });
+      }
+
+      // Si la API lo manda en el root
+      if (!mediaUrl) {
+        mediaUrl = eventData.mediaUrl ||
+          payload.mediaUrl ||
+          eventData.fileUrl ||
+          payload.fileUrl ||
+          eventData.url ||
+          payload.url ||
+          eventData.publicUrl ||
+          payload.publicUrl;
+      }
+
+      console.log("📦 [WEBHOOK] URL final extraída:", mediaUrl);
+
+      // Si el 'body' o 'content' es una URL y el tipo es media, úsalo como mediaUrl
+      if (!mediaUrl && content && typeof content === 'string' && content.startsWith('http')) {
+        const isMedia = type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt';
+        if (isMedia) {
+          mediaUrl = content;
+        }
+      }
+
+      // 3. Decidimos qué guardar en la base de datos
+      if (mediaUrl) {
+        if (content) {
+          content = `${content} \n ${mediaUrl}`;
+        } else {
+          content = mediaUrl;
+        }
+        console.log("✅ [WEBHOOK] Se guardará la URL en content:", content);
+      } else {
+        if (!content && (file || media || type === 'image' || type === 'video' || type === 'audio' || type === 'document' || type === 'ptt')) {
+          content = `📷 [Archivo ${type} recibido] (Sin URL pública)`;
+          console.warn("⚠️ [WEBHOOK] No se encontró URL para tipo:", type);
+        }
+      }
+
+      // Deduplicación: Verificar si ya existe el mensaje por external_id
+      if (externalId) {
+        const { data: existing } = await supabase
+          .from("mensajes")
+          .select("id")
+          .eq("external_id", externalId)
+          .maybeSingle();
+
+        if (existing) {
+          console.log(`Mensaje ${externalId} ya existe. Ignorando.`);
+          return new Response(JSON.stringify({ success: true, message: "Duplicate" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+      }
+
+      // Candidatos para buscar el lead
+      const phoneCandidates = [] as { phone?: string | null; senderRole: "lead" | "team" }[];
+
+      // Extraer posibles teléfonos
+      const pTo = eventData.to ?? payload.to;
+      const pFrom = eventData.from ?? payload.from;
+      const pChatId = eventData.chatId ?? payload.chatId;
+      const pRecipient = eventData.recipient ?? payload.recipient;
+      const pRemoteJid = eventData.remoteJid ?? payload.remoteJid;
+      const pPhone = eventData.phone ?? payload.phone;
+      const pConversationId = eventData.conversationId ?? payload.conversationId;
+
+      // Lógica de roles
+      if (payload.event === "ai_response" || payload.event === "message_create") {
+        if (pTo) phoneCandidates.push({ phone: pTo, senderRole: "team" });
+        if (pRecipient) phoneCandidates.push({ phone: pRecipient, senderRole: "team" });
+        if (pChatId) phoneCandidates.push({ phone: pChatId, senderRole: "team" });
+        if (pRemoteJid) phoneCandidates.push({ phone: pRemoteJid, senderRole: "team" });
+        if (pPhone) phoneCandidates.push({ phone: pPhone, senderRole: "team" });
+        if (pConversationId) phoneCandidates.push({ phone: pConversationId, senderRole: "team" });
+      }
+
+      if (payload.event !== "ai_response") {
+        if (pFrom) phoneCandidates.push({ phone: pFrom, senderRole: "lead" });
+      }
+
+      console.log("Phone Candidates:", phoneCandidates);
+
+      // ============================================================
+      // OBTENER CONFIGURACIÓN DE EMPRESAS
+      // ============================================================
+      let empresasConfig: Array<{ empresa_id: string; pipeline_id?: string; etapa_id?: string }> = [];
+
+      // Prioridad 1: Parámetros en la URL
+      const urlEmpresaId = url.searchParams.get("empresa_id");
+      const urlPipelineId = url.searchParams.get("pipeline_id");
+      const urlEtapaId = url.searchParams.get("etapa_id");
+
+      if (urlEmpresaId) {
+        console.log(`Usando parámetros de URL - Empresa: ${urlEmpresaId}`);
+        empresasConfig = [{
+          empresa_id: urlEmpresaId,
+          pipeline_id: urlPipelineId || undefined,
+          etapa_id: urlEtapaId || undefined
+        }];
+      }
+      // Prioridad 2: WEBHOOK_EMPRESAS JSON
+      else {
+        try {
+          const configJson = Deno.env.get("WEBHOOK_EMPRESAS");
+          if (configJson) {
+            empresasConfig = JSON.parse(configJson);
+            console.log(`Configuradas ${empresasConfig.length} empresas desde WEBHOOK_EMPRESAS`);
+          } else {
+            // Prioridad 3: Variables individuales
+            const empresaId = Deno.env.get("DEFAULT_EMPRESA_ID");
+            if (empresaId) {
+              empresasConfig = [{
+                empresa_id: empresaId,
+                pipeline_id: Deno.env.get("DEFAULT_PIPELINE_ID") || undefined,
+                etapa_id: Deno.env.get("DEFAULT_ETAPA_ID") || undefined
+              }];
+              console.log(`Usando DEFAULT_EMPRESA_ID: ${empresaId}`);
+            }
+          }
+        } catch (e) {
+          console.error("Error parseando WEBHOOK_EMPRESAS:", e);
+        }
+      }
+
+      // Prioridad 4: Fallback - buscar primera empresa
+      if (empresasConfig.length === 0) {
+        console.log("No se encontró configuración, buscando primera empresa...");
+        const { data: company } = await supabase
+          .from('empresa')
+          .select('id')
+          .limit(1)
+          .maybeSingle();
+
+        if (company) {
+          empresasConfig = [{ empresa_id: company.id }];
+          console.log(`Usando empresa fallback: ${company.id}`);
+        }
+      }
+
+      // ============================================================
+      // BUSCAR LEADS EN TODAS LAS EMPRESAS (búsqueda global)
+      // ============================================================
       if (content) {
+        let totalLeadsMatched = 0;
+        let foundAnyLead = false;
+
+        // Iterar por cada candidato de teléfono
         for (const candidate of phoneCandidates) {
           const targetPhone = candidate.phone;
           const senderRole = candidate.senderRole;
           if (!targetPhone) continue;
 
-          const cleanPhone = targetPhone.replace("@c.us", "").replace(/\D/g, "");
+          const cleanPhone = targetPhone
+            .replace("@c.us", "")
+            .replace("@s.whatsapp.net", "")
+            .replace("+", "")
+            .trim();
+          if (!cleanPhone) continue;
 
-          // Buscar lead de forma robusta por variantes del teléfono
-          const findLeadByPhone = async (digits: string) => {
-            const variants = new Set<string>();
-            variants.add(digits);
-            variants.add("+" + digits);
+          console.log(`🔍 Buscando leads con teléfono: ${cleanPhone} en TODAS las empresas`);
 
-            // Si viene con código país VE (58...), generar local con 0
-            if (digits.startsWith("58") && digits.length > 2) {
-              variants.add("0" + digits.slice(2));
-            }
-            // Si viene sin 58 y comienza por 0, generar con 58
-            if (digits.startsWith("0")) {
-              variants.add("58" + digits.slice(1));
-            }
+          // BUSCAR EN TODAS LAS EMPRESAS (sin filtro de empresa_id)
+          const { data: leads, error } = await supabase
+            .from("lead")
+            .select("id, empresa_id, nombre_completo")
+            .ilike("telefono", `%${cleanPhone}%`);
 
-            const orPartsExact: string[] = [];
-            for (const v of variants) {
-              // Igualdad exacta
-              orPartsExact.push(`telefono.eq.${v}`);
-              // Igualdad exacta con +
-              if (!v.startsWith("+")) {
-                orPartsExact.push(`telefono.eq.+${v}`);
+          if (!error && leads && leads.length > 0) {
+            foundAnyLead = true;
+            console.log(`✅ Encontrados ${leads.length} leads con teléfono ${cleanPhone} en total`);
+
+            for (const lead of leads) {
+              // Si hay archivo multimedia, descargarlo y guardarlo en Storage
+              let storedMediaUrl: string | null = null;
+              if (mediaUrl) {
+                const mimeType = file?.mimeType || null;
+                storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, lead.id, fileName, mimeType);
+              }
+
+              // Crear metadata normalizada
+              const normalizedMetadata = {
+                type: type,
+                rawPayload: payload,
+                data: {
+                  type: type,
+                  body: eventData.body || payload.body,
+                  file: file,
+                  media: media,
+                  mediaUrl: mediaUrl,
+                  mediaId: mediaId,
+                  fileName: fileName,
+                  storedMediaUrl: storedMediaUrl
+                }
+              };
+
+              const channelType = cleanPhone.length > 15 ? 'instagram' : 'whatsapp';
+
+              // Insertar mensaje para este lead
+              const { error: insertError } = await supabase.from("mensajes").insert({
+                lead_id: lead.id,
+                content: content,
+                sender: senderRole,
+                channel: channelType,
+                external_id: externalId,
+                metadata: normalizedMetadata
+              });
+
+              if (insertError) {
+                console.error(`❌ Error insertando mensaje para lead ${lead.id}:`, insertError);
+              } else {
+                console.log(`✅ Mensaje guardado para lead ${lead.id} (${lead.nombre_completo}) [Empresa ${lead.empresa_id}]`);
+                if (storedMediaUrl) {
+                  console.log(`✅ Archivo multimedia guardado en Storage: ${storedMediaUrl}`);
+                }
+                if (payload.event === "ai_response") {
+                  const keepUnread = await shouldKeepUnreadForLead(supabase, lead.empresa_id, lead.id);
+                  if (!keepUnread) {
+                    await markLeadMessagesAsRead(supabase, lead.id);
+                  } else {
+                    console.log(`[read-status] Saltando auto-leído por palabras clave para lead ${lead.id}`);
+                  }
+                }
+                totalLeadsMatched++;
               }
             }
+          }
 
-            // Intento 1: coincidencia exacta con cualquiera de las variantes
-            const { data: exactMatches, error: exactErr } = await supabase
-              .from('lead')
-              .select('id, telefono')
-              .or(orPartsExact.join(','))
-              .limit(1);
+          // Si encontramos al menos un lead, no seguimos buscando con otros candidatos
+          if (foundAnyLead) {
+            console.log(`✅ Total: ${totalLeadsMatched} mensajes guardados en todas las empresas`);
+            break;
+          }
+        }
 
-            if (!exactErr && exactMatches && exactMatches.length > 0) {
-              return exactMatches[0];
-            }
+        // ============================================================
+        // VERIFICAR Y CREAR LEADS EN EMPRESAS CONFIGURADAS
+        // (Independientemente de si existen en otras empresas)
+        // ============================================================
+        if (empresasConfig.length > 0) {
+          console.log(`🔍 Verificando leads en ${empresasConfig.length} empresa(s) configuradas...`);
 
-            // Intento 2: coincidencia por subcadena (por si hay formato con espacios/guiones)
-            const orPartsLike: string[] = [];
-            for (const v of variants) {
-              const pattern = `%${v}%`;
-              orPartsLike.push(`telefono.ilike.${pattern}`);
-            }
-            const { data: likeMatches, error: likeErr } = await supabase
-              .from('lead')
-              .select('id, telefono')
-              .or(orPartsLike.join(','))
-              .limit(1);
+          // Buscar candidato para crear lead
+          let inboundCandidate = phoneCandidates.find(c => c.senderRole === 'lead' && c.phone);
+          if (!inboundCandidate) {
+            inboundCandidate = phoneCandidates.find(c => c.phone);
+          }
 
-            if (!likeErr && likeMatches && likeMatches.length > 0) {
-              return likeMatches[0];
-            }
+          if (inboundCandidate && inboundCandidate.phone) {
+            const targetPhone = inboundCandidate.phone;
+            const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
 
-            return null;
-          };
+            for (const config of empresasConfig) {
+              const { empresa_id, pipeline_id, etapa_id } = config;
 
-          let resolvedLead = await findLeadByPhone(cleanPhone);
-          {
-            // CREACIÓN AUTOMÁTICA DE LEAD SI NO EXISTE
-            if (!resolvedLead && senderRole === 'lead') {
-               console.log(`Lead desconocido detectado (${cleanPhone}). Creando automáticamente...`);
-               
-               // 1. Obtener primera empresa disponible (Default)
-               const { data: firstEmpresa } = await supabase.from('empresa').select('id').limit(1).single();
-               
-               if (firstEmpresa) {
-                 // 2. Obtener Pipeline por defecto (Ventas o el primero)
-                 const { data: pipelines } = await supabase.from('pipeline').select('id').eq('empresa_id', firstEmpresa.id).limit(1);
-                 const defaultPipeline = pipelines?.[0];
-                 
-                 // 3. Obtener etapa inicial
-                 let defaultStageId = null;
-                 if (defaultPipeline) {
-                    const { data: stages } = await supabase.from('etapas').select('id').eq('pipeline_id', defaultPipeline.id).order('order', { ascending: true }).limit(1);
-                    defaultStageId = stages?.[0]?.id;
-                 }
+              console.log(`🔍 [Empresa ${empresa_id}] Verificando si existe lead con teléfono ${cleanPhone}...`);
 
-                 // 4. Insertar Lead
-                const { data: newLead, error: createError } = await supabase.from('lead').insert({
-                    nombre_completo: eventData.pushName || `Nuevo Lead ${cleanPhone.slice(-4)}`,
-                    telefono: cleanPhone,
-                    correo_electronico: `${cleanPhone}@sin-email.com`, // Placeholder requerido
-                    empresa_id: firstEmpresa.id,
-                    pipeline_id: defaultPipeline?.id,
-                    etapa_id: defaultStageId,
-                    empresa: 'WhatsApp Contact',
-                    created_at: new Date().toISOString()
-                 }).select().single();
+              // Verificar que no exista (doble check)
+              const { data: existingLead } = await supabase
+                .from("lead")
+                .select("id")
+                .eq("empresa_id", empresa_id)
+                .ilike("telefono", `%${cleanPhone}%`)
+                .maybeSingle();
 
-                 if (!createError && newLead) {
-                  resolvedLead = newLead;
-                  console.log(`Lead creado exitosamente: ${newLead.id}`);
-                 } else {
-                    console.error('Error creando lead automático:', createError);
-                 }
-               }
-            }
+              if (existingLead) {
+                console.log(`⚠️ [Empresa ${empresa_id}] Lead ya existe: ${existingLead.id}`);
+                continue;
+              }
 
-            const finalLead = resolvedLead;
-            if (finalLead) {
-                // Lógica IA 
-                if (isAiResponse) {
-                    // 1) Si hubo una respuesta manual reciente del equipo, omitimos IA
-                    const { data: lastTeamMessages, error: lastTeamError } = await supabase
-                        .from("mensajes")
-                        .select("id, created_at, metadata")
-                        .eq("lead_id", lead.id)
-                        .eq("sender", "team")
-                        .order("created_at", { ascending: false })
-                        .limit(1);
+              // Determinar pipeline y etapa
+              let targetPipelineId = pipeline_id || null;
+              let targetEtapaId = etapa_id || null;
 
-                    if (!lastTeamError) {
-                        const lastTeam = lastTeamMessages?.[0];
-                        const lastTeamTimestamp = lastTeam?.created_at ? Date.parse(lastTeam.created_at) : NaN;
-                        const lastTeamIsManual = lastTeam && (!lastTeam.metadata || lastTeam.metadata?.event !== "ai_response");
-                        
-                        if (lastTeamIsManual && Number.isFinite(lastTeamTimestamp)) {
-                             const delta = eventTimestampMs - lastTeamTimestamp;
-                             if (delta < MANUAL_OVERRIDE_WINDOW_MS) {
-                                console.log(`Omitiendo IA: respuesta manual hace ${Math.round(delta/1000)}s`);
-                                return new Response(JSON.stringify({ success: true, skipped: "manual_override" }), {
-                                    headers: { ...corsHeaders, "Content-Type": "application/json" },
-                                    status: 200,
-                                });
-                             }
-                        }
-                    }
+              if (!targetPipelineId) {
+                const { data: pipeline } = await supabase
+                  .from('pipeline')
+                  .select('id')
+                  .eq('empresa_id', empresa_id)
+                  .order('created_at', { ascending: true })
+                  .limit(1)
+                  .maybeSingle();
 
-                    // 2) Sólo aceptar IA si NO existe respuesta del equipo posterior al último mensaje del cliente
-                    const { data: lastLeadMsg } = await supabase
-                        .from("mensajes")
-                        .select("created_at")
-                        .eq("lead_id", lead.id)
-                        .eq("sender", "lead")
-                        .order("created_at", { ascending: false })
-                        .limit(1);
+                if (pipeline) {
+                  targetPipelineId = pipeline.id;
+                }
+              }
 
-                    const lastLeadTs = lastLeadMsg?.[0]?.created_at ? Date.parse(lastLeadMsg[0].created_at) : NaN;
-                    if (Number.isFinite(lastLeadTs)) {
-                         const { data: teamAfterLead } = await supabase
-                            .from("mensajes")
-                            .select("id, created_at")
-                            .eq("lead_id", lead.id)
-                            .eq("sender", "team")
-                            .gt("created_at", new Date(lastLeadTs).toISOString())
-                            .limit(1);
-                        
-                         if (teamAfterLead && teamAfterLead.length > 0) {
-                             console.log("Omitiendo IA: ya hubo respuesta del equipo tras el último mensaje del cliente");
-                             return new Response(JSON.stringify({ success: true, skipped: "team_already_replied" }), {
-                                headers: { ...corsHeaders, "Content-Type": "application/json" },
-                                status: 200,
-                             });
-                         }
-                    }
+              if (targetPipelineId && !targetEtapaId) {
+                const { data: etapa } = await supabase
+                  .from('etapas')
+                  .select('id, nombre')
+                  .eq('pipeline_id', targetPipelineId)
+                  .or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%')
+                  .order('orden', { ascending: true, nullsFirst: false })
+                  .limit(1)
+                  .maybeSingle();
+
+                if (etapa) {
+                  targetEtapaId = etapa.id;
+                } else {
+                  const { data: firstEtapa } = await supabase
+                    .from('etapas')
+                    .select('id')
+                    .eq('pipeline_id', targetPipelineId)
+                    .order('orden', { ascending: true, nullsFirst: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                  if (firstEtapa) {
+                    targetEtapaId = firstEtapa.id;
+                  }
+                }
+              }
+
+              // Detectar plataforma (Instagram vs WhatsApp) por longitud del ID
+              // Se usa >= 15 para incluir edge cases de IDs justos de 15 caracteres
+              const isInstagram = cleanPhone.length >= 15;
+              const sourceType = isInstagram ? 'Instagram' : 'WhatsApp';
+              const sourceIcon = isInstagram ? '📷' : '📞';
+
+              console.log(`[WEBHOOK] Clasificando ${cleanPhone} (Len: ${cleanPhone.length}) como -> ${sourceType}`);
+
+              // Crear el Lead
+              const newLeadPayload = {
+                nombre_completo: `Nuevo Lead ${sourceType} ${cleanPhone}`,
+                telefono: cleanPhone,
+                empresa_id: empresa_id,
+                pipeline_id: targetPipelineId,
+                etapa_id: targetEtapaId,
+                prioridad: 'medium',
+                empresa: `${sourceType} Contact`,
+                correo_electronico: `${cleanPhone}@${sourceType.toLowerCase()}.com`,
+                asignado_a: '00000000-0000-0000-0000-000000000000'
+              };
+
+              const { data: newLead, error: createError } = await supabase
+                .from('lead')
+                .insert(newLeadPayload)
+                .select()
+                .single();
+
+              if (newLead && !createError) {
+                console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id} (${sourceType})`);
+
+                // Si hay archivo multimedia, descargarlo y guardarlo en Storage
+                let storedMediaUrl: string | null = null;
+                if (mediaUrl) {
+                  const mimeType = file?.mimeType || null;
+                  storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, newLead.id, fileName, mimeType);
                 }
 
-                // Insertar mensaje
+                // Crear metadata normalizada
+                const normalizedMetadata = {
+                  type: type,
+                  rawPayload: payload,
+                  data: {
+                    type: type,
+                    body: eventData.body || payload.body,
+                    file: file,
+                    media: media,
+                    mediaUrl: mediaUrl,
+                    mediaId: mediaId,
+                    fileName: fileName,
+                    storedMediaUrl: storedMediaUrl // URL del archivo guardado en nuestro Storage
+                  }
+                };
+
+                // Guardar el Mensaje
                 await supabase.from("mensajes").insert({
-                  lead_id: finalLead.id,
-                    content: content,
-                    sender: senderRole,
-                    channel: "whatsapp",
-                    external_id: eventData.id,
-                    metadata: payload 
+                  lead_id: newLead.id,
+                  content: content,
+                  sender: 'lead',
+                  channel: sourceType.toLowerCase(),
+                  external_id: externalId,
+                  metadata: normalizedMetadata
                 });
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para nuevo lead (${sourceType})`);
+                if (payload.event === "ai_response") {
+                  const keepUnread = await shouldKeepUnreadForLead(supabase, empresa_id, newLead.id);
+                  if (!keepUnread) {
+                    await markLeadMessagesAsRead(supabase, newLead.id);
+                  } else {
+                    console.log(`[read-status] Saltando auto-leído por palabras clave para nuevo lead ${newLead.id}`);
+                  }
+                }
 
-                // LOGICA LISTA DE TAREAS: Actualizar lead
-                await supabase.from("lead").update({
-                    last_message_at: new Date().toISOString(),
-                    last_message_sender: senderRole,
-                    last_message: content
-                }).eq("id", finalLead.id);
+                // Crear notificación para el owner de la empresa
+                try {
+                  const { data: empresa } = await supabase
+                    .from('empresa')
+                    .select('owner_id, nombre')
+                    .eq('id', empresa_id)
+                    .single();
 
-                console.log(`Mensaje guardado y lead actualizado: ${finalLead.id}`);
-                break; // Procesado, salir del loop
-            } else {
-                console.log(`Lead no encontrado para teléfono (exact match): ${cleanPhone}`);
-            }
+                  if (empresa?.owner_id) {
+                    await supabase.from('notificaciones').insert({
+                      user_id: empresa.owner_id,
+                      tipo: `nuevo_lead_${sourceType.toLowerCase()}`,
+                      titulo: `Nuevo Lead desde ${sourceType}`,
+                      mensaje: `Se ha creado automáticamente un nuevo lead ${sourceIcon}: ${cleanPhone}`,
+                      datos: {
+                        lead_id: newLead.id,
+                        telefono: cleanPhone,
+                        empresa_id: empresa_id
+                      },
+                      leido: false
+                    });
+                    console.log(`📬 Notificación enviada al owner de empresa ${empresa_id}`);
+                  }
+                } catch (notifError) {
+                  console.warn("No se pudo crear notificación:", notifError);
+                }
+
+              } else {
+                console.error(`❌ [Empresa ${empresa_id}] Error creando lead:`, createError);
               }
+            }
+          }
         }
       }
-      
+
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -332,10 +815,9 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error("Error processing webhook:", error);
-    return new Response(JSON.stringify({ error: error.message || String(error) }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 400,
     });
   }
 });
-

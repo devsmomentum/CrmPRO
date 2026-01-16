@@ -158,7 +158,9 @@ CREATE TABLE lead (
   prioridad text,
   asignado_a uuid, -- referencia a usuario/persona si lo deseas
   empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
-  created_at timestamptz DEFAULT now()
+  created_at timestamptz DEFAULT now(),
+  archived boolean NOT NULL DEFAULT false,
+  archived_at timestamptz
 );
 
 -- Habilitar RLS
@@ -902,3 +904,18 @@ CREATE POLICY nota_lead_rw ON nota_lead
 
   
   alter table nota_lead ADD column if not exists creador_nombre text;
+
+
+  create table public.presupuesto_pdf (
+  id uuid not null default gen_random_uuid(),
+  lead_id uuid not null,
+  nombre text not null,
+  url text not null,
+  created_at timestamp with time zone null default now(),
+  creado_por uuid null,
+  constraint presupuesto_pdf_pkey primary key (id),
+  constraint presupuesto_pdf_creado_por_fkey foreign key (creado_por) references auth.users(id),
+  constraint presupuesto_pdf_lead_id_fkey foreign key (lead_id) references lead(id) on delete cascade
+) tablespace pg_default;
+
+create index idx_presupuesto_pdf_lead_id on public.presupuesto_pdf using btree (lead_id) tablespace pg_default;
