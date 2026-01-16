@@ -31,7 +31,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { deletePipeline, getPipelines } from '@/supabase/helpers/pipeline'
-import { createLead, deleteLead, getLeads, getLeadsPaged, updateLead } from '@/supabase/services/leads'
+import { createLead, deleteLead, getLeads, getLeadsPaged, updateLead, searchLeads } from '@/supabase/services/leads'
 import { getEquipos } from '@/supabase/services/equipos'
 import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
@@ -1046,12 +1046,49 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               onSelectLead={(lead) => setSelectedLead(lead)}
               canDelete={isAdminOrOwner}
               onDeleteLeads={handleDeleteMultipleLeads}
+              onSearch={async (term) => {
+                const currentPipelineObj = pipelines.find(p => p.type === activePipeline)
+                const currentPipelineId = currentPipelineObj?.id
+                try {
+                  const results = await searchLeads(companyId!, term, {
+                    pipelineId: currentPipelineId,
+                    archived: false,
+                    limit: 100,
+                    order: 'desc'
+                  })
+                  return (results || []).map((l: any) => ({
+                    id: l.id,
+                    name: l.nombre_completo,
+                    email: l.correo_electronico,
+                    phone: l.telefono,
+                    company: l.empresa,
+                    location: l.ubicacion,
+                    budget: l.presupuesto,
+                    stage: l.etapa_id,
+                    pipeline: l.pipeline_id || 'sales',
+                    priority: l.prioridad,
+                    assignedTo: l.asignado_a,
+                    tags: l.tags || [],
+                    createdAt: new Date(l.created_at),
+                    lastContact: new Date(l.created_at)
+                  }))
+                } catch (err) {
+                  console.error('[PipelineView] Error searching leads:', err)
+                  return []
+                }
+              }}
               onNavigateToLead={(lead) => {
                 // Cambiar al pipeline correcto
                 const leadPipeline = pipelines.find(p => p.id === lead.pipeline || p.type === lead.pipeline)
                 if (leadPipeline) {
                   setActivePipeline(leadPipeline.type)
                 }
+                // Insertar el lead temporalmente si no está en memoria para poder navegar
+                setLeads((current) => {
+                  const exists = (current || []).some(l => l.id === lead.id)
+                  if (exists) return current
+                  return [...(current || []), lead]
+                })
                 // Destacar el lead temporalmente
                 setHighlightedLeadId(lead.id)
 
@@ -1179,6 +1216,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             {(currentPipeline?.stages || []).map(stage => {
               const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
               const totalStageLeads = stageCounts[stage.id] ?? allPipelineLeads.filter(l => l.stage === stage.id).length
+              const remainingStageLeads = Math.max(0, totalStageLeads - stageLeads.length)
 
               return (
                 <div
@@ -1190,24 +1228,28 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                   <div className="flex items-center justify-between mb-3 sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
-                      <h3 className="font-semibold text-sm md:text-base truncate">{stage.name}</h3>
+                      <h3 className="font-semibold text-sm md:text-base truncate" title={stage.name}>{stage.name}</h3>
                       <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2 flex-nowrap">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleLoadMoreStage(stage.id)}
                         disabled={!stagePages[stage.id]?.hasMore}
-                        title="Cargar más leads de esta etapa"
+                        title={remainingStageLeads > 0 ? `Cargar más leads de esta etapa (quedan ${remainingStageLeads})` : 'No hay más leads que cargar'}
+                        className="whitespace-nowrap"
                       >
-                        Cargar +
+                        Cargar +{remainingStageLeads > 0 ? ` (${remainingStageLeads})` : ''}
                       </Button>
+                      <span className="text-[10px] text-muted-foreground ml-1 whitespace-nowrap leading-none inline-block align-middle">
+                        {remainingStageLeads > 0 ? `Quedan ${remainingStageLeads}` : 'No hay más leads que cargar'}
+                      </span>
                       {isAdminOrOwner && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
                           onClick={() => handleDeleteStage(stage.id)}
                           title="Eliminar etapa"
                         >
@@ -1231,7 +1273,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-7 w-7 p-0 text-muted-foreground"
+                              className="h-7 w-7 p-0 text-muted-foreground shrink-0"
                               type="button"
                               title={t.pipeline.addLead}
                             >

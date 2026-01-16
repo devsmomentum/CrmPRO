@@ -74,15 +74,46 @@ export async function getLeadsPaged({
   return { data, count }
 }
 
-export async function searchLeads(empresaId, searchTerm) {
+export async function searchLeads(empresaId, searchTerm, options = {}) {
   if (!searchTerm || !empresaId) return []
-  
-  const { data, error } = await supabase
+
+  const {
+    pipelineId,
+    stageId,
+    archived = false,
+    limit = 50,
+    order = 'desc',
+  } = options
+
+  let query = supabase
     .from('lead')
     .select('*')
     .eq('empresa_id', empresaId)
-    .or(`nombre_completo.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%,correo_electronico.ilike.%${searchTerm}%,empresa.ilike.%${searchTerm}%`)
-    .limit(50)
+
+  // Filtrar por archivados según opción
+  if (archived === true) {
+    query = query.eq('archived', true)
+  } else if (archived === false) {
+    query = query.eq('archived', false)
+  }
+
+  // Filtros opcionales por pipeline y etapa
+  if (pipelineId) {
+    query = query.eq('pipeline_id', pipelineId)
+  }
+  if (stageId) {
+    query = query.eq('etapa_id', stageId)
+  }
+
+  // Búsqueda por campos principales
+  query = query
+    .or(
+      `nombre_completo.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%,correo_electronico.ilike.%${searchTerm}%,empresa.ilike.%${searchTerm}%`
+    )
+    .order('created_at', { ascending: order === 'asc' })
+    .limit(limit)
+
+  const { data, error } = await query
 
   if (error) throw error
   return data
