@@ -27,6 +27,8 @@ import { Company } from '@/components/crm/CompanyManagement'
 import { JoinTeam } from '@/components/crm/JoinTeam'
 import { preloadChatsForCompany } from '@/lib/chatsCache'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { cn } from '@/lib/utils'
+import { Copy } from '@phosphor-icons/react'
 
 type View = 'dashboard' | 'pipeline' | 'chats' | 'analytics' | 'calendar' | 'team' | 'settings' | 'notifications'
 type AuthView = 'login' | 'register'
@@ -403,26 +405,32 @@ function App() {
 
           if (isGuest) {
             return (
-              <div className="bg-amber-100 border-b border-amber-200 px-4 py-2 flex flex-col md:flex-row items-start md:items-center justify-between text-amber-900 text-sm gap-2">
-                <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium whitespace-nowrap">Modo Invitado:</span>
-                    <span className="md:hidden text-xs">Empresa <strong>{currentCompany.name}</strong></span>
+              <div className="mx-4 mt-4 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-amber-200/50 flex items-center justify-center shrink-0">
+                    <span className="text-amber-700 text-xl">✨</span>
                   </div>
-                  <span className="hidden md:inline">Estás viendo la empresa <strong>{currentCompany.name}</strong>. Tienes acceso de lectura/escritura limitado según tu rol.</span>
-                  <span className="md:hidden text-xs text-amber-800/80 leading-tight">Acceso limitado según tu rol.</span>
+                  <div>
+                    <h4 className="text-amber-900 font-semibold text-sm flex items-center gap-2">
+                      Portal de Invitado
+                      <span className="px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 text-[10px] uppercase tracking-wider font-bold">Limitado</span>
+                    </h4>
+                    <p className="text-amber-800/80 text-xs md:text-sm leading-tight">
+                      Viendo <strong className="text-amber-900">{currentCompany.name}</strong> • Acceso controlado según tu rol.
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 w-full md:w-auto mt-1 md:mt-0">
+
+                <div className="flex items-center gap-2 w-full md:w-auto">
                   <Button
-                    variant="outline"
+                    variant="ghost"
                     size="sm"
-                    className="flex-1 md:flex-none h-8 md:h-7 bg-white border-red-300 hover:bg-red-50 text-red-900 text-xs px-2"
+                    className="flex-1 md:flex-none h-9 bg-white/60 hover:bg-red-50 text-red-700 border border-red-100 rounded-xl text-xs font-medium px-4 transition-all"
                     onClick={async () => {
                       if (confirm('¿Estás seguro de que quieres abandonar esta empresa? Perderás el acceso inmediatamente.')) {
                         try {
                           await leaveCompany(currentCompany.id, user.email, user.id)
                           toast.success('Has abandonado la empresa correctamente')
-
                           const myCompany = companies.find(c => c.ownerId === user.id)
                           if (myCompany) {
                             setCurrentCompanyId(myCompany.id)
@@ -439,16 +447,16 @@ function App() {
                     Abandonar
                   </Button>
                   <Button
-                    variant="outline"
+                    variant="default"
                     size="sm"
-                    className="flex-1 md:flex-none h-8 md:h-7 bg-white border-amber-300 hover:bg-amber-50 text-amber-900 text-xs px-2"
+                    className="flex-1 md:flex-none h-9 bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-200 rounded-xl text-xs font-medium px-4 border-none transition-all"
                     onClick={() => {
                       console.log('[GUEST_MODE] Saliendo del modo invitado...')
                       const myCompany = companies.find(c => c.ownerId === user.id)
                       if (myCompany) {
                         setCurrentCompanyId(myCompany.id)
                         setCurrentView('dashboard')
-                        toast.info('Has vuelto a tu empresa')
+                        toast.info('Has vuelto a tu empresa personal')
                       } else {
                         toast.error('No se encontró tu empresa personal')
                       }
@@ -463,39 +471,58 @@ function App() {
           return null
         })()}
 
-        <div className="border-b px-4 py-2 text-xs text-muted-foreground flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center overflow-hidden">
+        <div className="mt-auto border-t bg-muted/20 px-6 py-3 flex items-center gap-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-700">
+          <div className="flex items-center gap-4 group cursor-pointer">
+            <div className="w-10 h-10 rounded-full bg-background border-2 border-border shadow-sm flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-300">
               <img
                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
                 alt={user.businessName}
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="leading-none">
-              <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                {user.businessName}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-foreground tracking-tight">
+                  {user.businessName || 'Mi Perfil'}
+                </span>
                 {(() => {
                   const currentCompany = companies.find(c => c.id === currentCompanyId)
                   const role = currentCompany?.ownerId === user.id ? 'Owner' : (currentCompany?.role || 'Viewer')
-                  const displayRole = role === 'admin' ? 'Admin' : (role === 'owner' || role === 'Owner') ? 'Owner' : 'Viewer'
-                  const badgeColor = displayRole === 'Owner' ? 'border-primary text-primary' : displayRole === 'Admin' ? 'border-blue-500 text-blue-500' : 'border-muted-foreground text-muted-foreground'
+                  const displayRole = role === 'admin' ? 'Admin' : (role === 'owner' || role === 'Owner') ? 'Propietario' : 'Lector'
+                  const badgeColor = displayRole === 'Propietario' ? 'bg-primary/10 text-primary border-primary/20' : displayRole === 'Admin' ? 'bg-blue-500/10 text-blue-600 border-blue-500/20' : 'bg-muted text-muted-foreground border-border'
 
                   return (
-                    <Badge variant="outline" className={`text-[10px] h-4 px-1 py-0 ${badgeColor}`}>
+                    <Badge variant="outline" className={cn("text-[9px] font-black uppercase tracking-widest px-1.5 py-0 h-4 border shadow-none", badgeColor)}>
                       {displayRole}
                     </Badge>
                   )
                 })()}
               </div>
-              <div className="text-[11px] text-muted-foreground">{user.email}</div>
+              <span className="text-[11px] font-bold text-muted-foreground opacity-70">{user.email}</span>
             </div>
           </div>
-          <div className="ml-auto text-[11px] text-muted-foreground">ID: <span className="font-mono text-[11px] text-foreground">{user.id}</span></div>
+
+          <div className="ml-auto flex items-center gap-3">
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/50 leading-none">ID Personal</span>
+              <div
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-background border border-border/50 hover:bg-muted/50 hover:border-primary/20 transition-all cursor-copy group/id"
+                onClick={() => {
+                  navigator.clipboard.writeText(user.id)
+                  toast.success('ID copiado al portapapeles')
+                }}
+              >
+                <code className="text-[10px] font-black text-muted-foreground font-mono group-hover/id:text-primary transition-colors">
+                  {user.id.slice(0, 8)}...{user.id.slice(-4)}
+                </code>
+                <Copy size={12} className="text-muted-foreground/40 group-hover/id:text-primary transition-colors" weight="bold" />
+              </div>
+            </div>
+          </div>
         </div>
         {currentView === 'dashboard' && <Dashboard key={currentCompanyId} companyId={currentCompanyId} onShowNotifications={() => setShowNotifications(true)} />}
         {currentView === 'pipeline' && <PipelineView key={currentCompanyId} companyId={currentCompanyId} companies={companies} user={user} />}
-        {currentView === 'chats' && <ChatsView companyId={currentCompanyId} canDeleteLead={(function(){
+        {currentView === 'chats' && <ChatsView companyId={currentCompanyId} canDeleteLead={(function () {
           const currentCompany = companies.find(c => c.id === currentCompanyId)
           const isOwner = currentCompany?.ownerId === user.id
           const isAdmin = (currentCompany?.role || '').toLowerCase() === 'admin'

@@ -665,24 +665,42 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
   return (
     <div className="flex flex-1 min-h-0 bg-background rounded-tl-2xl border-t border-l shadow-sm overflow-hidden w-full">
       <div className={cn("flex flex-col border-r bg-muted/10 h-full w-full md:w-96 shrink-0 transition-all duration-300", selectedLeadId ? "hidden md:flex" : "flex")}>
-        <div className="p-4 space-y-4 bg-background border-b shrink-0">
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-lg">Chats</h2>
-            <Badge variant="outline">{chatScope === 'archived' ? 'Archivados' : 'Activos'}</Badge>
-            <Badge variant="secondary" className="ml-auto">{sortedLeads.length}</Badge>
-            <Button variant="ghost" size="icon" className="ml-1" onClick={() => setShowChatSettings(true)} title="Configuración de chat">
-              <Gear className="w-4 h-4" />
-            </Button>
+        <div className="p-6 space-y-4 bg-background border-b shrink-0 shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 bg-primary/10 rounded-lg">
+                <ChatCircleDots size={20} className="text-primary" weight="fill" />
+              </div>
+              <h2 className="font-bold text-xl tracking-tight">Chats</h2>
+            </div>
+            <div className="flex items-center gap-1">
+              <Badge variant="secondary" className="bg-muted text-muted-foreground font-bold px-2 rounded-md">
+                {sortedLeads.length}
+              </Badge>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-muted" onClick={() => setShowChatSettings(true)} title="Configuración">
+                <Gear className="w-4 h-4 text-muted-foreground" />
+              </Button>
+            </div>
           </div>
-          <div className="relative"><MagnifyingGlass className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Buscar chat..." className="pl-9 bg-muted/50 border-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted">
+
+          <div className="relative group">
+            <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <Input
+              placeholder="Buscar conversación..."
+              className="pl-9 h-10 bg-muted/40 border-none rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 transition-all"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
             <button
               onClick={() => handleScopeChange('active')}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
                 chatScope === 'active'
-                  ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
               )}
             >
               Activos
@@ -690,21 +708,22 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
             <button
               onClick={() => handleScopeChange('archived')}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
                 chatScope === 'archived'
-                  ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
               )}
             >
               Archivados
             </button>
+            <div className="w-px h-4 bg-border mx-1 shrink-0" />
             <button
               onClick={() => { setUnreadFilter(false); setChannelFilter('all'); setSearchTerm(''); handleScopeChange('active') }}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
                 !unreadFilter && channelFilter === 'all'
-                  ? "bg-zinc-900 text-white border-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-100"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-md shadow-black/10"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
               )}
             >
               Todos
@@ -712,10 +731,10 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
             <button
               onClick={() => { setUnreadFilter(!unreadFilter); handleScopeChange('active') }}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap border shrink-0",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
                 unreadFilter
-                  ? "bg-green-600 text-white border-green-600"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-500/20"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
               )}
             >
               No leídos
@@ -723,10 +742,10 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
             <button
               onClick={() => { setChannelFilter(channelFilter === 'whatsapp' ? 'all' : 'whatsapp'); handleScopeChange('active') }}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1 border shrink-0",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
                 channelFilter === 'whatsapp'
-                  ? "bg-[#25D366] text-white border-[#25D366]"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  ? "bg-[#25D366] text-white border-[#25D366] shadow-md shadow-[#25D366]/20"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
               )}
             >
               <WhatsappLogo weight="fill" className="h-3.5 w-3.5" />
@@ -735,10 +754,10 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
             <button
               onClick={() => { setChannelFilter(channelFilter === 'instagram' ? 'all' : 'instagram'); handleScopeChange('active') }}
               className={cn(
-                "px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1 border shrink-0",
+                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
                 channelFilter === 'instagram'
-                  ? "bg-[#E1306C] text-white border-[#E1306C]"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted"
+                  ? "bg-[#E1306C] text-white border-[#E1306C] shadow-md shadow-[#E1306C]/20"
+                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
               )}
             >
               <InstagramLogo weight="fill" className="h-3.5 w-3.5" />
@@ -777,35 +796,62 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                 {rowVirtualizer.getVirtualItems().map(vi => {
                   const lead = sortedLeads[vi.index]; if (!lead) return null
                   return (
-                    <button key={lead.id} onClick={() => setSelectedLeadId(lead.id)} className={cn("flex items-center gap-3 p-3 text-left transition-colors hover:bg-muted/50 border-b border-border/50 h-full w-full", selectedLeadId === lead.id && "bg-muted")} style={{ height: vi.size }}>
+                    <button
+                      key={lead.id}
+                      onClick={() => setSelectedLeadId(lead.id)}
+                      className={cn(
+                        "flex items-center gap-4 px-4 py-3 text-left transition-all duration-200 border-b border-border/40 h-full w-full group relative",
+                        selectedLeadId === lead.id
+                          ? "bg-primary/10"
+                          : "hover:bg-muted/50"
+                      )}
+                      style={{ height: vi.size }}
+                    >
+                      {selectedLeadId === lead.id && (
+                        <div className="absolute left-0 top-2 bottom-2 w-1 bg-primary rounded-r-full" />
+                      )}
+
                       <div className="relative shrink-0">
-                        <Avatar className="h-12 w-12">
+                        <Avatar className="h-12 w-12 border-2 border-background shadow-sm ring-1 ring-border/50 group-hover:scale-105 transition-transform duration-200">
                           <AvatarImage src={lead.avatar} />
-                          <AvatarFallback>{(lead.name || 'Unknown').substring(0, 2).toUpperCase()}</AvatarFallback>
+                          <AvatarFallback className="bg-muted text-muted-foreground font-bold">{(lead.name || 'Unknown').substring(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
-                        <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 border border-background">
+                        <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm border border-background">
                           {lastChannelByLead[lead.id] === 'instagram' ? (<InstagramLogo weight="fill" className="h-3.5 w-3.5 text-[#E1306C]" />) : (<WhatsappLogo weight="fill" className="h-3.5 w-3.5 text-[#25D366]" />)}
                         </div>
                       </div>
 
-                      <div className="flex-1 min-w-0 flex flex-col justify-center h-full py-1">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <span className="font-semibold truncate text-base leading-none text-foreground">{lead.name}</span>
-                          <span className={cn("text-xs whitespace-nowrap ml-2", unreadCounts[lead.id] > 0 ? "text-[#25D366] font-medium" : "text-muted-foreground")}>
+                      <div className="flex-1 min-w-0 flex flex-col justify-center h-full gap-0.5">
+                        <div className="flex justify-between items-baseline">
+                          <span className={cn(
+                            "truncate text-[15px] leading-none transition-colors",
+                            unreadCounts[lead.id] > 0 ? "font-bold text-foreground" : "font-semibold text-foreground/80 group-hover:text-foreground"
+                          )}>
+                            {lead.name}
+                          </span>
+                          <span className={cn(
+                            "text-[10px] uppercase tracking-tighter whitespace-nowrap ml-2 font-bold",
+                            unreadCounts[lead.id] > 0 ? "text-emerald-500" : "text-muted-foreground"
+                          )}>
                             {safeFormat(lead.lastMessageAt, 'HH:mm', { locale: es })}
                           </span>
                         </div>
 
                         <div className="flex justify-between items-center gap-2">
-                          <div className="flex items-center gap-1 min-w-0 overflow-hidden">
-                            {lead.lastMessageSender === 'team' && <Check className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
-                            <p className={cn("text-sm truncate leading-tight", lead.lastMessageSender === 'lead' && unreadCounts[lead.id] > 0 ? "font-semibold text-foreground" : "text-muted-foreground")}>
+                          <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+                            {lead.lastMessageSender === 'team' && <Check className="w-3.5 h-3.5 text-blue-500 shrink-0" weight="bold" />}
+                            <p className={cn(
+                              "text-sm truncate leading-tight transition-colors",
+                              lead.lastMessageSender === 'lead' && unreadCounts[lead.id] > 0
+                                ? "font-bold text-foreground/90"
+                                : "text-muted-foreground group-hover:text-muted-foreground/80"
+                            )}>
                               {lead.lastMessage || 'Sin mensaje reciente'}
                             </p>
                           </div>
 
                           {unreadCounts[lead.id] > 0 && (
-                            <span className="min-w-[1.25rem] h-5 flex items-center justify-center rounded-full bg-[#25D366] text-white text-[10px] font-bold px-1.5 shrink-0 animate-in zoom-in duration-200">
+                            <span className="min-w-[1.25rem] h-5 flex items-center justify-center rounded-full bg-emerald-500 text-white text-[10px] font-black px-1.5 shrink-0 shadow-lg shadow-emerald-500/20 animate-in zoom-in duration-300">
                               {unreadCounts[lead.id]}
                             </span>
                           )}
@@ -815,11 +861,11 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                   )
                 })}
                 {sortedLeads.length === 0 && (
-                  <div className="p-8 text-center text-muted-foreground">
+                  <div className="p-8 text-center text-muted-foreground hover:text-foreground transition-colors">
                     {chatScope === 'archived' ? 'No hay chats archivados' : 'No hay chats encontrados'}
                   </div>
                 )}
-                {isFetchingMore && (<div className="p-4 text-center text-muted-foreground">Cargando más...</div>)}
+                {isFetchingMore && (<div className="p-4 text-center text-muted-foreground flex items-center justify-center gap-2"><Spinner className="w-4 h-4 animate-spin" /> Cargando más...</div>)}
               </div>
             </div>
           )}
@@ -829,18 +875,31 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
         {selectedLead ? (
           <>
             <div className="flex-1 flex flex-col h-full min-w-0 relative transition-all duration-300">
-              <div className="h-16 px-4 border-b bg-background flex items-center justify-between shrink-0 cursor-pointer hover:bg-muted/30 transition-colors group" onClick={() => setShowContactInfo(!showContactInfo)}>
+              {/* Header de conversación */}
+              <div
+                className="h-16 px-4 border-b bg-background flex items-center justify-between shrink-0 cursor-pointer hover:bg-muted/30 transition-colors group"
+                onClick={() => setShowContactInfo(!showContactInfo)}
+              >
                 <div className="flex items-center gap-3 min-w-0 overflow-hidden">
-                  <Button variant="ghost" size="icon" className="md:hidden shrink-0 -ml-2 mr-1 h-10 w-10 text-muted-foreground hover:text-foreground" onClick={(e) => { e.stopPropagation(); setSelectedLeadId(null); }}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden shrink-0 -ml-2 mr-1 h-10 w-10 text-muted-foreground hover:text-foreground"
+                    onClick={(e) => { e.stopPropagation(); setSelectedLeadId(null); }}
+                  >
                     <ArrowLeft className="w-6 h-6" />
                   </Button>
-                  <Avatar className="cursor-default shrink-0">
+                  <Avatar className="h-10 w-10 shadow-sm border border-border/50 shrink-0">
                     <AvatarImage src={selectedLead.avatar} />
-                    <AvatarFallback>{(selectedLead.name || 'Unknown').substring(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarFallback className="bg-muted text-muted-foreground font-bold">
+                      {(selectedLead.name || 'Unknown').substring(0, 2).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col min-w-0">
-                    <h3 className="font-semibold truncate text-sm sm:text-base leading-tight">{selectedLead.name}</h3>
-                    <div className="flex items-center text-xs text-muted-foreground min-w-0">
+                    <h3 className="font-bold truncate text-sm sm:text-base leading-tight tracking-tight">
+                      {selectedLead.name}
+                    </h3>
+                    <div className="flex items-center text-[11px] font-medium text-muted-foreground min-w-0">
                       <span className="whitespace-nowrap flex-shrink-0">{selectedLead.phone}</span>
                       {selectedLead.company && (
                         <>
@@ -849,34 +908,41 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                         </>
                       )}
                     </div>
-                    {selectedLead.archived && (
-                      <Badge variant="outline" className="mt-1 w-fit text-amber-600 border-amber-500/60 bg-amber-500/5">
-                        Archivado
-                      </Badge>
-                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 text-muted-foreground shrink-0 pl-2">
-                  <MagnifyingGlass className="w-5 h-5 cursor-pointer hover:text-foreground" onClick={(e) => { e.stopPropagation(); /* TODO: Implement search */ }} />
-                  <div className="h-4 w-px bg-border hidden sm:block" />
-                  <button type="button" onClick={(e) => { e.stopPropagation(); setShowContactInfo(!showContactInfo); }} className={cn("p-2 rounded-full hover:bg-muted transition-colors", showContactInfo ? "bg-muted text-foreground" : "")}>
+
+                <div className="flex items-center gap-1.5 text-muted-foreground shrink-0">
+                  <button
+                    type="button"
+                    className="p-2 rounded-full hover:bg-muted transition-all active:scale-95"
+                    onClick={(e) => { e.stopPropagation(); /* TODO: Implement search */ }}
+                  >
+                    <MagnifyingGlass className="w-5 h-5" />
+                  </button>
+                  <div className="h-4 w-px bg-border/60 mx-1 hidden sm:block" />
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setShowContactInfo(!showContactInfo); }}
+                    className={cn(
+                      "p-2 rounded-full hover:bg-muted transition-all active:scale-95",
+                      showContactInfo ? "bg-primary/10 text-primary" : ""
+                    )}
+                  >
                     <Info className="w-5 h-5" weight={showContactInfo ? "fill" : "regular"} />
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-6" id="chat-scroll-area">
-                <div className="space-y-4 max-w-3xl mx-auto pb-4">
+
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 scrollbar-thin scrollbar-thumb-muted-foreground/10" id="chat-scroll-area">
+                <div className="space-y-6 max-w-3xl mx-auto pb-4">
                   {messages.map((msg, idx) => {
                     const isTeam = msg.sender === 'team'
+                    const msgDate = safeFormat(msg.created_at, 'yyyy-MM-dd')
+                    const prevMsgDate = idx > 0 ? safeFormat(messages[idx - 1].created_at, 'yyyy-MM-dd') : null
+                    const showDateLabel = msgDate !== prevMsgDate
 
                     const data = msg.metadata?.data || msg.metadata || {};
-                    let mediaUrl =
-                      data.mediaUrl ||
-                      data.media?.links?.download ||
-                      data.media?.url ||
-                      data.media?.publicUrl ||
-                      data.media?.downloadUrl ||
-                      (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
+                    let mediaUrl = data.mediaUrl || data.media?.links?.download || data.media?.url || data.media?.publicUrl || data.media?.downloadUrl || (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
 
                     if (!mediaUrl && msg.content) {
                       const urlRegex = /(https?:\/\/[^\s]+)/g;
@@ -887,128 +953,115 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                           const lower = url.toLowerCase();
                           return imageExtensions.some(ext => lower.includes(ext));
                         }) || matches[matches.length - 1];
-
                         if (foundUrl) mediaUrl = foundUrl;
                       }
                     }
 
-                    //Logica enviar audios, fotos etc
-
-                    let contentType: string | null = null;
-                    let contentIcon: any = null;
-                    if (mediaUrl) {
-                      const lowerUrl = mediaUrl.toLowerCase();
-                      const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
-                      const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
-                      const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
-                        (data.type === 'audio') ||
-                        (data.type === 'ptt');
-                      const isPdf = lowerUrl.includes('.pdf');
-
-                      if (isAudio) {
-                        contentType = data.type === 'ptt' ? 'Nota de voz' : 'Audio';
-                        contentIcon = <Microphone />;
-                      } else if (isImage) {
-                        contentType = 'Imagen';
-                        contentIcon = <FileIcon />; // Placeholder
-                      } else if (isVideo) {
-                        contentType = 'Video';
-                        contentIcon = <FileIcon />; // Placeholder
-                      } else if (isPdf) {
-                        contentType = 'PDF';
-                        contentIcon = <FilePdf />;
-                      } else {
-                        contentType = 'Archivo';
-                        contentIcon = <FileIcon />;
-                      }
-                    }
-
                     return (
-                      <div key={msg.id || idx} className={cn("flex w-full mb-2", isTeam ? "justify-end" : "justify-start")}>
-                        <div className={cn("max-w-[70%] px-4 py-2 rounded-lg shadow-sm text-sm relative", isTeam ? "bg-[#d9fdd3] text-gray-900 rounded-tr-none" : "bg-white text-gray-900 rounded-tl-none")}>
+                      <div key={msg.id || idx} className="contents">
+                        {showDateLabel && (
+                          <div className="flex justify-center my-8">
+                            <span className="px-4 py-1.5 bg-background/80 backdrop-blur-md border border-border/40 text-[10px] font-black text-muted-foreground rounded-full uppercase tracking-widest shadow-sm z-10">
+                              {safeFormat(msg.created_at, "EEEE, d 'de' MMMM", { locale: es })}
+                            </span>
+                          </div>
+                        )}
+                        <div className={cn("flex w-full group/msg", isTeam ? "justify-end" : "justify-start")}>
+                          <div className={cn(
+                            "max-w-[85%] sm:max-w-[70%] px-3.5 py-2.5 rounded-2xl shadow-sm text-[15px] relative animate-in fade-in slide-in-from-bottom-2 duration-300",
+                            isTeam
+                              ? "bg-primary text-primary-foreground rounded-tr-none shadow-primary/10"
+                              : "bg-white dark:bg-zinc-800 text-foreground rounded-tl-none border border-border/10 shadow-black/5"
+                          )}>
 
-                          {(() => {
-                            if (!msg.content) return null;
-                            if (msg.content.startsWith('http')) return null;
+                            {(() => {
+                              if (!msg.content) return null;
+                              if (msg.content.startsWith('http')) return null;
 
-                            if (mediaUrl) {
-                              const urlRegex = /https?:\/\/[^\s]+/gi;
-                              const cleanedContent = msg.content.replace(urlRegex, '').trim();
-                              if (cleanedContent && cleanedContent.length > 0) {
-                                return <p className="whitespace-pre-wrap leading-relaxed">{cleanedContent}</p>;
+                              if (mediaUrl) {
+                                const urlRegex = /https?:\/\/[^\s]+/gi;
+                                const cleanedContent = msg.content.replace(urlRegex, '').trim();
+                                if (cleanedContent && cleanedContent.length > 0) {
+                                  return <div className="whitespace-pre-wrap leading-relaxed mb-2 font-medium">{cleanedContent}</div>;
+                                }
+                                return null;
                               }
-                              return null;
-                            }
-                            return <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>;
-                          })()}
+                              return <div className="whitespace-pre-wrap leading-relaxed font-medium">{msg.content}</div>;
+                            })()}
 
-                          {(() => {
-                            if (!mediaUrl) return null;
-                            const lowerUrl = mediaUrl.toLowerCase();
-                            const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
-                            const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
-                            const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
-                              (data.type === 'audio') ||
-                              (data.type === 'ptt');
+                            {(() => {
+                              if (!mediaUrl) return null;
+                              const lowerUrl = mediaUrl.toLowerCase();
+                              const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
+                              const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
+                              const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) || (data.type === 'audio') || (data.type === 'ptt');
 
-                            if (isImage) {
-                              return (
-                                <div className="mt-2 rounded-md overflow-hidden">
-                                  <img src={mediaUrl} alt="Imagen adjunta" className="max-w-full h-auto object-cover max-h-60" loading="lazy" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                                </div>
-                              );
-                            } else if (isVideo) {
-                              return (
-                                <div className="mt-2 rounded-md overflow-hidden">
-                                  <video src={mediaUrl} controls className="max-w-full h-auto max-h-60" />
-                                </div>
-                              );
-                            } else if (isAudio) {
-                              return (
-                                <div className="mt-2 flex items-center gap-3 bg-muted/50 p-2 rounded-md border border-border max-w-full">
-                                  <div className="bg-green-500 p-2 rounded-full text-white shrink-0">
-                                    <Microphone size={16} weight="fill" />
+                              if (isImage) {
+                                return (
+                                  <div className="mt-1 rounded-xl overflow-hidden shadow-inner bg-black/5 ring-1 ring-black/5 dark:ring-white/5">
+                                    <img src={mediaUrl} alt="Imagen" className="max-w-full h-auto object-cover max-h-[500px] hover:scale-[1.01] transition-transform duration-500 cursor-zoom-in" loading="lazy" />
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <audio src={mediaUrl} controls className="w-full h-8 max-w-[200px]" style={{ maxHeight: '32px' }} />
+                                );
+                              } else if (isVideo) {
+                                return (
+                                  <div className="mt-1 rounded-xl overflow-hidden shadow-inner bg-black/5 ring-1 ring-black/5 dark:ring-white/5">
+                                    <video src={mediaUrl} controls className="max-w-full h-auto max-h-[500px]" />
                                   </div>
-                                </div>
-                              );
-                            } else {
-                              const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
-                              return (
-                                <div className="mt-2 flex items-center gap-3 bg-muted/50 p-2 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
-                                  <div className="bg-background p-2 rounded-md text-primary shadow-sm">
-                                    <FileIcon size={24} weight="duotone" />
+                                );
+                              } else if (isAudio) {
+                                return (
+                                  <div className={cn("mt-1 flex items-center gap-3 p-2 rounded-xl border max-w-full backdrop-blur-sm", isTeam ? "bg-white/10 border-white/10" : "bg-muted/30 border-border/30")}>
+                                    <div className={cn("p-2 rounded-full text-white shrink-0 shadow-sm", isTeam ? "bg-white/20" : "bg-primary")}>
+                                      <Microphone size={16} weight="fill" />
+                                    </div>
+                                    <div className="flex-1 min-w-[150px]">
+                                      <audio src={mediaUrl} controls className={cn("w-full h-8 opacity-90", isTeam ? "invert grayscale" : "")} />
+                                    </div>
                                   </div>
-                                  <div className="flex-1 min-w-0 overflow-hidden">
-                                    <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
-                                    <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1">Download</a>
+                                );
+                              } else {
+                                const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
+                                return (
+                                  <div className={cn("mt-1 flex items-center gap-3 p-3 rounded-xl border max-w-full transition-all cursor-pointer", isTeam ? "bg-white/10 border-white/10 hover:bg-white/20" : "bg-muted/30 border-border/30 hover:bg-muted")}>
+                                    <div className={cn("p-2.5 rounded-lg shadow-sm shrink-0", isTeam ? "bg-white/10 text-white" : "bg-background text-primary")}>
+                                      <FileIcon size={24} weight="duotone" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-bold truncate" title={fileName}>{fileName}</p>
+                                      <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={cn("text-[10px] font-black uppercase tracking-tight hover:underline flex items-center gap-1 mt-1 opacity-80", isTeam ? "text-white" : "text-primary")}>Descargar</a>
+                                    </div>
                                   </div>
-                                </div>
-                              )
-                            }
-                          })()}
+                                )
+                              }
+                            })()}
 
-                          <div className={cn("text-[10px] mt-1 flex items-center gap-1 opacity-70", isTeam ? "justify-end" : "justify-start")}>
-                            {safeFormat(msg.created_at, 'HH:mm')}
-                            {isTeam && (
-                              (msg.metadata as any)?.error ? (
-                                <WarningCircle className="w-3 h-3 text-red-500" weight="fill" />
-                              ) : (
-                                msg.read ? <Check className="w-3 h-3 text-blue-500" weight="bold" /> : <Check className="w-3 h-3" />
-                              )
-                            )}
+                            <div className={cn("text-[10px] mt-1.5 flex items-center gap-1.5 font-bold tracking-tight uppercase opacity-60", isTeam ? "justify-end text-white/90" : "justify-start text-muted-foreground/90")}>
+                              {safeFormat(msg.created_at, 'HH:mm')}
+                              {isTeam && (
+                                (msg.metadata as any)?.error ? (
+                                  <WarningCircle className="w-3.5 h-3.5 text-red-300" weight="fill" />
+                                ) : (
+                                  msg.read
+                                    ? <Check className="w-3.5 h-3.5 text-white" weight="bold" />
+                                    : <div className="flex items-center -space-x-1.5">
+                                      <Check className="w-3 h-3" />
+                                      <Check className="w-3 h-3" />
+                                    </div>
+                                )
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
                     )
                   })}
+
                   <div ref={messagesEndRef} id="scroll-bottom" />
                 </div>
               </div>
+              {/* Barra de entrada de mensaje */}
               <div className="p-4 bg-background border-t shrink-0">
-                <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex gap-2 items-end relative">
+                <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-3 items-end relative">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1041,23 +1094,44 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                     type="button"
                     size="icon"
                     variant="ghost"
-                    className="rounded-full text-muted-foreground"
+                    className="rounded-full h-11 w-11 text-muted-foreground hover:bg-muted active:scale-90 transition-all"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isUploading}
                   >
                     {isUploading ? <Spinner size={20} className="animate-spin" /> : <Paperclip className="w-5 h-5" />}
                   </Button>
-                  <div className="flex-1 bg-muted rounded-2xl px-4 py-2 flex items-center gap-2">
-                    <input className="flex-1 bg-transparent border-none focus:outline-none text-sm min-h-[24px]" placeholder={isRecording ? "Grabando nota de voz..." : "Escribe un mensaje"} value={messageInput} onChange={(e) => setMessageInput(e.target.value)} disabled={isUploading || isRecording} />
+                  <div className="flex-1 bg-muted/50 border border-border/50 rounded-2xl px-4 py-2.5 flex items-center gap-2 focus-within:ring-2 focus-within:ring-primary/20 transition-all duration-300">
+                    <input
+                      className="flex-1 bg-transparent border-none focus:outline-none text-sm min-h-[24px] font-medium"
+                      placeholder={isRecording ? "Grabando... pulsa detener para enviar" : "Escribe un mensaje aquí..."}
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      disabled={isUploading || isRecording}
+                    />
+                    {!isRecording && !messageInput.trim() && (
+                      <button type="button" className="text-muted-foreground hover:text-primary transition-colors p-1">
+                        <Smiley className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
                   {messageInput.trim() ? (
-                    <Button type="submit" size="icon" className="rounded-full bg-[#00a884] hover:bg-[#008f6f]" disabled={isUploading || isRecording}><PaperPlaneRight className="w-5 h-5 text-white" weight="fill" /></Button>
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="rounded-full h-11 w-11 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-90 transition-all"
+                      disabled={isUploading || isRecording}
+                    >
+                      <PaperPlaneRight className="w-5 h-5 text-white" weight="fill" />
+                    </Button>
                   ) : (
                     <Button
                       type="button"
                       size="icon"
                       variant={isRecording ? "destructive" : "ghost"}
-                      className={cn("rounded-full text-muted-foreground", isRecording && "bg-destructive text-white hover:bg-destructive/90")}
+                      className={cn(
+                        "rounded-full h-11 w-11 transition-all active:scale-90",
+                        isRecording ? "bg-destructive text-white hover:bg-destructive/90 animate-pulse" : "text-muted-foreground hover:bg-muted"
+                      )}
                       disabled={isUploading}
                       onClick={() => isRecording ? stopRecording() : startRecording()}
                     >
@@ -1065,9 +1139,9 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                     </Button>
                   )}
                   {isRecording && (
-                    <div className="absolute right-0 -top-12 bg-background border p-2 rounded-md shadow flex items-center gap-2 text-destructive animate-pulse z-10">
-                      <div className="w-2 h-2 rounded-full bg-destructive" />
-                      <span className="text-sm font-mono">
+                    <div className="absolute left-1/2 -top-16 -translate-x-1/2 bg-background border border-border/50 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-3 text-destructive animate-in slide-in-from-bottom-2 z-50">
+                      <div className="w-3 h-3 rounded-full bg-destructive animate-ping" />
+                      <span className="text-sm font-black font-mono tracking-widest">
                         {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
                       </span>
                     </div>
@@ -1076,131 +1150,192 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
               </div>
             </div>
 
+            {/* Panel de información de contacto (Derecha) */}
             {showContactInfo && (
               <div className={cn(
-                "h-full flex flex-col shrink-0 animate-in slide-in-from-right duration-300 shadow-xl overflow-hidden z-20 bg-background",
-                "absolute inset-0 w-full md:static md:w-[350px] md:border-l border-border"
+                "h-full flex flex-col shrink-0 animate-in slide-in-from-right duration-300 shadow-2xl overflow-hidden z-20 bg-background border-l border-border",
+                "absolute inset-0 w-full md:static md:w-[360px]"
               )}>
-                <div className="h-16 px-4 bg-muted/30 border-b flex items-center gap-3 shrink-0">
-                  <button onClick={() => setShowContactInfo(false)} className="hover:bg-muted p-2 rounded-full transition-colors text-muted-foreground hover:text-foreground">
-                    <ArrowLeft className="w-5 h-5 md:hidden" />
-                    <X className="w-5 h-5 hidden md:block" />
+                <div className="h-16 px-4 bg-muted/10 border-b flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setShowContactInfo(false)} className="hover:bg-muted p-2 rounded-full transition-colors text-muted-foreground hover:text-foreground md:hidden">
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <span className="font-bold text-xs uppercase tracking-[0.2em] text-muted-foreground/80">Información</span>
+                  </div>
+                  <button onClick={() => setShowContactInfo(false)} className="hover:bg-muted p-2 rounded-full transition-colors text-muted-foreground hover:text-foreground hidden md:block">
+                    <X className="w-5 h-5" />
                   </button>
-                  <span className="font-medium">Info. del contacto</span>
                 </div>
-                <div className="flex-1 overflow-y-auto snippet-scroll-hide">
-                  <div className="flex flex-col items-center p-8 pb-6 bg-background border-b border-border/50">
-                    <Avatar className="w-32 h-32 mb-4 shadow-sm ring-1 ring-border">
-                      <AvatarImage src={selectedLead.avatar} />
-                      <AvatarFallback className="text-4xl">{(selectedLead.name || '?').substring(0, 2).toUpperCase()}</AvatarFallback>
-                    </Avatar>
-                    <h2 className="text-xl font-medium text-center text-foreground">{selectedLead.name}</h2>
-                    <p className="text-muted-foreground mt-1 text-sm">{selectedLead.phone}</p>
-                    <div className="flex flex-wrap justify-center gap-2 mt-4">
-                      <Button variant="outline" size="sm" className="text-xs px-2 md:px-3" onClick={() => setDetailSheetOpen(true)}>
-                        <PencilSimple className="w-4 h-4 md:mr-1.5" />
-                        <span className="hidden md:inline">Editar Info</span>
+
+                <div className="flex-1 overflow-y-auto scrollbar-none">
+                  <div className="flex flex-col items-center p-8 pb-8 bg-gradient-to-b from-muted/20 to-transparent border-b border-border/40">
+                    <div className="relative mb-6 group">
+                      <Avatar className="w-32 h-32 shadow-2xl ring-4 ring-background group-hover:scale-105 transition-transform duration-500">
+                        <AvatarImage src={selectedLead.avatar} />
+                        <AvatarFallback className="text-4xl font-black bg-muted text-muted-foreground">
+                          {(selectedLead.name || '?').substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
+                        {lastChannelByLead[selectedLead.id] === 'instagram'
+                          ? (<InstagramLogo weight="fill" className="h-6 w-6 text-[#E1306C]" />)
+                          : (<WhatsappLogo weight="fill" className="h-6 w-6 text-[#25D366]" />)}
+                      </div>
+                    </div>
+
+                    <h2 className="text-2xl font-black text-center text-foreground tracking-tight px-4 line-clamp-2">{selectedLead.name}</h2>
+                    <p className="text-muted-foreground mt-1.5 text-sm font-bold tracking-wide">{selectedLead.phone}</p>
+
+                    <div className="grid grid-cols-2 gap-2 mt-8 w-full px-4">
+                      <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold border-border/60 hover:bg-muted transition-all" onClick={() => setDetailSheetOpen(true)}>
+                        <PencilSimple size={18} className="mr-2" />
+                        Editar
                       </Button>
-                      <Button variant="outline" size="sm" className="text-xs px-2 md:px-3" onClick={() => {
-                        if (onNavigateToPipeline && selectedLeadId) {
-                          onNavigateToPipeline(selectedLeadId)
-                        } else {
-                          toast.info('Navegación no configurada')
-                        }
-                      }}>
-                        <ArrowSquareOut className="w-4 h-4 md:mr-1.5" />
-                        <span className="hidden md:inline">Ver ubicación</span>
+                      <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold border-border/60 hover:bg-muted transition-all" onClick={() => onNavigateToPipeline?.(selectedLead.id)}>
+                        <ArrowSquareOut size={18} className="mr-2" />
+                        Pipeline
                       </Button>
                       <Button
                         variant={selectedLead.archived ? 'default' : 'outline'}
                         size="sm"
-                        className="text-xs px-2 md:px-3"
+                        className={cn(
+                          "h-10 rounded-xl font-bold transition-all",
+                          selectedLead.archived ? "bg-primary" : "border-border/60 hover:bg-muted"
+                        )}
                         onClick={() => handleArchiveToggle(selectedLead, !selectedLead.archived)}
                         disabled={archivingLeadId === selectedLead.id}
                       >
                         {archivingLeadId === selectedLead.id ? (
-                          <Spinner className="w-4 h-4 md:mr-1.5 animate-spin" />
+                          <Spinner className="w-4 h-4 animate-spin" />
                         ) : (
-                          <Archive className="w-4 h-4 md:mr-1.5" weight={selectedLead.archived ? 'fill' : 'regular'} />
+                          <Archive size={18} className="mr-2" weight={selectedLead.archived ? 'fill' : 'regular'} />
                         )}
-                        <span className="hidden md:inline">{selectedLead.archived ? 'Desarchivar' : 'Archivar'}</span>
+                        {selectedLead.archived ? 'Restaurar' : 'Archivar'}
                       </Button>
                       {canDeleteLead && (
                         <Button
                           variant="destructive"
                           size="sm"
-                          className="text-xs px-2 md:px-3"
+                          className="h-10 rounded-xl font-bold hover:bg-destructive/90 transition-all shadow-lg shadow-destructive/10"
                           onClick={() => handleDeleteLead(selectedLead)}
                         >
-                          <Trash className="w-4 h-4 md:mr-1.5" />
-                          <span className="hidden md:inline">Eliminar</span>
+                          <Trash size={18} className="mr-2" />
+                          Eliminar
                         </Button>
                       )}
                     </div>
                   </div>
 
-                  <div className="p-4 bg-background border-b border-border/50 space-y-4">
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Correo electrónico</p>
-                      <p className="text-sm truncate select-all">{selectedLead.email || '—'}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Empresa</p>
-                      <p className="text-sm truncate">{selectedLead.company || '—'}</p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-background">
-                    <div className="flex items-center justify-between mb-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg -mx-2 transition-colors group">
-                      <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground">Archivos, enlaces y docs.</span>
-                      <div className="flex items-center gap-1 text-muted-foreground group-hover:text-foreground">
-                        <span className="text-xs">{chatMedia.length}</span>
-                        <CaretRight className="w-4 h-4" />
-                      </div>
-                    </div>
-
-                    {chatMedia.length > 0 ? (
-                      <div className="grid grid-cols-3 gap-2">
-                        {chatMedia.slice(0, 6).map((m: any, i) => (
-                          <div key={i} className="aspect-square relative rounded-md overflow-hidden bg-muted border cursor-pointer hover:opacity-90">
-                            {m.type === 'video' ? (
-                              <video src={m.url} className="w-full h-full object-cover" />
-                            ) : (
-                              <img src={m.url} alt="media" className="w-full h-full object-cover" />
-                            )}
-                            {m.type === 'video' && <div className="absolute inset-0 flex items-center justify-center bg-black/20"><VideoCamera weight="fill" className="text-white w-6 h-6" /></div>}
+                  <div className="p-6 space-y-8">
+                    <div className="space-y-4">
+                      <div className="space-y-1">
+                        <p className="text-[10px] text-muted-foreground font-black uppercase tracking-[0.2em] mb-2">Detalles del contacto</p>
+                        <div className="space-y-4">
+                          <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/30 border border-border/40 overflow-hidden group hover:bg-muted/50 transition-colors">
+                            <span className="text-[9px] font-black uppercase text-muted-foreground/60 tracking-wider">Email</span>
+                            <span className="text-[13px] font-bold text-foreground truncate break-all group-hover:text-primary transition-colors">
+                              {selectedLead.email || '—'}
+                            </span>
                           </div>
-                        ))}
+                          <div className="flex flex-col gap-1 p-3 rounded-xl bg-muted/30 border border-border/40 overflow-hidden group hover:bg-muted/50 transition-colors">
+                            <span className="text-[9px] font-black uppercase text-muted-foreground/60 tracking-wider">Empresa</span>
+                            <span className="text-[13px] font-bold text-foreground truncate group-hover:text-primary transition-colors">
+                              {selectedLead.company || '—'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    ) : (
-                      <p className="text-xs text-muted-foreground py-2 italic text-center">No hay media compartida</p>
-                    )}
+                    </div>
+
+                    <div className="pt-2">
+                      <div
+                        className="flex items-center justify-between mb-4 group cursor-pointer hover:bg-muted/40 p-1 rounded-lg transition-all"
+                        onClick={() => {/* TODO: expand media view */ }}
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">Media Compartida</span>
+                        <div className="flex items-center gap-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                          <span className="text-xs font-black">{chatMedia.length}</span>
+                          <CaretRight size={14} weight="bold" />
+                        </div>
+                      </div>
+
+                      {chatMedia.length > 0 ? (
+                        <div className="grid grid-cols-3 gap-2">
+                          {chatMedia.slice(0, 6).map((m: any, i) => (
+                            <div
+                              key={i}
+                              className="aspect-square relative rounded-xl overflow-hidden bg-muted border border-border/30 cursor-pointer hover:ring-2 hover:ring-primary/40 active:scale-95 transition-all shadow-sm group/thumb"
+                            >
+                              {m.type === 'video' ? (
+                                <video src={m.url} className="w-full h-full object-cover" />
+                              ) : (
+                                <img src={m.url} alt="media" className="w-full h-full object-cover" />
+                              )}
+                              <div className="absolute inset-0 bg-black/0 group-hover/thumb:bg-black/20 transition-colors flex items-center justify-center">
+                                {m.type === 'video' && (
+                                  <div className="w-8 h-8 rounded-full bg-white/30 backdrop-blur-md flex items-center justify-center">
+                                    <VideoCamera weight="fill" className="text-white w-4 h-4" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="py-10 text-center bg-muted/20 rounded-2xl border-2 border-dashed border-border/40">
+                          <p className="text-xs text-muted-foreground font-bold italic opacity-60 px-4">No hay archivos compartidos recientemente</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-center text-muted-foreground p-8 bg-background/50">
-            <div className="w-32 h-32 bg-muted/30 rounded-full flex items-center justify-center mb-6"><ChatCircleDots className="w-16 h-16 opacity-50" /></div>
-            <h3 className="text-xl font-semibold mb-2"> Web / Chat</h3>
-            <p className="max-w-md">Selecciona un lead de la izquierda para ver su conversación. Envía y recibe mensajes de WhatsApp e Instagram en tiempo real.</p>
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-background via-background to-primary/5">
+            <div className="relative mb-8">
+              <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl scale-150 opacity-30" />
+              <div className="w-40 h-40 bg-card border border-border/50 rounded-[2.5rem] flex items-center justify-center shadow-2xl relative z-10 animate-in zoom-in duration-700">
+                <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center">
+                  <ChatCircleDots className="w-10 h-10 text-primary" weight="duotone" />
+                </div>
+              </div>
+            </div>
+            <h3 className="text-3xl font-black mb-4 tracking-tight">Centro de Mensajería</h3>
+            <p className="max-w-md text-muted-foreground font-medium leading-relaxed">
+              Selecciona una conversación de la izquierda para comenzar a chatear.
+              Gestiona <span className="text-[#25D366] font-bold">WhatsApp</span> e <span className="text-[#E1306C] font-bold">Instagram</span> en un solo lugar con una experiencia premium.
+            </p>
+            <div className="mt-10 flex gap-4 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-700">
+              <div className="flex items-center gap-2 bg-muted p-3 rounded-2xl border border-border/40">
+                <WhatsappLogo weight="fill" className="w-5 h-5 text-[#25D366]" />
+                <span className="text-xs font-black uppercase tracking-widest">WhatsApp Business</span>
+              </div>
+              <div className="flex items-center gap-2 bg-muted p-3 rounded-2xl border border-border/40">
+                <InstagramLogo weight="fill" className="w-5 h-5 text-[#E1306C]" />
+                <span className="text-xs font-black uppercase tracking-widest">Instagram Direct</span>
+              </div>
+            </div>
           </div>
         )}
       </div>
-      {selectedLead && (
-        <LeadDetailSheet
-          lead={selectedLead}
-          open={detailSheetOpen}
-          onClose={() => setDetailSheetOpen(false)}
-          onUpdate={handleLeadUpdate}
-          teamMembers={[]}
-          companyId={companyId}
-          canDeleteLead={canDeleteLead}
-          onDeleteLead={() => handleDeleteLead(selectedLead)}
-        />
-      )}
+      {
+        selectedLead && (
+          <LeadDetailSheet
+            lead={selectedLead}
+            open={detailSheetOpen}
+            onClose={() => setDetailSheetOpen(false)}
+            onUpdate={handleLeadUpdate}
+            teamMembers={[]}
+            companyId={companyId}
+            canDeleteLead={canDeleteLead}
+            onDeleteLead={() => handleDeleteLead(selectedLead)}
+          />
+        )
+      }
       <ChatSettingsDialog open={showChatSettings} onClose={() => setShowChatSettings(false)} empresaId={companyId} />
-    </div>
+    </div >
   )
 }
