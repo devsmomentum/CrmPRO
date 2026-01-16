@@ -6,7 +6,7 @@ import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, DotsThree, Funnel, Trash } from '@phosphor-icons/react'
+import { Plus, DotsThree, Funnel, Trash, Note } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
@@ -37,6 +37,7 @@ import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
 import { createEtapa, deleteEtapa } from '@/supabase/helpers/etapas'
 import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } from '@/supabase/services/mensajes'
+import { getNotasCountByLeads } from '@/supabase/services/notas'
 import { supabase } from '@/lib/supabase'
 
 import { Building } from '@phosphor-icons/react'
@@ -83,11 +84,51 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const isMobile = useIsMobile()
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [moveDialogLead, setMoveDialogLead] = useState<Lead | null>(null)
+  const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null)
+  const [notasCounts, setNotasCounts] = useState<Record<string, number>>({})
 
   const leadsRef = useRef(leads)
   useEffect(() => {
     leadsRef.current = leads
   }, [leads])
+
+  // Leer leadId de sessionStorage para navegar a él (viene de ChatsView "Ver en Leads")
+  useEffect(() => {
+    if (leads.length === 0) return
+
+    const openLeadId = sessionStorage.getItem('openLeadId')
+    if (!openLeadId) return
+
+    // Limpiar sessionStorage inmediatamente
+    sessionStorage.removeItem('openLeadId')
+
+    // Buscar el lead
+    const targetLead = leads.find(l => l.id === openLeadId)
+    if (!targetLead) {
+      console.log('[PipelineView] Lead no encontrado:', openLeadId)
+      return
+    }
+
+    // Cambiar al pipeline correcto si es necesario
+    const leadPipeline = pipelines.find(p => p.id === targetLead.pipeline || p.type === targetLead.pipeline)
+    if (leadPipeline && leadPipeline.type !== activePipeline) {
+      setActivePipeline(leadPipeline.type)
+    }
+
+    // Destacar el lead
+    setHighlightedLeadId(openLeadId)
+
+    // Hacer scroll al lead después de un delay para que el DOM se actualice
+    setTimeout(() => {
+      const leadCard = document.getElementById(`lead-card-${openLeadId}`)
+      if (leadCard) {
+        leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      }
+    }, 500)
+
+    // Quitar highlight después de 4 segundos
+    setTimeout(() => setHighlightedLeadId(null), 4000)
+  }, [leads, pipelines])
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
@@ -199,7 +240,22 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             })).sort((a: any, b: any) => a.order - b.order)
           }))
 
-          setPipelines(dbPipelines)
+          // Deduplicar por ID y por nombre (para evitar mostrar duplicados creados accidentalmente)
+          const seenIds = new Set<string>()
+          const seenNames = new Set<string>()
+          const uniquePipelines = dbPipelines.filter(p => {
+            if (seenIds.has(p.id)) return false
+            const normalizedName = p.name.toLowerCase().trim()
+            if (seenNames.has(normalizedName)) {
+              console.warn(`[PipelineView] Pipeline duplicado por nombre detectado: "${p.name}" (ID: ${p.id})`)
+              return false
+            }
+            seenIds.add(p.id)
+            seenNames.add(normalizedName)
+            return true
+          })
+
+          setPipelines(uniquePipelines)
 
           setActivePipeline(current => {
             const exists = dbPipelines.find(p => p.type === current)
@@ -265,6 +321,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         mappedAll.forEach(l => byId.set(l.id, l))
         const unique = Array.from(byId.values())
         setLeads(unique)
+
+        // Cargar conteos de notas en segundo plano
+        if (unique.length > 0) {
+          getNotasCountByLeads(unique.map(l => l.id))
+            .then(counts => setNotasCounts(counts))
+            .catch(err => console.warn('[PipelineView] Error cargando conteos de notas:', err))
+        }
 
         const nextStagePages: Record<string, { offset: number; hasMore: boolean }> = {}
         const nextStageCounts: Record<string, number> = {}
@@ -785,7 +848,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
     setLeads((current) => {
       const leadsToDelete = current.filter(l => ids.includes(l.id))
-      
+
       if (leadsToDelete.length > 0) {
         setStageCounts(prev => {
           const next = { ...prev }
@@ -797,7 +860,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       }
       return current.filter(l => !ids.includes(l.id))
     })
-    
+
     // Si el seleccionado fue eliminado, cerrarlo
     setSelectedLead((current) => current && ids.includes(current.id) ? null : current)
   }
@@ -983,6 +1046,26 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               onSelectLead={(lead) => setSelectedLead(lead)}
               canDelete={isAdminOrOwner}
               onDeleteLeads={handleDeleteMultipleLeads}
+              onNavigateToLead={(lead) => {
+                // Cambiar al pipeline correcto
+                const leadPipeline = pipelines.find(p => p.id === lead.pipeline || p.type === lead.pipeline)
+                if (leadPipeline) {
+                  setActivePipeline(leadPipeline.type)
+                }
+                // Destacar el lead temporalmente
+                setHighlightedLeadId(lead.id)
+
+                // Hacer scroll al lead después de un pequeño delay para que el pipeline cambie
+                setTimeout(() => {
+                  const leadCard = document.getElementById(`lead-card-${lead.id}`)
+                  if (leadCard) {
+                    leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+                  }
+                }, 300)
+
+                // Quitar highlight después de 4 segundos
+                setTimeout(() => setHighlightedLeadId(null), 4000)
+              }}
             />
             {/* Eliminado el botón global "Cargar más (todos)" */}
 
@@ -1165,9 +1248,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                     {stageLeads.map(lead => (
                       <Card
                         key={lead.id}
+                        id={`lead-card-${lead.id}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead)}
-                        className="w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
+                        className={cn(
+                          "w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50",
+                          highlightedLeadId === lead.id && "ring-2 ring-primary ring-offset-2 animate-pulse"
+                        )}
                         style={{ borderLeftColor: stage.color }}
                         onClick={() => setSelectedLead(lead)}
                       >
@@ -1239,6 +1326,21 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                         <div className="flex items-center gap-1 mb-1">
                           <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
                           <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
+                          {notasCounts[lead.id] > 0 && (
+                            <TooltipProvider delayDuration={300}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center gap-0.5 ml-1 text-amber-600">
+                                    <Note size={12} weight="fill" />
+                                    <span className="text-[10px] font-medium">{notasCounts[lead.id]}</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  {notasCounts[lead.id]} nota{notasCounts[lead.id] > 1 ? 's' : ''}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
 
                         {lead.budget > 0 && (

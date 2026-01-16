@@ -904,3 +904,18 @@ CREATE POLICY nota_lead_rw ON nota_lead
 
   
   alter table nota_lead ADD column if not exists creador_nombre text;
+
+
+  create table public.presupuesto_pdf (
+  id uuid not null default gen_random_uuid(),
+  lead_id uuid not null,
+  nombre text not null,
+  url text not null,
+  created_at timestamp with time zone null default now(),
+  creado_por uuid null,
+  constraint presupuesto_pdf_pkey primary key (id),
+  constraint presupuesto_pdf_creado_por_fkey foreign key (creado_por) references auth.users(id),
+  constraint presupuesto_pdf_lead_id_fkey foreign key (lead_id) references lead(id) on delete cascade
+) tablespace pg_default;
+
+create index idx_presupuesto_pdf_lead_id on public.presupuesto_pdf using btree (lead_id) tablespace pg_default;

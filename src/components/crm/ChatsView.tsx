@@ -324,12 +324,12 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
       setLastChannelByLead(prev => {
         const next = { ...prev }
         for (const l of mapped) {
-             const phone = (l.phone || '').replace(/\D/g, '')
-             let isInstagram = phone.length >= 15
-             if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
-             if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
-             
-             next[l.id] = next[l.id] || (isInstagram ? 'instagram' : 'whatsapp')
+          const phone = (l.phone || '').replace(/\D/g, '')
+          let isInstagram = phone.length >= 15
+          if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
+          if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
+
+          next[l.id] = next[l.id] || (isInstagram ? 'instagram' : 'whatsapp')
         }
         return next
       })
@@ -435,7 +435,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
               const nextVal = counts[msg.lead_id] ?? 0
               setUnreadCounts(prev => ({ ...prev, [msg.lead_id]: nextVal }))
             }, 1000)
-          } catch {}
+          } catch { }
         })()
       }
     })
@@ -1096,42 +1096,44 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                     </Avatar>
                     <h2 className="text-xl font-medium text-center text-foreground">{selectedLead.name}</h2>
                     <p className="text-muted-foreground mt-1 text-sm">{selectedLead.phone}</p>
-                    <div className="flex gap-2 mt-4">
-                      <Button variant="outline" size="sm" onClick={() => setDetailSheetOpen(true)}>
-                        <PencilSimple className="w-4 h-4 mr-2" />
-                        Editar Info
+                    <div className="flex flex-wrap justify-center gap-2 mt-4">
+                      <Button variant="outline" size="sm" className="text-xs px-2 md:px-3" onClick={() => setDetailSheetOpen(true)}>
+                        <PencilSimple className="w-4 h-4 md:mr-1.5" />
+                        <span className="hidden md:inline">Editar Info</span>
                       </Button>
-                      <Button variant="outline" size="sm" onClick={() => {
+                      <Button variant="outline" size="sm" className="text-xs px-2 md:px-3" onClick={() => {
                         if (onNavigateToPipeline && selectedLeadId) {
                           onNavigateToPipeline(selectedLeadId)
                         } else {
                           toast.info('Navegación no configurada')
                         }
                       }}>
-                        <ArrowSquareOut className="w-4 h-4 mr-2" />
-                        Ver en Leads
+                        <ArrowSquareOut className="w-4 h-4 md:mr-1.5" />
+                        <span className="hidden md:inline">Ver ubicación</span>
                       </Button>
                       <Button
                         variant={selectedLead.archived ? 'default' : 'outline'}
                         size="sm"
+                        className="text-xs px-2 md:px-3"
                         onClick={() => handleArchiveToggle(selectedLead, !selectedLead.archived)}
                         disabled={archivingLeadId === selectedLead.id}
                       >
                         {archivingLeadId === selectedLead.id ? (
-                          <Spinner className="w-4 h-4 mr-2 animate-spin" />
+                          <Spinner className="w-4 h-4 md:mr-1.5 animate-spin" />
                         ) : (
-                          <Archive className="w-4 h-4 mr-2" weight={selectedLead.archived ? 'fill' : 'regular'} />
+                          <Archive className="w-4 h-4 md:mr-1.5" weight={selectedLead.archived ? 'fill' : 'regular'} />
                         )}
-                        {selectedLead.archived ? 'Desarchivar' : 'Archivar'}
+                        <span className="hidden md:inline">{selectedLead.archived ? 'Desarchivar' : 'Archivar'}</span>
                       </Button>
                       {canDeleteLead && (
                         <Button
                           variant="destructive"
                           size="sm"
+                          className="text-xs px-2 md:px-3"
                           onClick={() => handleDeleteLead(selectedLead)}
                         >
-                          <Trash className="w-4 h-4 mr-2" />
-                          Eliminar
+                          <Trash className="w-4 h-4 md:mr-1.5" />
+                          <span className="hidden md:inline">Eliminar</span>
                         </Button>
                       )}
                     </div>

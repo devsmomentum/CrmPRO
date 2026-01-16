@@ -59,6 +59,7 @@ import { AddMeetingDialog, AddMeetingFormData } from './AddMeetingDialog'
 import { EditBudgetDialog } from './EditBudgetDialog'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
+import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
 
 interface User {
   id: string
@@ -100,6 +101,13 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
+
+  // Estados para PDFs de presupuestos
+  const [presupuestosPdf, setPresupuestosPdf] = useState<PresupuestoPdf[]>([])
+  const [pdfNombre, setPdfNombre] = useState('')
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [isUploadingPdf, setIsUploadingPdf] = useState(false)
+  const pdfInputRef = useRef<HTMLInputElement | null>(null)
 
   const [activeTab, setActiveTab] = useState('overview')
   const [messageInput, setMessageInput] = useState('')
@@ -333,6 +341,18 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     }
   }, [lead.id, open])
 
+  // Cargar PDFs de presupuestos
+  useEffect(() => {
+    if (!lead.id || !open) {
+      setPresupuestosPdf([])
+      return
+    }
+
+    getPresupuestosByLead(lead.id)
+      .then(setPresupuestosPdf)
+      .catch(err => console.error('[Presupuestos PDF] Error cargando:', err))
+  }, [lead.id, open])
+
   // Auto-scroll al último mensaje cuando cambian los mensajes, se abre el chat o se cambia de canal
   useEffect(() => {
     if (!messagesEndRef.current) return
@@ -551,7 +571,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       stage_id: 'etapa_id',
       notes: 'notas',
       source: 'fuente',
-      value: 'valor' 
+      value: 'valor'
       // Agrega más mapeos según sea necesario si difieren
     }
 
@@ -630,6 +650,39 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       (current || []).map(b => b.id === updatedBudget.id ? updatedBudget : b)
     )
     setEditingBudget(null)
+  }
+
+  // Handlers para PDFs de presupuestos
+  const handleUploadPdf = async () => {
+    if (!pdfFile || !pdfNombre.trim()) {
+      toast.error('Selecciona un archivo PDF y escribe un nombre')
+      return
+    }
+    setIsUploadingPdf(true)
+    try {
+      const uploaded = await uploadPresupuestoPdf(lead.id, pdfFile, pdfNombre.trim())
+      setPresupuestosPdf(prev => [uploaded, ...prev])
+      setPdfFile(null)
+      setPdfNombre('')
+      if (pdfInputRef.current) pdfInputRef.current.value = ''
+      toast.success('PDF subido exitosamente')
+    } catch (err: any) {
+      console.error('[Presupuestos PDF] Error subiendo:', err)
+      toast.error(err.message || 'Error al subir el PDF')
+    } finally {
+      setIsUploadingPdf(false)
+    }
+  }
+
+  const handleDeletePdf = async (pdf: PresupuestoPdf) => {
+    try {
+      await deletePresupuestoPdf(pdf.id, pdf.url)
+      setPresupuestosPdf(prev => prev.filter(p => p.id !== pdf.id))
+      toast.success('PDF eliminado')
+    } catch (err) {
+      console.error('[Presupuestos PDF] Error eliminando:', err)
+      toast.error('Error al eliminar el PDF')
+    }
   }
 
   const availableTags = (allTags || []).filter(tag => !lead.tags.find(t => t.id === tag.id))
@@ -1280,49 +1333,149 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="budget" className="flex-1 p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">{t.budget.title}</h3>
+          <TabsContent value="budget" className="flex-1 p-6 overflow-y-auto">
+            <div className="space-y-6">
+              {/* Sección de PDFs de presupuestos */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">📄 Documentos de Presupuesto</h3>
+                </div>
+
+                {/* Formulario para subir PDF */}
                 {canEdit && (
-                  <Button size="sm" onClick={() => setShowBudgetDialog(true)}>
-                    <Plus size={16} className="mr-2" />
-                    {t.budget.newBudget}
-                  </Button>
+                  <div className="p-4 border border-dashed border-border rounded-lg bg-muted/30 space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Input
+                        value={pdfNombre}
+                        onChange={(e) => setPdfNombre(e.target.value)}
+                        placeholder="Nombre del presupuesto"
+                        className="flex-1"
+                      />
+                      <input
+                        ref={pdfInputRef}
+                        type="file"
+                        accept="*"
+                        onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => pdfInputRef.current?.click()}
+                        disabled={isUploadingPdf}
+                        className="gap-2"
+                      >
+                        <FilePdf size={16} />
+                        {pdfFile ? pdfFile.name.slice(0, 20) + (pdfFile.name.length > 20 ? '...' : '') : 'Seleccionar PDF'}
+                      </Button>
+                    </div>
+                    <Button
+                      onClick={handleUploadPdf}
+                      disabled={!pdfFile || !pdfNombre.trim() || isUploadingPdf}
+                      className="w-full"
+                    >
+                      {isUploadingPdf ? (
+                        <>
+                          <Spinner size={16} className="mr-2 animate-spin" />
+                          Subiendo...
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={16} className="mr-2" />
+                          Subir PDF
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Lista de PDFs */}
+                {presupuestosPdf.length > 0 ? (
+                  <div className="space-y-2">
+                    {presupuestosPdf.map(pdf => (
+                      <div key={pdf.id} className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <FilePdf size={24} className="text-red-500 flex-shrink-0" weight="fill" />
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{pdf.nombre}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatSafeDate(pdf.created_at, 'dd MMM yyyy, HH:mm')}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => window.open(pdf.url, '_blank')}
+                          >
+                            <DownloadSimple size={16} className="mr-1" />
+                            Ver
+                          </Button>
+                          {canEdit && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeletePdf(pdf)}
+                            >
+                              <Trash size={16} />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-muted-foreground py-4">
+                    No hay documentos de presupuesto
+                  </p>
                 )}
               </div>
 
-              {leadBudgets.map(budget => (
-                <div key={budget.id} className="p-4 border border-border rounded-lg">
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-medium">{budget.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {formatSafeDate(budget.createdAt, 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge>{budget.status}</Badge>
-                      {canEdit && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setEditingBudget(budget)}
-                        >
-                          <PencilSimple size={16} />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right mt-4">
-                    <p className="text-2xl font-bold text-primary">${budget.total.toLocaleString()}</p>
-                  </div>
-                </div>
-              ))}
+              <Separator />
 
-              {leadBudgets.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">{t.budget.noBudgets}</p>
-              )}
+              {/* Sección antigua de presupuestos (marcada como no funcional) */}
+              <div className="space-y-4 opacity-60">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">{t.budget.title}</h3>
+                    <Badge variant="outline" className="text-amber-600 border-amber-300 text-xs">
+                      No funcional
+                    </Badge>
+                  </div>
+                  {canEdit && (
+                    <Button size="sm" variant="outline" disabled onClick={() => setShowBudgetDialog(true)}>
+                      <Plus size={16} className="mr-2" />
+                      {t.budget.newBudget}
+                    </Button>
+                  )}
+                </div>
+
+                {leadBudgets.map(budget => (
+                  <div key={budget.id} className="p-4 border border-border rounded-lg">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <h4 className="font-medium">{budget.name}</h4>
+                        <p className="text-sm text-muted-foreground">
+                          {formatSafeDate(budget.createdAt, 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge>{budget.status}</Badge>
+                      </div>
+                    </div>
+                    <div className="text-right mt-4">
+                      <p className="text-2xl font-bold text-primary">${budget.total.toLocaleString()}</p>
+                    </div>
+                  </div>
+                ))}
+
+                {leadBudgets.length === 0 && (
+                  <p className="text-center text-muted-foreground py-4">
+                    {t.budget.noBudgets}
+                  </p>
+                )}
+              </div>
             </div>
           </TabsContent>
 

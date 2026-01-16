@@ -62,3 +62,23 @@ export async function updateNota(notaId: string, contenido: string) {
     if (error) throw error
     return data
 }
+
+/**
+ * Obtener conteo de notas para múltiples leads
+ */
+export async function getNotasCountByLeads(leadIds: string[]): Promise<Record<string, number>> {
+    if (!leadIds.length) return {}
+
+    const { data, error } = await supabase
+        .from('nota_lead')
+        .select('lead_id')
+        .in('lead_id', leadIds)
+
+    if (error) throw error
+
+    const counts: Record<string, number> = {};
+    (data || []).forEach(row => {
+        counts[row.lead_id] = (counts[row.lead_id] || 0) + 1
+    })
+    return counts
+}

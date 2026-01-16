@@ -10,9 +10,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Lead } from '@/lib/types'
-import { MagnifyingGlass, User, Phone, Buildings, Trash, Spinner } from '@phosphor-icons/react'
+import { MagnifyingGlass, User, Phone, Buildings, Trash, Spinner, Tag, MapPin } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { useDebounce } from '@/hooks/use-mobile' // Assuming we might have or can make a debounce hook, or just inline it
 
 interface LeadSearchDialogProps {
     leads?: Lead[]
@@ -20,9 +19,10 @@ interface LeadSearchDialogProps {
     canDelete?: boolean
     onDeleteLeads?: (ids: string[]) => Promise<void>
     onSearch?: (term: string) => Promise<Lead[]>
+    onNavigateToLead?: (lead: Lead) => void
 }
 
-export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDeleteLeads, onSearch }: LeadSearchDialogProps) {
+export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDeleteLeads, onSearch, onNavigateToLead }: LeadSearchDialogProps) {
     const [open, setOpen] = useState(false)
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
@@ -40,7 +40,8 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
             (lead.name || '').toLowerCase().includes(search) ||
             (lead.email || '').toLowerCase().includes(search) ||
             (lead.phone || '').toLowerCase().includes(search) ||
-            (lead.company || '').toLowerCase().includes(search)
+            (lead.company || '').toLowerCase().includes(search) ||
+            (lead.tags || []).some(tag => tag.name.toLowerCase().includes(search))
         )
     })
 
@@ -97,7 +98,7 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
     const handleSelectAll = () => {
         const allFilteredIds = displayLeads.map(l => l.id)
         const allSelected = allFilteredIds.every(id => selectedLeads.has(id))
-        
+
         const next = new Set(selectedLeads)
         if (allSelected) {
             allFilteredIds.forEach(id => next.delete(id))
@@ -109,7 +110,7 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
 
     const handleDeleteSelected = async () => {
         if (selectedLeads.size === 0 || !onDeleteLeads) return
-        
+
         if (!confirm(`¿Estás seguro de que deseas eliminar ${selectedLeads.size} leads seleccionados? Esta acción no se puede deshacer.`)) {
             return
         }
@@ -154,7 +155,7 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
                         <div className="relative">
                             <MagnifyingGlass className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Buscar por nombre, email, teléfono o empresa..."
+                                placeholder="Buscar por nombre, email, teléfono, empresa o etiqueta..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="pl-10"
@@ -214,11 +215,11 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
                                     >
                                         <div className="flex items-start gap-3">
                                             {canDelete && (
-                                                <div 
-                                                    className="pt-1 pr-2 flex items-center justify-center shrink-0" 
+                                                <div
+                                                    className="pt-1 pr-2 flex items-center justify-center shrink-0"
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    <Checkbox 
+                                                    <Checkbox
                                                         checked={selectedLeads.has(lead.id)}
                                                         onCheckedChange={(checked) => {
                                                             const next = new Set(selectedLeads)
@@ -260,6 +261,49 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
                                                         💰 ${lead.budget.toLocaleString()}
                                                     </div>
                                                 )}
+
+                                                {/* Mostrar etiquetas */}
+                                                {lead.tags && lead.tags.length > 0 && (
+                                                    <div className="flex items-center gap-1 flex-wrap">
+                                                        <Tag size={14} className="text-muted-foreground shrink-0" />
+                                                        {lead.tags.slice(0, 3).map(tag => (
+                                                            <Badge
+                                                                key={tag.id}
+                                                                variant="outline"
+                                                                className="text-xs h-5 px-1.5"
+                                                                style={{ borderColor: tag.color, color: tag.color }}
+                                                            >
+                                                                {tag.name}
+                                                            </Badge>
+                                                        ))}
+                                                        {lead.tags.length > 3 && (
+                                                            <Badge variant="outline" className="text-xs h-5 px-1.5">
+                                                                +{lead.tags.length - 3}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                {/* Botón Ver en Pipeline */}
+                                                {onNavigateToLead && (
+                                                    <div className="pt-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="h-7 text-xs w-full gap-1.5"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation()
+                                                                setOpen(false)
+                                                                setSearchTerm('')
+                                                                setSearchResults([])
+                                                                onNavigateToLead(lead)
+                                                            }}
+                                                        >
+                                                            <MapPin size={14} />
+                                                            Ver ubicación lead
+                                                        </Button>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -267,9 +311,9 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
                             )}
                         </div>
 
-                        {filteredLeads.length > 0 && (
+                        {displayLeads.length > 0 && (
                             <div className="text-xs text-center text-muted-foreground pt-2 border-t">
-                                {filteredLeads.length} resultado{filteredLeads.length !== 1 ? 's' : ''} encontrado{filteredLeads.length !== 1 ? 's' : ''}
+                                {displayLeads.length} resultado{displayLeads.length !== 1 ? 's' : ''} encontrado{displayLeads.length !== 1 ? 's' : ''}
                             </div>
                         )}
                     </div>
