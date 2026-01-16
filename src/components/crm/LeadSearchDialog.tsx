@@ -139,10 +139,10 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
                 variant="outline"
                 size="sm"
                 onClick={() => setOpen(true)}
-                className="gap-2"
+                className="gap-1.5 border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200"
             >
-                <MagnifyingGlass size={18} />
-                <span className="hidden sm:inline">Buscar Lead</span>
+                <MagnifyingGlass size={16} className="text-muted-foreground" />
+                <span className="hidden sm:inline text-sm">Buscar Lead</span>
             </Button>
 
             <Dialog open={open} onOpenChange={setOpen}>

@@ -1036,11 +1036,17 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="p-4 md:p-6 border-b border-border">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
-          <div className="flex gap-2">
-            {/* Botón de búsqueda de leads */}
+      <div className="p-4 md:p-6 border-b border-border bg-gradient-to-r from-background via-background to-muted/20">
+        {/* Header Row - Title and Actions */}
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="h-8 w-1 rounded-full bg-gradient-to-b from-primary to-primary/40" />
+            <h1 className="text-xl md:text-2xl font-bold text-foreground">{t.pipeline.title}</h1>
+          </div>
+
+          {/* Action Buttons - Modern Compact Design */}
+          <div className="flex items-center gap-1.5 md:gap-2">
+            {/* Search Button */}
             <LeadSearchDialog
               leads={leads}
               onSelectLead={(lead) => setSelectedLead(lead)}
@@ -1104,87 +1110,108 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 setTimeout(() => setHighlightedLeadId(null), 4000)
               }}
             />
-            {/* Eliminado el botón global "Cargar más (todos)" */}
 
             {currentPipeline && (
               <>
-                {canEditLeads && (
-                  <>
-                    {isAdminOrOwner && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm">
-                            <Trash className="mr-2" size={20} />
-                            <span className="hidden sm:inline">Eliminar Pipeline</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
-                              Los leads asociados podrían dejar de ser visibles.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Eliminar
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                    <AddStageDialog
-                      pipelineType={activePipeline}
-                      currentStagesCount={currentPipeline?.stages.length || 0}
-                      onAdd={handleAddStage}
-                      trigger={
-                        <Button variant="outline" size="sm">
-                          <Plus className="mr-2" size={20} />
-                          <span className="hidden sm:inline">{t.pipeline.addStage}</span>
-                        </Button>
-                      }
-                    />
-                  </>
+                {canEditLeads && isAdminOrOwner && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                        title="Eliminar Pipeline"
+                      >
+                        <Trash size={16} />
+                        <span className="hidden lg:inline ml-1.5 text-xs">Eliminar</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
+                          Los leads asociados podrían dejar de ser visibles.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          Eliminar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
-                {canEditLeads && (
-                  <>
-                    <AddLeadDialog
-                      pipelineType={activePipeline}
-                      pipelineId={currentPipeline?.id}
-                      stages={currentPipeline?.stages || []}
-                      teamMembers={teamMembers}
-                      onAdd={handleAddLead}
-                      onImport={handleImportLeads}
-                      companies={companies}
-                      currentUser={user}
-                      companyName={currentCompany?.name}
-                      companyId={companyId}
-                    />
 
-                  </>
+                {canEditLeads && (
+                  <AddStageDialog
+                    pipelineType={activePipeline}
+                    currentStagesCount={currentPipeline?.stages.length || 0}
+                    onAdd={handleAddStage}
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2.5 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                        title="Agregar Etapa"
+                      >
+                        <Plus size={16} />
+                        <span className="hidden lg:inline ml-1.5 text-xs">Etapa</span>
+                      </Button>
+                    }
+                  />
+                )}
+
+                {canEditLeads && (
+                  <AddLeadDialog
+                    pipelineType={activePipeline}
+                    pipelineId={currentPipeline?.id}
+                    stages={currentPipeline?.stages || []}
+                    teamMembers={teamMembers}
+                    onAdd={handleAddLead}
+                    onImport={handleImportLeads}
+                    companies={companies}
+                    currentUser={user}
+                    companyName={currentCompany?.name}
+                    companyId={companyId}
+                  />
                 )}
               </>
             )}
           </div>
         </div>
 
+        {/* Pipeline Tabs - Horizontal Scrollable Premium */}
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
-          <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar md:w-auto md:flex-wrap">
-            {(pipelines || []).map(p => (
-              <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm min-w-fit whitespace-nowrap">
-                {p.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="relative group">
+            <div className="overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all">
+              <TabsList className="inline-flex h-11 items-center justify-start gap-2 bg-muted/30 p-1.5 rounded-xl w-max min-w-full">
+                {(pipelines || []).map(p => (
+                  <TabsTrigger
+                    key={p.id}
+                    value={p.type}
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md hover:bg-background/40 hover:text-foreground"
+                  >
+                    {p.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+            {/* Gradient fade indicators for scroll */}
+            <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-background via-background/80 to-transparent pointer-events-none" />
+            <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-background via-background/80 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
         </Tabs>
 
-        <div className="flex items-center gap-2 mt-4">
-          <Funnel size={20} className="text-muted-foreground" />
+        {/* Filter Section */}
+        <div className="flex items-center gap-3 mt-2">
           <Select value={filterByMember} onValueChange={setFilterByMember}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filtrar por miembro" />
+            <SelectTrigger className="w-auto min-w-[200px] h-9 px-3 bg-muted/50 border-0 rounded-lg text-sm hover:bg-muted transition-colors">
+              <div className="flex items-center gap-2">
+                <Funnel size={16} className="text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Filtrar por miembro" />
+              </div>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los miembros</SelectItem>
@@ -1197,8 +1224,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             </SelectContent>
           </Select>
           {filterByMember !== 'all' && (
-            <Badge variant="secondary">
-              Mostrando: {pipelineLeads.length} de {allPipelineLeads.length} leads
+            <Badge variant="secondary" className="bg-primary/10 text-primary border-0 text-xs">
+              {pipelineLeads.length} de {allPipelineLeads.length} leads
             </Badge>
           )}
         </div>
@@ -1225,64 +1252,73 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
-                  <div className="flex items-center justify-between mb-3 sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
-                      <h3 className="font-semibold text-sm md:text-base truncate" title={stage.name}>{stage.name}</h3>
-                      <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
+                  {/* Stage Header - Title Row */}
+                  <div className="sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0 mb-3">
+                    {/* Row 1: Stage Name and Count */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
+                        <h3 className="font-semibold text-sm md:text-base truncate max-w-[120px]" title={stage.name}>{stage.name}</h3>
+                        <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
+                      </div>
+                      {/* Action buttons on the right of title row */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isAdminOrOwner && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDeleteStage(stage.id)}
+                            title="Eliminar etapa"
+                          >
+                            <Trash size={16} />
+                          </Button>
+                        )}
+                        {canEditLeads && (
+                          <AddLeadDialog
+                            pipelineType={activePipeline}
+                            pipelineId={currentPipeline?.id}
+                            stages={currentPipeline?.stages || []}
+                            teamMembers={teamMembers}
+                            onAdd={handleAddLead}
+                            onImport={handleImportLeads}
+                            defaultStageId={stage.id}
+                            companies={companies}
+                            currentUser={user}
+                            companyName={currentCompany?.name}
+                            companyId={companyId}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-muted-foreground"
+                                type="button"
+                                title={t.pipeline.addLead}
+                              >
+                                <Plus size={16} />
+                                <span className="sr-only">{t.pipeline.addLead}</span>
+                              </Button>
+                            }
+                          />
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-nowrap">
+
+                    {/* Row 2: Load More Controls */}
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleLoadMoreStage(stage.id)}
                         disabled={!stagePages[stage.id]?.hasMore}
                         title={remainingStageLeads > 0 ? `Cargar más leads de esta etapa (quedan ${remainingStageLeads})` : 'No hay más leads que cargar'}
-                        className="whitespace-nowrap"
+                        className="text-xs h-7 px-2"
                       >
-                        Cargar +{remainingStageLeads > 0 ? ` (${remainingStageLeads})` : ''}
+                        Cargar + ({stageLeads.length})
                       </Button>
-                      <span className="text-[10px] text-muted-foreground ml-1 whitespace-nowrap leading-none inline-block align-middle">
-                        {remainingStageLeads > 0 ? `Quedan ${remainingStageLeads}` : 'No hay más leads que cargar'}
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        Quedan {remainingStageLeads}
                       </span>
-                      {isAdminOrOwner && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                          onClick={() => handleDeleteStage(stage.id)}
-                          title="Eliminar etapa"
-                        >
-                          <Trash size={16} />
-                        </Button>
-                      )}
-                      {canEditLeads && (
-                        <AddLeadDialog
-                          pipelineType={activePipeline}
-                          pipelineId={currentPipeline?.id}
-                          stages={currentPipeline?.stages || []}
-                          teamMembers={teamMembers}
-                          onAdd={handleAddLead}
-                          onImport={handleImportLeads}
-                          defaultStageId={stage.id}
-                          companies={companies}
-                          currentUser={user}
-                          companyName={currentCompany?.name}
-                          companyId={companyId}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 text-muted-foreground shrink-0"
-                              type="button"
-                              title={t.pipeline.addLead}
-                            >
-                              <Plus size={16} />
-                              <span className="sr-only">{t.pipeline.addLead}</span>
-                            </Button>
-                          }
-                        />
-                      )}
                     </div>
                   </div>
 

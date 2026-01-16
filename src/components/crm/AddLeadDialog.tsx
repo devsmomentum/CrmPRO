@@ -462,10 +462,10 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
 
       // Check for header
       if (!headerDetected && /^(nombre|name|telefono|phone|email|correo|fecha|date|empresa|company|ubicacion|location|direccion|lugar)/i.test(trimmed)) {
-         if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
-         if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
-         headerDetected = true
-         continue // Skip the header line itself
+        if (/empresa|company|negocio/i.test(trimmed)) hasEmpresaHeader = true
+        if (/ubicacion|location|direccion|ciudad|pais|lugar|zona/i.test(trimmed)) hasUbicacionHeader = true
+        headerDetected = true
+        continue // Skip the header line itself
       }
 
       // Skip lines that look like headers or metadata (if we already detected one or just to be safe)
@@ -1049,9 +1049,12 @@ export function AddLeadDialog({ pipelineType, pipelineId, stages, teamMembers, o
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button>
-            <Plus className="mr-2" size={20} />
-            {t.pipeline.addLead}
+          <Button
+            size="sm"
+            className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-sm hover:shadow-md transition-all duration-200"
+          >
+            <Plus size={16} className="mr-1.5" />
+            <span className="text-sm font-medium">{t.pipeline.addLead}</span>
           </Button>
         )}
       </DialogTrigger>
