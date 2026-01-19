@@ -20,7 +20,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-
+    console.log(supabaseClient)
     // Ahora también aceptamos 'media' para archivos multimedia
     const { lead_id, content, channel, media } = await req.json() as {
       lead_id: string
@@ -42,19 +42,35 @@ serve(async (req) => {
 
     // 2. Enviar a Super API
     const SUPER_API_URL = Deno.env.get('SUPER_API_URL')
-    const SUPER_API_KEY = Deno.env.get('SUPER_API_KEY')
+    const SUPER_API_KEY = Deno.env.get('SUPER_API_SECRET_TOKEN')
+
+  console.log("SUPER_API_URL:",SUPER_API_URL)
+  console.log("SUPER_API_KEY:",SUPER_API_KEY)
+
 
     if (SUPER_API_URL && SUPER_API_KEY) {
-      // Normalizar teléfono: quitar todo lo que no sea números
-      const cleanPhone = String(lead.telefono || '').replace(/\D/g, '')
+      // Determinar plataforma y chatId
+      let platform = 'wws'; // Por defecto whatsapp
+      
+      if (channel === 'instagram') {
+        platform = 'instagram';
+      } else if (channel === 'whatsapp') {
+        platform = 'wws';
+      } else if (channel) {
+        platform = channel;
+      }
 
-      // Mapear canal a plataforma de SuperAPI
-      let platform = channel === 'whatsapp' ? 'wws' : channel || 'wws'
+      let chatId = '';
+      const rawPhone = String(lead.telefono || '');
 
-      // Construir chatId
-      let chatId = cleanPhone
-      if (platform === 'wws' && !chatId.includes('@c.us')) {
-        chatId = `${chatId}@c.us`
+      if (platform === 'wws') {
+        // Lógica para WhatsApp
+        const cleanPhone = rawPhone.replace(/\D/g, '')
+        chatId = cleanPhone.includes('@c.us') ? cleanPhone : `${cleanPhone}@c.us`
+      } else {
+        // Lógica para Instagram (u otros)
+        // Usamos el valor tal cual, asumiendo que es el ID correcto
+        chatId = rawPhone.trim()
       }
 
       // Construir payload según Super API
@@ -77,7 +93,6 @@ serve(async (req) => {
       }
 
       console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
-      console.log(`[DEBUG] Clean Phone: '${cleanPhone}'`);
       console.log(`[DEBUG] Final ChatId: '${chatId}'`);
       console.log(`[DEBUG] Platform: '${platform}'`);
       console.log(`[DEBUG] Has Media: ${!!media}`);
@@ -138,16 +153,6 @@ serve(async (req) => {
       .single()
 
     if (insertError) throw insertError
-
-    // LOGICA LISTA DE TAREAS:
-    // Al responder nosotros ('team'), el chat debe "bajar" en prioridad visual
-    // pero actualizamos fecha para que sepan que es reciente.
-    // El orden en frontend será: Sender=lead (arriba), Sender=team (abajo)
-    await supabaseClient.from('lead').update({
-       last_message_at: new Date().toISOString(),
-       last_message_sender: 'team',
-       last_message: finalContent
-    }).eq("id", lead_id);
 
     return new Response(JSON.stringify(message), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

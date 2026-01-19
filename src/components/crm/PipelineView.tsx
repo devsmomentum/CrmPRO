@@ -6,7 +6,7 @@ import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, DotsThree, Funnel, Trash } from '@phosphor-icons/react'
+import { Plus, DotsThree, Funnel, Trash, Note, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
@@ -31,12 +31,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { deletePipeline, getPipelines } from '@/supabase/helpers/pipeline'
-import { createLead, deleteLead, getLeads, getLeadsPaged, updateLead } from '@/supabase/services/leads'
+import { createLead, deleteLead, getLeads, getLeadsPaged, updateLead, searchLeads } from '@/supabase/services/leads'
 import { getEquipos } from '@/supabase/services/equipos'
 import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
 import { createEtapa, deleteEtapa } from '@/supabase/helpers/etapas'
 import { getUnreadMessagesCount, subscribeToAllMessages, markMessagesAsRead } from '@/supabase/services/mensajes'
+import { getNotasCountByLeads } from '@/supabase/services/notas'
+import { supabase } from '@/lib/supabase'
 
 import { Building } from '@phosphor-icons/react'
 import { Company } from './CompanyManagement'
@@ -82,11 +84,52 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const isMobile = useIsMobile()
   const [moveDialogOpen, setMoveDialogOpen] = useState(false)
   const [moveDialogLead, setMoveDialogLead] = useState<Lead | null>(null)
+  const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null)
+  const [notasCounts, setNotasCounts] = useState<Record<string, number>>({})
+  const tabsScrollRef = useRef<HTMLDivElement>(null)
 
   const leadsRef = useRef(leads)
   useEffect(() => {
     leadsRef.current = leads
   }, [leads])
+
+  // Leer leadId de sessionStorage para navegar a él (viene de ChatsView "Ver en Leads")
+  useEffect(() => {
+    if (leads.length === 0) return
+
+    const openLeadId = sessionStorage.getItem('openLeadId')
+    if (!openLeadId) return
+
+    // Limpiar sessionStorage inmediatamente
+    sessionStorage.removeItem('openLeadId')
+
+    // Buscar el lead
+    const targetLead = leads.find(l => l.id === openLeadId)
+    if (!targetLead) {
+      console.log('[PipelineView] Lead no encontrado:', openLeadId)
+      return
+    }
+
+    // Cambiar al pipeline correcto si es necesario
+    const leadPipeline = pipelines.find(p => p.id === targetLead.pipeline || p.type === targetLead.pipeline)
+    if (leadPipeline && leadPipeline.type !== activePipeline) {
+      setActivePipeline(leadPipeline.type)
+    }
+
+    // Destacar el lead
+    setHighlightedLeadId(openLeadId)
+
+    // Hacer scroll al lead después de un delay para que el DOM se actualice
+    setTimeout(() => {
+      const leadCard = document.getElementById(`lead-card-${openLeadId}`)
+      if (leadCard) {
+        leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+      }
+    }, 500)
+
+    // Quitar highlight después de 4 segundos
+    setTimeout(() => setHighlightedLeadId(null), 4000)
+  }, [leads, pipelines])
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
@@ -166,7 +209,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               avatar: '',
               role: p.titulo_trabajo || '',
               teamId: p.equipo_id || undefined,
-              pipelines: memberPipelines
+              pipelines: memberPipelines,
+              userId: p.usuario_id || undefined
             }
           }))
           setTeamMembers(mapped)
@@ -197,7 +241,22 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             })).sort((a: any, b: any) => a.order - b.order)
           }))
 
-          setPipelines(dbPipelines)
+          // Deduplicar por ID y por nombre (para evitar mostrar duplicados creados accidentalmente)
+          const seenIds = new Set<string>()
+          const seenNames = new Set<string>()
+          const uniquePipelines = dbPipelines.filter(p => {
+            if (seenIds.has(p.id)) return false
+            const normalizedName = p.name.toLowerCase().trim()
+            if (seenNames.has(normalizedName)) {
+              console.warn(`[PipelineView] Pipeline duplicado por nombre detectado: "${p.name}" (ID: ${p.id})`)
+              return false
+            }
+            seenIds.add(p.id)
+            seenNames.add(normalizedName)
+            return true
+          })
+
+          setPipelines(uniquePipelines)
 
           setActivePipeline(current => {
             const exists = dbPipelines.find(p => p.type === current)
@@ -263,6 +322,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         mappedAll.forEach(l => byId.set(l.id, l))
         const unique = Array.from(byId.values())
         setLeads(unique)
+
+        // Cargar conteos de notas en segundo plano
+        if (unique.length > 0) {
+          getNotasCountByLeads(unique.map(l => l.id))
+            .then(counts => setNotasCounts(counts))
+            .catch(err => console.warn('[PipelineView] Error cargando conteos de notas:', err))
+        }
 
         const nextStagePages: Record<string, { offset: number; hasMore: boolean }> = {}
         const nextStageCounts: Record<string, number> = {}
@@ -671,6 +737,31 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         // setLeads((current) => [...(current || []), newLead])
         // Comentado para evitar duplicados en UI (Realtime lo agregará)
         toast.success('Lead guardado en BD')
+
+        // Notificar asignación si corresponde (solo admin/owner y asignado específico)
+        const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+        const assignedId = payload.asignado_a
+        if (isAdminOrOwner && assignedId && assignedId !== NIL_UUID) {
+          const recipient = teamMembers.find(m => m.id === assignedId)
+          if (recipient?.email) {
+            try {
+              await supabase.functions.invoke('send-lead-assigned', {
+                body: {
+                  leadId: created.id,
+                  leadName: lead.name,
+                  empresaId: companyId,
+                  empresaNombre: currentCompany?.name,
+                  assignedUserId: recipient?.userId || assignedId,
+                  assignedUserEmail: recipient?.email,
+                  assignedByEmail: user?.email,
+                  assignedByNombre: user?.businessName || currentCompany?.name || user?.email
+                }
+              })
+            } catch (e) {
+              console.error('[PipelineView] Error enviando notificación de asignación', e)
+            }
+          }
+        }
       } else {
         // Fallback local para defaults
         setLeads((current) => [...(current || []), lead])
@@ -750,6 +841,29 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       console.error('Error deleting lead:', error)
       toast.error('Error al eliminar lead')
     }
+  }
+
+  const handleDeleteMultipleLeads = async (ids: string[]) => {
+    // Optimistic delete or parallel delete
+    await Promise.all(ids.map(id => deleteLead(id)))
+
+    setLeads((current) => {
+      const leadsToDelete = current.filter(l => ids.includes(l.id))
+
+      if (leadsToDelete.length > 0) {
+        setStageCounts(prev => {
+          const next = { ...prev }
+          leadsToDelete.forEach(l => {
+            next[l.stage] = Math.max(0, (next[l.stage] || 0) - 1)
+          })
+          return next
+        })
+      }
+      return current.filter(l => !ids.includes(l.id))
+    })
+
+    // Si el seleccionado fue eliminado, cerrarlo
+    setSelectedLead((current) => current && ids.includes(current.id) ? null : current)
   }
 
   const handleDeleteStage = async (stageId: string) => {
@@ -923,96 +1037,203 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="p-4 md:p-6 border-b border-border">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h1 className="text-2xl md:text-3xl font-bold">{t.pipeline.title}</h1>
-          <div className="flex gap-2">
-            {/* Botón de búsqueda de leads */}
+      <div className="p-4 md:p-6 border-b border-border bg-gradient-to-r from-background via-background to-muted/20">
+        {/* Header Row - Title and Actions */}
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="h-8 w-1 rounded-full bg-gradient-to-b from-primary to-primary/40" />
+            <h1 className="text-xl md:text-2xl font-bold text-foreground">{t.pipeline.title}</h1>
+          </div>
+
+          {/* Action Buttons - Modern Compact Design */}
+          <div className="flex items-center gap-1.5 md:gap-2">
+            {/* Search Button */}
             <LeadSearchDialog
               leads={leads}
               onSelectLead={(lead) => setSelectedLead(lead)}
+              canDelete={isAdminOrOwner}
+              onDeleteLeads={handleDeleteMultipleLeads}
+              onSearch={async (term) => {
+                const currentPipelineObj = pipelines.find(p => p.type === activePipeline)
+                const currentPipelineId = currentPipelineObj?.id
+                try {
+                  const results = await searchLeads(companyId!, term, {
+                    pipelineId: currentPipelineId,
+                    archived: false,
+                    limit: 100,
+                    order: 'desc'
+                  })
+                  return (results || []).map((l: any) => ({
+                    id: l.id,
+                    name: l.nombre_completo,
+                    email: l.correo_electronico,
+                    phone: l.telefono,
+                    company: l.empresa,
+                    location: l.ubicacion,
+                    budget: l.presupuesto,
+                    stage: l.etapa_id,
+                    pipeline: l.pipeline_id || 'sales',
+                    priority: l.prioridad,
+                    assignedTo: l.asignado_a,
+                    tags: l.tags || [],
+                    createdAt: new Date(l.created_at),
+                    lastContact: new Date(l.created_at)
+                  }))
+                } catch (err) {
+                  console.error('[PipelineView] Error searching leads:', err)
+                  return []
+                }
+              }}
+              onNavigateToLead={(lead) => {
+                // Cambiar al pipeline correcto
+                const leadPipeline = pipelines.find(p => p.id === lead.pipeline || p.type === lead.pipeline)
+                if (leadPipeline) {
+                  setActivePipeline(leadPipeline.type)
+                }
+                // Insertar el lead temporalmente si no está en memoria para poder navegar
+                setLeads((current) => {
+                  const exists = (current || []).some(l => l.id === lead.id)
+                  if (exists) return current
+                  return [...(current || []), lead]
+                })
+                // Destacar el lead temporalmente
+                setHighlightedLeadId(lead.id)
+
+                // Hacer scroll al lead después de un pequeño delay para que el pipeline cambie
+                setTimeout(() => {
+                  const leadCard = document.getElementById(`lead-card-${lead.id}`)
+                  if (leadCard) {
+                    leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+                  }
+                }, 300)
+
+                // Quitar highlight después de 4 segundos
+                setTimeout(() => setHighlightedLeadId(null), 4000)
+              }}
             />
-            {/* Eliminado el botón global "Cargar más (todos)" */}
 
             {currentPipeline && (
               <>
-                {canEditLeads && (
-                  <>
-                    {isAdminOrOwner && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm">
-                            <Trash className="mr-2" size={20} />
-                            <span className="hidden sm:inline">Eliminar Pipeline</span>
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
-                              Los leads asociados podrían dejar de ser visibles.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                              Eliminar
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                    <AddStageDialog
-                      pipelineType={activePipeline}
-                      currentStagesCount={currentPipeline?.stages.length || 0}
-                      onAdd={handleAddStage}
-                      trigger={
-                        <Button variant="outline" size="sm">
-                          <Plus className="mr-2" size={20} />
-                          <span className="hidden sm:inline">{t.pipeline.addStage}</span>
-                        </Button>
-                      }
-                    />
-                  </>
+                {canEditLeads && isAdminOrOwner && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                        title="Eliminar Pipeline"
+                      >
+                        <Trash size={16} />
+                        <span className="hidden lg:inline ml-1.5 text-xs">Eliminar</span>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción no se puede deshacer. Se eliminará el pipeline "{currentPipeline?.name}" y toda su configuración.
+                          Los leads asociados podrían dejar de ser visibles.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDeletePipeline} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          Eliminar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 )}
-                {canEditLeads && (
-                  <>
-                    <AddLeadDialog
-                      pipelineType={activePipeline}
-                      pipelineId={currentPipeline?.id}
-                      stages={currentPipeline?.stages || []}
-                      teamMembers={teamMembers}
-                      onAdd={handleAddLead}
-                      onImport={handleImportLeads}
-                      companies={companies}
-                      currentUser={user}
-                      companyName={currentCompany?.name}
-                      companyId={companyId}
-                    />
 
-                  </>
+                {canEditLeads && (
+                  <AddStageDialog
+                    pipelineType={activePipeline}
+                    currentStagesCount={currentPipeline?.stages.length || 0}
+                    onAdd={handleAddStage}
+                    trigger={
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2.5 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                        title="Agregar Etapa"
+                      >
+                        <Plus size={16} />
+                        <span className="hidden lg:inline ml-1.5 text-xs">Etapa</span>
+                      </Button>
+                    }
+                  />
+                )}
+
+                {canEditLeads && (
+                  <AddLeadDialog
+                    pipelineType={activePipeline}
+                    pipelineId={currentPipeline?.id}
+                    stages={currentPipeline?.stages || []}
+                    teamMembers={teamMembers}
+                    onAdd={handleAddLead}
+                    onImport={handleImportLeads}
+                    companies={companies}
+                    currentUser={user}
+                    companyName={currentCompany?.name}
+                    companyId={companyId}
+                  />
                 )}
               </>
             )}
           </div>
         </div>
 
+        {/* Pipeline Tabs - Horizontal scroll with arrows */}
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
-          <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar md:w-auto md:flex-wrap">
-            {(pipelines || []).map(p => (
-              <TabsTrigger key={p.id} value={p.type} className="text-xs md:text-sm min-w-fit whitespace-nowrap">
-                {p.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="relative group">
+            <div
+              ref={tabsScrollRef}
+              className="overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all"
+            >
+              <TabsList className="inline-flex flex-nowrap h-11 items-center justify-start gap-2 bg-muted/30 p-1.5 rounded-xl w-max min-w-full">
+                {(pipelines || []).map(p => (
+                  <TabsTrigger
+                    key={p.id}
+                    value={p.type}
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md hover:bg-background/40 hover:text-foreground"
+                  >
+                    {p.name}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
+            {/* Gradient fade indicators for scroll */}
+            <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-background via-background/80 to-transparent pointer-events-none" />
+            <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-background via-background/80 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+              <button
+                type="button"
+                className="hidden md:flex h-9 w-9 items-center justify-center rounded-full bg-background shadow-sm border border-border/60 text-muted-foreground hover:text-foreground hover:shadow-md transition-all active:scale-95"
+                onClick={() => tabsScrollRef.current?.scrollBy({ left: -((tabsScrollRef.current?.clientWidth || 200) * 0.8), behavior: 'smooth' })}
+                aria-label="Desplazar pipelines a la izquierda"
+              >
+                <CaretLeft size={18} weight="bold" />
+              </button>
+              <button
+                type="button"
+                className="h-9 w-9 flex items-center justify-center rounded-full bg-background shadow-sm border border-border/60 text-muted-foreground hover:text-foreground hover:shadow-md transition-all active:scale-95"
+                onClick={() => tabsScrollRef.current?.scrollBy({ left: (tabsScrollRef.current?.clientWidth || 200) * 0.8, behavior: 'smooth' })}
+                aria-label="Desplazar pipelines a la derecha"
+              >
+                <CaretRight size={18} weight="bold" />
+              </button>
+            </div>
+          </div>
         </Tabs>
 
-        <div className="flex items-center gap-2 mt-4">
-          <Funnel size={20} className="text-muted-foreground" />
+        {/* Filter Section */}
+        <div className="flex items-center gap-3 mt-2">
           <Select value={filterByMember} onValueChange={setFilterByMember}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filtrar por miembro" />
+            <SelectTrigger className="w-auto min-w-[200px] h-9 px-3 bg-muted/50 border-0 rounded-lg text-sm hover:bg-muted transition-colors">
+              <div className="flex items-center gap-2">
+                <Funnel size={16} className="text-muted-foreground shrink-0" />
+                <SelectValue placeholder="Filtrar por miembro" />
+              </div>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los miembros</SelectItem>
@@ -1025,8 +1246,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             </SelectContent>
           </Select>
           {filterByMember !== 'all' && (
-            <Badge variant="secondary">
-              Mostrando: {pipelineLeads.length} de {allPipelineLeads.length} leads
+            <Badge variant="secondary" className="bg-primary/10 text-primary border-0 text-xs">
+              {pipelineLeads.length} de {allPipelineLeads.length} leads
             </Badge>
           )}
         </div>
@@ -1044,6 +1265,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             {(currentPipeline?.stages || []).map(stage => {
               const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
               const totalStageLeads = stageCounts[stage.id] ?? allPipelineLeads.filter(l => l.stage === stage.id).length
+              const remainingStageLeads = Math.max(0, totalStageLeads - stageLeads.length)
 
               return (
                 <div
@@ -1052,60 +1274,73 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDrop(e, stage.id)}
                 >
-                  <div className="flex items-center justify-between mb-3 sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
-                      <h3 className="font-semibold text-sm md:text-base truncate">{stage.name}</h3>
-                      <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
+                  {/* Stage Header - Title Row */}
+                  <div className="sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0 mb-3">
+                    {/* Row 1: Stage Name and Count */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
+                        <h3 className="font-semibold text-sm md:text-base truncate max-w-[120px]" title={stage.name}>{stage.name}</h3>
+                        <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
+                      </div>
+                      {/* Action buttons on the right of title row */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isAdminOrOwner && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDeleteStage(stage.id)}
+                            title="Eliminar etapa"
+                          >
+                            <Trash size={16} />
+                          </Button>
+                        )}
+                        {canEditLeads && (
+                          <AddLeadDialog
+                            pipelineType={activePipeline}
+                            pipelineId={currentPipeline?.id}
+                            stages={currentPipeline?.stages || []}
+                            teamMembers={teamMembers}
+                            onAdd={handleAddLead}
+                            onImport={handleImportLeads}
+                            defaultStageId={stage.id}
+                            companies={companies}
+                            currentUser={user}
+                            companyName={currentCompany?.name}
+                            companyId={companyId}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-muted-foreground"
+                                type="button"
+                                title={t.pipeline.addLead}
+                              >
+                                <Plus size={16} />
+                                <span className="sr-only">{t.pipeline.addLead}</span>
+                              </Button>
+                            }
+                          />
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
+
+                    {/* Row 2: Load More Controls */}
+                    <div className="flex items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handleLoadMoreStage(stage.id)}
                         disabled={!stagePages[stage.id]?.hasMore}
-                        title="Cargar más leads de esta etapa"
+                        title={remainingStageLeads > 0 ? `Cargar más leads de esta etapa (quedan ${remainingStageLeads})` : 'No hay más leads que cargar'}
+                        className="text-xs h-7 px-2"
                       >
-                        Cargar +
+                        Cargar + ({stageLeads.length})
                       </Button>
-                      {isAdminOrOwner && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => handleDeleteStage(stage.id)}
-                          title="Eliminar etapa"
-                        >
-                          <Trash size={16} />
-                        </Button>
-                      )}
-                      {canEditLeads && (
-                        <AddLeadDialog
-                          pipelineType={activePipeline}
-                          pipelineId={currentPipeline?.id}
-                          stages={currentPipeline?.stages || []}
-                          teamMembers={teamMembers}
-                          onAdd={handleAddLead}
-                          onImport={handleImportLeads}
-                          defaultStageId={stage.id}
-                          companies={companies}
-                          currentUser={user}
-                          companyName={currentCompany?.name}
-                          companyId={companyId}
-                          trigger={
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0 text-muted-foreground"
-                              type="button"
-                              title={t.pipeline.addLead}
-                            >
-                              <Plus size={16} />
-                              <span className="sr-only">{t.pipeline.addLead}</span>
-                            </Button>
-                          }
-                        />
-                      )}
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        Quedan {remainingStageLeads}
+                      </span>
                     </div>
                   </div>
 
@@ -1113,9 +1348,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                     {stageLeads.map(lead => (
                       <Card
                         key={lead.id}
+                        id={`lead-card-${lead.id}`}
                         draggable
                         onDragStart={(e) => handleDragStart(e, lead)}
-                        className="w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50"
+                        className={cn(
+                          "w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50",
+                          highlightedLeadId === lead.id && "ring-2 ring-primary ring-offset-2 animate-pulse"
+                        )}
                         style={{ borderLeftColor: stage.color }}
                         onClick={() => setSelectedLead(lead)}
                       >
@@ -1187,6 +1426,21 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                         <div className="flex items-center gap-1 mb-1">
                           <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
                           <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
+                          {notasCounts[lead.id] > 0 && (
+                            <TooltipProvider delayDuration={300}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <div className="flex items-center gap-0.5 ml-1 text-amber-600">
+                                    <Note size={12} weight="fill" />
+                                    <span className="text-[10px] font-medium">{notasCounts[lead.id]}</span>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                  {notasCounts[lead.id]} nota{notasCounts[lead.id] > 1 ? 's' : ''}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
                         </div>
 
                         {lead.budget > 0 && (
@@ -1302,6 +1556,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             setLeads((current) =>
               (current || []).map(l => l.id === updated.id ? updated : l)
             )
+            const prevSelected = selectedLead
             setSelectedLead(updated)
 
             // Guardar en BD en segundo plano
@@ -1318,6 +1573,31 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID,
                 tags: updated.tags || []
               })
+
+              // Si cambió la asignación y aplica, enviar notificación
+              const assignmentChanged = prevSelected && prevSelected.assignedTo !== updated.assignedTo
+              const newAssignedId = (updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo) || NIL_UUID
+              if (assignmentChanged && isAdminOrOwner && newAssignedId && newAssignedId !== NIL_UUID) {
+                const recipient = teamMembers.find(m => m.id === newAssignedId)
+                if (recipient?.email) {
+                  try {
+                    await supabase.functions.invoke('send-lead-assigned', {
+                      body: {
+                        leadId: updated.id,
+                        leadName: updated.name,
+                        empresaId: companyId,
+                        empresaNombre: currentCompany?.name,
+                        assignedUserId: recipient?.userId || newAssignedId,
+                        assignedUserEmail: recipient?.email,
+                        assignedByEmail: user?.email,
+                        assignedByNombre: user?.businessName || currentCompany?.name || user?.email
+                      }
+                    })
+                  } catch (e) {
+                    console.error('[PipelineView] Error enviando notificación de asignación', e)
+                  }
+                }
+              }
             } catch (error: any) {
               console.error('Error updating lead:', error)
               toast.error('Error al guardar cambios')
@@ -1336,6 +1616,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           teamMembers={teamMembers}
           canEdit={canEditLeads}
           currentUser={user}
+          companyId={companyId}
+          canDeleteLead={isAdminOrOwner}
+          onDeleteLead={handleDeleteLead}
         />
       )}
 

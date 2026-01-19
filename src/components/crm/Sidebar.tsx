@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Notification } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useTranslation } from '@/lib/i18n'
@@ -31,12 +30,12 @@ interface SidebarProps {
 
 export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [], notificationCount = 0 }: SidebarProps) {
   const t = useTranslation('es')
-  const [notifications] = usePersistentState<Notification[]>('notifications', [])
+  // Eliminamos contador local de KV; usaremos el prop notificationCount proveniente de BD
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   const [showCompanySelector, setShowCompanySelector] = useState(false)
   // const [companies] = usePersistentState<Company[]>('companies', [])
 
-  const unreadCount = (notifications || []).filter(n => !n.read).length + notificationCount
+  const unreadCount = notificationCount || 0
 
   const menuItems = [
     { id: 'dashboard', icon: House, label: t.nav.dashboard },
@@ -50,28 +49,38 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
 
   return (
     <>
-      <div className="hidden md:flex md:w-64 bg-card border-r border-border flex-col h-full">
-        <div className="p-6 border-b border-border space-y-2 flex-none">
-          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            {t.app.title}
-          </h1>
-          <p className="text-xs text-muted-foreground">{t.app.subtitle}</p>
+      <div className="hidden md:flex md:w-68 bg-card border-r border-border flex-col h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <div className="p-6 space-y-4 flex-none">
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-2xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
+              {t.app.title}
+            </h1>
+            <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">{t.app.subtitle}</p>
+          </div>
+
           {user && (companies || []).length > 0 && (
-            <div className="space-y-1">
-              <label className="text-[10px] uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-                <Buildings size={12} /> Empresa Activa
+            <div className="space-y-1.5 pt-2">
+              <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground/70 flex items-center gap-1.5 ml-1">
+                <Buildings size={12} className="text-primary/70" /> Empresa Activa
               </label>
               <Select
                 value={currentCompanyId || ''}
                 onValueChange={(val) => onCompanyChange && onCompanyChange(val)}
               >
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-10 text-xs bg-muted/30 border-muted-foreground/10 hover:border-primary/30 hover:bg-muted/50 transition-all rounded-xl focus:ring-1 focus:ring-primary/20">
                   <SelectValue placeholder="Seleccionar empresa" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="rounded-xl border-muted-foreground/10 shadow-xl">
                   {(companies || []).map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name} {c.ownerId !== user?.id && <span className="text-muted-foreground text-[10px] ml-1">('Invitado')</span>}
+                    <SelectItem key={c.id} value={c.id} className="rounded-lg py-2 cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{c.name}</span>
+                        {c.ownerId !== user?.id && (
+                          <Badge variant="secondary" className="text-[9px] h-4 bg-primary/10 text-primary border-none uppercase font-extrabold px-1.5 leading-none tracking-tighter">
+                            Invitado
+                          </Badge>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -80,8 +89,8 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           )}
         </div>
 
-        <nav className="flex-1 p-4 overflow-y-auto min-h-0">
-          <ul className="space-y-1">
+        <nav className="flex-1 px-3 py-2 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent pr-1">
+          <ul className="space-y-1.5">
             {menuItems.map((item) => {
               const Icon = item.icon
               const isActive = currentView === item.id
@@ -91,13 +100,20 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                   <button
                     onClick={() => onViewChange(item.id)}
                     className={cn(
-                      'w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all',
+                      'w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 group',
                       isActive
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-foreground hover:bg-muted'
+                        ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                        : 'text-foreground/70 hover:bg-primary/5 hover:text-primary'
                     )}
                   >
-                    <Icon size={20} weight={isActive ? 'fill' : 'regular'} />
+                    <Icon
+                      size={20}
+                      weight={isActive ? 'fill' : 'bold'}
+                      className={cn(
+                        "transition-transform duration-200 group-hover:scale-110",
+                        isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary"
+                      )}
+                    />
                     <span>{item.label}</span>
                   </button>
                 </li>
@@ -106,40 +122,50 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           </ul>
         </nav>
 
-        <div className="p-4 border-t border-border space-y-2 flex-none">
+        <div className="p-4 border-t border-border/50 space-y-1.5 flex-none bg-muted/10">
           <button
             onClick={() => setShowVoiceRecorder(true)}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-foreground hover:bg-muted transition-colors"
+            className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold text-foreground/70 hover:bg-primary/5 hover:text-primary transition-all group"
           >
-            <Microphone size={20} />
+            <Microphone size={20} weight="bold" className="text-muted-foreground group-hover:text-primary" />
             <span>{t.nav.voice}</span>
           </button>
 
           <button
             onClick={() => onViewChange('notifications')}
             className={cn(
-              "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors relative",
-              currentView === 'notifications' ? "bg-primary text-primary-foreground shadow-sm" : "text-foreground hover:bg-muted"
+              "w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all group relative",
+              currentView === 'notifications'
+                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                : "text-foreground/70 hover:bg-primary/5 hover:text-primary"
             )}
           >
-            <Bell size={20} weight={currentView === 'notifications' ? 'fill' : 'regular'} />
+            <Bell
+              size={20}
+              weight={currentView === 'notifications' ? 'fill' : 'bold'}
+              className={cn(currentView === 'notifications' ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary")}
+            />
             <span>{t.nav.notifications}</span>
             {unreadCount > 0 && (
-              <Badge variant="destructive" className="ml-auto pulse-notification">
+              <Badge variant="destructive" className="ml-auto pulse-notification bg-[#FF3B30] text-white border-none h-5 min-w-[20px] px-1 shadow-sm">
                 {unreadCount}
               </Badge>
             )}
           </button>
 
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
-            >
-              <SignOut size={20} />
-              <span>{t.auth.logout}</span>
-            </button>
-          )}
+          <div className="pt-2">
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold text-red-500 hover:bg-red-50 hover:text-red-600 transition-all group"
+              >
+                <div className="w-8 h-8 rounded-lg bg-red-50 group-hover:bg-red-100 flex items-center justify-center transition-colors">
+                  <SignOut size={18} weight="bold" />
+                </div>
+                <span>{t.auth.logout}</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -222,7 +248,9 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
               >
                 {c.name}
                 {c.ownerId !== user?.id && (
-                  <span className="text-xs ml-2 opacity-70">('Invitado')</span>
+                  <Badge variant="secondary" className="text-[9px] ml-auto bg-primary/10 text-primary border-none uppercase font-extrabold px-1.5 h-4 tracking-tighter">
+                    Invitado
+                  </Badge>
                 )}
               </button>
             ))}
