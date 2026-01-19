@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Lead } from '@/lib/types'
 import { Input } from '@/components/ui/input'
@@ -52,6 +53,9 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
   const [archivingLeadId, setArchivingLeadId] = useState<string | null>(null)
   const [showChatSettings, setShowChatSettings] = useState(false)
   const listParentRef = useRef<HTMLDivElement | null>(null)
+
+  const [pendingImages, setPendingImages] = useState<Array<{ file: File; preview: string }>>([])
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   const [isUploading, setIsUploading] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -604,19 +608,67 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
     }
   }
 
+  const removePendingImage = (preview: string) => {
+    setPendingImages(prev => {
+      const next = prev.filter(p => p.preview !== preview)
+      URL.revokeObjectURL(preview)
+      return next
+    })
+  }
+
+  const clearPendingImages = () => {
+    setPendingImages(prev => {
+      prev.forEach(p => URL.revokeObjectURL(p.preview))
+      return []
+    })
+  }
+
+  const handlePasteClipboard = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    if (!selectedLeadId) return
+    const items = Array.from(e.clipboardData?.items || [])
+    const images = items.filter(item => item.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean) as File[]
+    if (!images.length) return
+
+    e.preventDefault()
+    const validImages = images.filter(file => file.size <= 16 * 1024 * 1024)
+    if (validImages.length !== images.length) {
+      toast.error('Alguna imagen supera 16MB y fue descartada')
+    }
+    if (!validImages.length) return
+
+    const mapped = validImages.map(file => ({ file, preview: URL.createObjectURL(file) }))
+    setPendingImages(prev => [...prev, ...mapped])
+  }
+
   async function handleSendMessage(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedLeadId || !messageInput.trim()) return
+    if (!selectedLeadId) return
+    if (!messageInput.trim() && pendingImages.length === 0) return
+    setIsUploading(true)
     try {
-      const content = messageInput
-      setMessageInput('')
       const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
-      await sendMessage(selectedLeadId, content, 'team', channel)
-      setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, lastMessageAt: new Date(), lastMessageSender: 'team', lastMessage: content } : l))
-      setLastChannelByLead(prev => ({ ...prev, [selectedLeadId]: channel }))
+
+      if (pendingImages.length > 0) {
+        for (let i = 0; i < pendingImages.length; i++) {
+          const { file } = pendingImages[i]
+          const mediaData = await uploadChatAttachment(file, selectedLeadId)
+          const content = i === 0 ? messageInput : ''
+          await sendMessage(selectedLeadId, content, 'team', channel, mediaData)
+        }
+      } else {
+        const content = messageInput
+        await sendMessage(selectedLeadId, content, 'team', channel)
+        setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, lastMessageAt: new Date(), lastMessageSender: 'team', lastMessage: content } : l))
+        setLastChannelByLead(prev => ({ ...prev, [selectedLeadId]: channel }))
+      }
+
+      setMessageInput('')
+      clearPendingImages()
     } catch (e) {
       console.error('Error sending message:', e)
       toast.error('Error al enviar mensaje')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -992,15 +1044,33 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                             {(() => {
                               if (!mediaUrl) return null;
                               const lowerUrl = mediaUrl.toLowerCase();
-                              const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
-                              const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
-                              const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) || (data.type === 'audio') || (data.type === 'ptt');
+                              const mimeType = data.media?.mimeType || data.media?.type || data.media?.contentType || data.type
+                              const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext))
+                                || (mimeType && mimeType.toLowerCase().startsWith('image/'))
+                                || (data.type === 'image')
+                              const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext))
+                                || (mimeType && mimeType.toLowerCase().startsWith('video/'))
+                                || (data.type === 'video')
+                              const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext))
+                                || (mimeType && mimeType.toLowerCase().startsWith('audio/'))
+                                || (data.type === 'audio')
+                                || (data.type === 'ptt');
 
                               if (isImage) {
                                 return (
-                                  <div className="mt-1 rounded-xl overflow-hidden shadow-inner bg-black/5 ring-1 ring-black/5 dark:ring-white/5">
-                                    <img src={mediaUrl} alt="Imagen" className="max-w-full h-auto object-cover max-h-[500px] hover:scale-[1.01] transition-transform duration-500 cursor-zoom-in" loading="lazy" />
-                                  </div>
+                                  <button
+                                    type="button"
+                                    className="mt-1 rounded-xl overflow-hidden shadow-inner bg-black/5 ring-1 ring-black/5 dark:ring-white/5 cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-primary/40"
+                                    onClick={() => mediaUrl && setLightboxImage(mediaUrl)}
+                                    onKeyDown={(ev) => { if ((ev.key === 'Enter' || ev.key === ' ') && mediaUrl) { ev.preventDefault(); setLightboxImage(mediaUrl) } }}
+                                  >
+                                    <img
+                                      src={mediaUrl}
+                                      alt="Imagen"
+                                      className="max-w-full h-auto object-cover max-h-[500px] hover:scale-[1.01] transition-transform duration-500"
+                                      loading="lazy"
+                                    />
+                                  </button>
                                 );
                               } else if (isVideo) {
                                 return (
@@ -1009,6 +1079,21 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                                   </div>
                                 );
                               } else if (isAudio) {
+
+                                {lightboxImage && (
+                                  <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImage(null)}>
+                                    <div className="relative max-w-6xl max-h-[90vh] w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                      <img src={lightboxImage} alt="Imagen ampliada" className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl" />
+                                      <button
+                                        type="button"
+                                        className="absolute top-3 right-3 bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-black"
+                                        onClick={() => setLightboxImage(null)}
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
                                 return (
                                   <div className={cn("mt-1 flex items-center gap-3 p-2 rounded-xl border max-w-full backdrop-blur-sm", isTeam ? "bg-white/10 border-white/10" : "bg-muted/30 border-border/30")}>
                                     <div className={cn("p-2 rounded-full text-white shrink-0 shadow-sm", isTeam ? "bg-white/20" : "bg-primary")}>
@@ -1062,6 +1147,22 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
               {/* Barra de entrada de mensaje */}
               <div className="p-4 bg-background border-t shrink-0">
                 <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-3 items-end relative">
+                  {pendingImages.length > 0 && (
+                    <div className="absolute -top-28 left-0 right-0 flex gap-2 overflow-x-auto pb-2">
+                      {pendingImages.map(img => (
+                        <div key={img.preview} className="relative w-24 h-24 rounded-xl overflow-hidden border border-border shadow-sm">
+                          <img src={img.preview} alt="Pegado" className="w-full h-full object-cover" />
+                          <button
+                            type="button"
+                            className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-black"
+                            onClick={() => removePendingImage(img.preview)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1106,6 +1207,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                       placeholder={isRecording ? "Grabando... pulsa detener para enviar" : "Escribe un mensaje aquí..."}
                       value={messageInput}
                       onChange={(e) => setMessageInput(e.target.value)}
+                      onPaste={handlePasteClipboard}
                       disabled={isUploading || isRecording}
                     />
                     {!isRecording && !messageInput.trim() && (
@@ -1335,6 +1437,21 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
           />
         )
       }
+      {lightboxImage && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImage(null)}>
+          <div className="relative max-w-6xl max-h-[90vh] w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            <img src={lightboxImage} alt="Imagen ampliada" className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl" />
+            <button
+              type="button"
+              className="absolute top-3 right-3 bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-black"
+              onClick={() => setLightboxImage(null)}
+            >
+              ×
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
       <ChatSettingsDialog open={showChatSettings} onClose={() => setShowChatSettings(false)} empresaId={companyId} />
     </div >
   )

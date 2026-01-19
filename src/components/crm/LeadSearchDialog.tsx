@@ -31,21 +31,48 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
     const [isSearching, setIsSearching] = useState(false)
     const searchTimeoutRef = useRef<NodeJS.Timeout>()
 
-    // Local filtering fallback
+    // Filtro local por campos principales (cuando no hay onSearch)
     const localFilteredLeads = leads.filter(lead => {
         if (!searchTerm.trim() || onSearch) return false
 
         const search = searchTerm.toLowerCase()
+        const tagsArr = (lead.tags || [])
+        const hasTagMatch = Array.isArray(tagsArr) && tagsArr.some((tag: any) => {
+            const name = typeof tag === 'string' ? tag : (tag?.name || '')
+            return (name || '').toLowerCase().includes(search)
+        })
+
         return (
             (lead.name || '').toLowerCase().includes(search) ||
             (lead.email || '').toLowerCase().includes(search) ||
             (lead.phone || '').toLowerCase().includes(search) ||
             (lead.company || '').toLowerCase().includes(search) ||
-            (lead.tags || []).some(tag => tag.name.toLowerCase().includes(search))
+            hasTagMatch
         )
     })
 
-    const displayLeads = onSearch ? searchResults : localFilteredLeads
+    // Siempre intentar agregar coincidencias locales por etiquetas
+    const localTagMatches = leads.filter(lead => {
+        if (!searchTerm.trim()) return false
+        const search = searchTerm.toLowerCase()
+        const tagsArr = (lead.tags || [])
+        if (!Array.isArray(tagsArr) || tagsArr.length === 0) return false
+        return tagsArr.some((tag: any) => {
+            const name = typeof tag === 'string' ? tag : (tag?.name || '')
+            return (name || '').toLowerCase().includes(search)
+        })
+    })
+
+    // Unir resultados remotos (si existen) con coincidencias locales por etiquetas
+    const displayLeads = (() => {
+        if (onSearch) {
+            const byId = new Map<string, Lead>()
+            ;(searchResults || []).forEach(l => byId.set(l.id, l))
+            localTagMatches.forEach(l => byId.set(l.id, l))
+            return Array.from(byId.values())
+        }
+        return localFilteredLeads
+    })()
 
     useEffect(() => {
         if (!onSearch) return
