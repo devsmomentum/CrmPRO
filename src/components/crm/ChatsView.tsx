@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut, Archive, Gear, Trash } from '@phosphor-icons/react'
+import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut, Archive, Gear, Trash, CaretLeft } from '@phosphor-icons/react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
@@ -56,6 +56,8 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
 
   const [pendingImages, setPendingImages] = useState<Array<{ file: File; preview: string }>>([])
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+
+  const filterScrollRef = useRef<HTMLDivElement | null>(null)
 
   const [isUploading, setIsUploading] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
@@ -745,7 +747,11 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <div className="relative group">
+            <div
+              ref={filterScrollRef}
+              className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent pr-12"
+            >
             <button
               onClick={() => handleScopeChange('active')}
               className={cn(
@@ -815,6 +821,25 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
               <InstagramLogo weight="fill" className="h-3.5 w-3.5" />
               Instagram
             </button>
+            </div>
+            <div className="hidden md:flex absolute inset-y-0 right-1 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                type="button"
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-background shadow-sm border border-border/60 text-muted-foreground hover:text-foreground hover:shadow-md transition-all active:scale-95"
+                onClick={() => filterScrollRef.current?.scrollBy({ left: -140, behavior: 'smooth' })}
+                aria-label="Desplazar filtros a la izquierda"
+              >
+                <CaretLeft size={16} weight="bold" />
+              </button>
+              <button
+                type="button"
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-background shadow-sm border border-border/60 text-muted-foreground hover:text-foreground hover:shadow-md transition-all active:scale-95"
+                onClick={() => filterScrollRef.current?.scrollBy({ left: 140, behavior: 'smooth' })}
+                aria-label="Desplazar filtros a la derecha"
+              >
+                <CaretRight size={16} weight="bold" />
+              </button>
+            </div>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto" ref={listParentRef}>
