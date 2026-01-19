@@ -89,7 +89,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           )}
         </div>
 
-        <nav className="flex-1 px-3 py-2 overflow-y-auto min-h-0 scrollbar-none">
+        <nav className="flex-1 px-3 py-2 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent pr-1">
           <ul className="space-y-1.5">
             {menuItems.map((item) => {
               const Icon = item.icon

@@ -6,7 +6,7 @@ import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, DotsThree, Funnel, Trash, Note } from '@phosphor-icons/react'
+import { Plus, DotsThree, Funnel, Trash, Note, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
@@ -86,6 +86,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const [moveDialogLead, setMoveDialogLead] = useState<Lead | null>(null)
   const [highlightedLeadId, setHighlightedLeadId] = useState<string | null>(null)
   const [notasCounts, setNotasCounts] = useState<Record<string, number>>({})
+  const tabsScrollRef = useRef<HTMLDivElement>(null)
 
   const leadsRef = useRef(leads)
   useEffect(() => {
@@ -1182,11 +1183,14 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           </div>
         </div>
 
-        {/* Pipeline Tabs - Horizontal Scrollable Premium */}
+        {/* Pipeline Tabs - Horizontal scroll with arrows */}
         <Tabs value={activePipeline} onValueChange={(v) => setActivePipeline(v as PipelineType)}>
           <div className="relative group">
-            <div className="overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all">
-              <TabsList className="inline-flex h-11 items-center justify-start gap-2 bg-muted/30 p-1.5 rounded-xl w-max min-w-full">
+            <div
+              ref={tabsScrollRef}
+              className="overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all"
+            >
+              <TabsList className="inline-flex flex-nowrap h-11 items-center justify-start gap-2 bg-muted/30 p-1.5 rounded-xl w-max min-w-full">
                 {(pipelines || []).map(p => (
                   <TabsTrigger
                     key={p.id}
@@ -1201,6 +1205,24 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             {/* Gradient fade indicators for scroll */}
             <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-background via-background/80 to-transparent pointer-events-none" />
             <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-background via-background/80 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+              <button
+                type="button"
+                className="hidden md:flex h-9 w-9 items-center justify-center rounded-full bg-background shadow-sm border border-border/60 text-muted-foreground hover:text-foreground hover:shadow-md transition-all active:scale-95"
+                onClick={() => tabsScrollRef.current?.scrollBy({ left: -((tabsScrollRef.current?.clientWidth || 200) * 0.8), behavior: 'smooth' })}
+                aria-label="Desplazar pipelines a la izquierda"
+              >
+                <CaretLeft size={18} weight="bold" />
+              </button>
+              <button
+                type="button"
+                className="h-9 w-9 flex items-center justify-center rounded-full bg-background shadow-sm border border-border/60 text-muted-foreground hover:text-foreground hover:shadow-md transition-all active:scale-95"
+                onClick={() => tabsScrollRef.current?.scrollBy({ left: (tabsScrollRef.current?.clientWidth || 200) * 0.8, behavior: 'smooth' })}
+                aria-label="Desplazar pipelines a la derecha"
+              >
+                <CaretRight size={18} weight="bold" />
+              </button>
+            </div>
           </div>
         </Tabs>
 

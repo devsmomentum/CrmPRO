@@ -971,7 +971,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                             "max-w-[85%] sm:max-w-[70%] px-3.5 py-2.5 rounded-2xl shadow-sm text-[15px] relative animate-in fade-in slide-in-from-bottom-2 duration-300",
                             isTeam
                               ? "bg-primary text-primary-foreground rounded-tr-none shadow-primary/10"
-                              : "bg-white dark:bg-zinc-800 text-foreground rounded-tl-none border border-border/10 shadow-black/5"
+                              : "bg-white text-black rounded-tl-none border border-border/10 shadow-black/5"
                           )}>
 
                             {(() => {
