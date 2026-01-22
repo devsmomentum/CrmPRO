@@ -108,6 +108,38 @@ async function markLeadMessagesAsRead(
   }
 }
 
+// Función helper para obtener detalles del perfil de WhatsApp/SuperApi
+async function fetchChatDetails(client: string, chatId: string): Promise<{ name: string; image?: string } | null> {
+  try {
+    console.log(`🔍 [PROFILE] Buscando nombre para ${chatId} usando client ${client}...`);
+
+    // Realizamos el fetch incluyendo el token en los headers (PROPORCIONADO POR EL USUARIO)
+    const response = await fetch(`https://v4.iasuperapi.com/api/v1/${client}/chats/${chatId}/details`, {
+      method: "GET",
+      headers: {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NzdlODNhZTBhMjM1ZGJmYWM3MTQ3NTIiLCJpYXQiOjE3NjYwNzgxMDEsImV4cCI6MzMyMTI3ODEwMX0.53DdZYZqZvjFLI4DMNdk6CTTyYsloz8VwkYqhK0Z1IE",
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.warn(`⚠️ [PROFILE] Error API Status: ${response.status}`);
+      console.warn(`⚠️ [PROFILE] Error Body Raw: ${errorBody}`);
+      return null;
+    }
+
+    const json = await response.json();
+    if (json && json.payload) {
+      return json.payload;
+    }
+    return null;
+  } catch (error) {
+    console.error("❌ [PROFILE] Error fetching chat details:", error);
+    return null;
+  }
+}
+
 // Obtener palabras clave configuradas para una empresa
 async function getEmpresaKeywords(
   supabase: ReturnType<typeof createClient>,
@@ -162,11 +194,11 @@ async function shouldKeepUnreadForLead(
     for (const m of recentMsgs || []) {
       const text = (m.content || '').toString().toLowerCase();
       if (!text) continue;
-      
+
       if (normalizedKeywords.some(kw => text.includes(kw))) {
         keywordFound = true;
         console.log(`[read-rule] Coincidencia de palabra clave en mensaje ${m.id} para lead ${leadId}.`);
-        
+
         // Si el mensaje ya estaba leído, lo marcamos como NO LEÍDO para priorizarlo
         if (m.read) {
           await supabase
@@ -177,7 +209,7 @@ async function shouldKeepUnreadForLead(
         }
       }
     }
-    
+
     return keywordFound;
   } catch (e) {
     console.warn(`[read-rule] Excepción evaluando palabras clave para lead ${leadId}:`, e);
@@ -278,8 +310,17 @@ serve(async (req) => {
         console.log(`Received signature: '${receivedSignature.substring(0, 20)}...'`);
         console.log(`Calculated: '${hashHex.substring(0, 20)}...'`);
 
+        // Verificar si es mensaje de Instagram (no aplicar filtro de número WhatsApp)
+        const platform = payload.platform ?? "";
+        const isInstagramMessage = platform.toLowerCase() === "instagram";
+
+        if (isInstagramMessage) {
+          console.log(`📷 [INSTAGRAM] Mensaje de Instagram detectado - saltando validación de número WhatsApp`);
+        }
+
         // Si la firma no coincide, verificamos que el mensaje sea de/para nuestro número de producción
-        if (cleanConfiguredPhone) {
+        // PERO solo para WhatsApp, no para Instagram
+        if (cleanConfiguredPhone && !isInstagramMessage) {
           const eventData = typeof payload.data === "string" ? JSON.parse(payload.data || "{}") : (payload.data ?? {});
           const pTo = (eventData.to ?? payload.to ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
           const pFrom = (eventData.from ?? payload.from ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
@@ -296,7 +337,7 @@ serve(async (req) => {
             });
           }
           console.log(`✅ Firma no coincide pero mensaje es de/para número configurado - procesando...`);
-        } else {
+        } else if (!isInstagramMessage) {
           console.log(`⚠️ WHATSAPP_PHONE_NUMBER no configurado - procesando mensaje de todos modos`);
         }
       }
@@ -634,78 +675,73 @@ serve(async (req) => {
 
             for (const config of empresasConfig) {
               const { empresa_id, pipeline_id, etapa_id } = config;
-
               console.log(`🔍 [Empresa ${empresa_id}] Verificando si existe lead con teléfono ${cleanPhone}...`);
 
-              // Verificar que no exista (doble check)
-              const { data: existingLead } = await supabase
+              // 1. DEFINIR TIPO DE FUENTE PRIMERO (Evita ReferenceError)
+              const isInstagram = cleanPhone.length >= 15;
+              const sourceType = isInstagram ? 'Instagram' : 'WhatsApp';
+              const sourceIcon = isInstagram ? '📷' : '📞';
+
+              // 2. BUSCAR SI YA EXISTE EL LEAD
+              let { data: existingLead } = await supabase
                 .from("lead")
-                .select("id")
+                .select("id, nombre_completo")
                 .eq("empresa_id", empresa_id)
                 .ilike("telefono", `%${cleanPhone}%`)
                 .maybeSingle();
 
+              // 3. LÓGICA DE ACTUALIZACIÓN DE NOMBRE (SUPER API)
+              const apiClient = cleanConfiguredPhone || eventData.sender?.client || payload.sender?.client || payload.data?.sender?.client || payload.client;
+              let finalName = existingLead?.nombre_completo || `Nuevo Lead ${sourceType} ${cleanPhone}`;
+
+              // Solo ejecutamos esto si es un mensaje de usuario real y (el lead no existe o tiene nombre generico)
+              if (apiClient && payload.event !== "ai_response" && (!existingLead || finalName.startsWith("Nuevo Lead"))) {
+                console.log('Final name and client -->', apiClient, finalName, payload.event, existingLead);
+                const profileData = await fetchChatDetails(apiClient, cleanPhone);
+                console.log('Profile data -->', profileData);
+                if (profileData && profileData.name) {
+                  finalName = profileData.name;
+                  console.log(`👤 [PROFILE] Nombre detectado: ${finalName}`);
+
+                  // Si el lead ya existía, le actualizamos el nombre
+                  if (existingLead) {
+                    await supabase.from('lead').update({ nombre_completo: finalName }).eq('id', existingLead.id);
+                    console.log(`🔄 [PROFILE] Lead actualizado con nombre real.`);
+                  }
+                }
+              }
+
+              // 4. SI EL LEAD EXISTE, SALTAMOS A LA SIGUIENTE EMPRESA (Ya no creamos nada)
               if (existingLead) {
                 console.log(`⚠️ [Empresa ${empresa_id}] Lead ya existe: ${existingLead.id}`);
                 continue;
               }
 
-              // Determinar pipeline y etapa
+              // ==========================================================
+              // 5. CREACIÓN DE NUEVO LEAD (Si llegamos aquí, es nuevo)
+              // ==========================================================
+
+              // Determinar Pipeline
               let targetPipelineId = pipeline_id || null;
-              let targetEtapaId = etapa_id || null;
-
               if (!targetPipelineId) {
-                const { data: pipeline } = await supabase
-                  .from('pipeline')
-                  .select('id')
-                  .eq('empresa_id', empresa_id)
-                  .order('created_at', { ascending: true })
-                  .limit(1)
-                  .maybeSingle();
-
-                if (pipeline) {
-                  targetPipelineId = pipeline.id;
-                }
+                const { data: pipeline } = await supabase.from('pipeline').select('id').eq('empresa_id', empresa_id).order('created_at', { ascending: true }).limit(1).maybeSingle();
+                if (pipeline) targetPipelineId = pipeline.id;
               }
 
+              // Determinar Etapa
+              let targetEtapaId = etapa_id || null;
               if (targetPipelineId && !targetEtapaId) {
-                const { data: etapa } = await supabase
-                  .from('etapas')
-                  .select('id, nombre')
-                  .eq('pipeline_id', targetPipelineId)
-                  .or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%')
-                  .order('orden', { ascending: true, nullsFirst: false })
-                  .limit(1)
-                  .maybeSingle();
-
-                if (etapa) {
-                  targetEtapaId = etapa.id;
-                } else {
-                  const { data: firstEtapa } = await supabase
-                    .from('etapas')
-                    .select('id')
-                    .eq('pipeline_id', targetPipelineId)
-                    .order('orden', { ascending: true, nullsFirst: false })
-                    .limit(1)
-                    .maybeSingle();
-
-                  if (firstEtapa) {
-                    targetEtapaId = firstEtapa.id;
-                  }
+                const { data: etapa } = await supabase.from('etapas').select('id, nombre').eq('pipeline_id', targetPipelineId).or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%').order('orden', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
+                if (etapa) targetEtapaId = etapa.id;
+                else {
+                  const { data: firstEtapa } = await supabase.from('etapas').select('id').eq('pipeline_id', targetPipelineId).order('orden', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
+                  if (firstEtapa) targetEtapaId = firstEtapa.id;
                 }
               }
 
-              // Detectar plataforma (Instagram vs WhatsApp) por longitud del ID
-              // Se usa >= 15 para incluir edge cases de IDs justos de 15 caracteres
-              const isInstagram = cleanPhone.length >= 15;
-              const sourceType = isInstagram ? 'Instagram' : 'WhatsApp';
-              const sourceIcon = isInstagram ? '📷' : '📞';
-
-              console.log(`[WEBHOOK] Clasificando ${cleanPhone} (Len: ${cleanPhone.length}) como -> ${sourceType}`);
-
-              // Crear el Lead
+              // Objeto del nuevo Lead usando 'finalName'
               const newLeadPayload = {
-                nombre_completo: `Nuevo Lead ${sourceType} ${cleanPhone}`,
+                nombre_completo: finalName,
                 telefono: cleanPhone,
                 empresa_id: empresa_id,
                 pipeline_id: targetPipelineId,
@@ -716,6 +752,7 @@ serve(async (req) => {
                 asignado_a: '00000000-0000-0000-0000-000000000000'
               };
 
+              // Insertar Lead
               const { data: newLead, error: createError } = await supabase
                 .from('lead')
                 .insert(newLeadPayload)
@@ -725,14 +762,13 @@ serve(async (req) => {
               if (newLead && !createError) {
                 console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id} (${sourceType})`);
 
-                // Si hay archivo multimedia, descargarlo y guardarlo en Storage
+                // --- Lógica original de Multimedia y Mensajes ---
                 let storedMediaUrl: string | null = null;
                 if (mediaUrl) {
                   const mimeType = file?.mimeType || null;
                   storedMediaUrl = await downloadAndStoreMedia(supabase, mediaUrl, newLead.id, fileName, mimeType);
                 }
 
-                // Crear metadata normalizada
                 const normalizedMetadata = {
                   type: type,
                   rawPayload: payload,
@@ -744,11 +780,10 @@ serve(async (req) => {
                     mediaUrl: mediaUrl,
                     mediaId: mediaId,
                     fileName: fileName,
-                    storedMediaUrl: storedMediaUrl // URL del archivo guardado en nuestro Storage
+                    storedMediaUrl: storedMediaUrl
                   }
                 };
 
-                // Guardar el Mensaje
                 await supabase.from("mensajes").insert({
                   lead_id: newLead.id,
                   content: content,
@@ -757,38 +792,26 @@ serve(async (req) => {
                   external_id: externalId,
                   metadata: normalizedMetadata
                 });
-                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para nuevo lead (${sourceType})`);
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje inicial guardado.`);
+
+                // Auto-read si es AI response
                 if (payload.event === "ai_response") {
                   const keepUnread = await shouldKeepUnreadForLead(supabase, empresa_id, newLead.id);
-                  if (!keepUnread) {
-                    await markLeadMessagesAsRead(supabase, newLead.id);
-                  } else {
-                    console.log(`[read-status] Saltando auto-leído por palabras clave para nuevo lead ${newLead.id}`);
-                  }
+                  if (!keepUnread) await markLeadMessagesAsRead(supabase, newLead.id);
                 }
 
-                // Crear notificación para el owner de la empresa
+                // Notificación al Owner
                 try {
-                  const { data: empresa } = await supabase
-                    .from('empresa')
-                    .select('owner_id, nombre')
-                    .eq('id', empresa_id)
-                    .single();
-
+                  const { data: empresa } = await supabase.from('empresa').select('owner_id, nombre').eq('id', empresa_id).single();
                   if (empresa?.owner_id) {
                     await supabase.from('notificaciones').insert({
                       user_id: empresa.owner_id,
                       tipo: `nuevo_lead_${sourceType.toLowerCase()}`,
                       titulo: `Nuevo Lead desde ${sourceType}`,
-                      mensaje: `Se ha creado automáticamente un nuevo lead ${sourceIcon}: ${cleanPhone}`,
-                      datos: {
-                        lead_id: newLead.id,
-                        telefono: cleanPhone,
-                        empresa_id: empresa_id
-                      },
+                      mensaje: `Se ha creado automáticamente un nuevo lead ${sourceIcon}: ${finalName}`,
+                      datos: { lead_id: newLead.id, telefono: cleanPhone, empresa_id: empresa_id },
                       leido: false
                     });
-                    console.log(`📬 Notificación enviada al owner de empresa ${empresa_id}`);
                   }
                 } catch (notifError) {
                   console.warn("No se pudo crear notificación:", notifError);

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,20 +8,22 @@ import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
 interface RegisterViewProps {
-  onRegister: (email: string, password: string, businessName: string) => void
-  onSwitchToLogin: () => void
+  onRegister: (email: string, password: string, businessName: string) => Promise<void>
+  onSwitchToLogin?: () => void
 }
 
 export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps) {
   const t = useTranslation('es')
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [businessName, setBusinessName] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!email || !password || !confirmPassword || !businessName) {
       toast.error(t.messages.fillRequired)
       return
@@ -36,7 +39,24 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
       return
     }
 
-    onRegister(email, password, businessName)
+    setIsLoading(true)
+    try {
+      await onRegister(email, password, businessName)
+      // Si el registro requiere confirmación de email, redirigir a login
+      // Si no, el AuthProvider manejará la redirección
+    } catch (error) {
+      // Error ya manejado en useAuth
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSwitchToLogin = () => {
+    if (onSwitchToLogin) {
+      onSwitchToLogin()
+    } else {
+      navigate('/login')
+    }
   }
 
   return (
@@ -57,6 +77,7 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
                   if (e.target.value.length <= 30) setBusinessName(e.target.value)
                 }}
                 placeholder="Nombre de la empresa"
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -67,6 +88,7 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tu@empresa.com"
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -77,6 +99,7 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                disabled={isLoading}
               />
             </div>
             <div>
@@ -87,19 +110,25 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
+                disabled={isLoading}
               />
             </div>
-            <Button type="submit" className="w-full" size="lg">
-              {t.auth.register}
+            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+              {isLoading ? 'Creando cuenta...' : t.auth.register}
             </Button>
             <div className="text-center mt-4">
-              <button
-                type="button"
-                onClick={onSwitchToLogin}
+              <Link
+                to="/login"
+                onClick={(e) => {
+                  if (onSwitchToLogin) {
+                    e.preventDefault()
+                    onSwitchToLogin()
+                  }
+                }}
                 className="text-sm text-primary hover:underline"
               >
                 {t.auth.login}
-              </button>
+              </Link>
             </div>
           </form>
         </CardContent>

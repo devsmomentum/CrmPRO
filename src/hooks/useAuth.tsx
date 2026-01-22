@@ -1,0 +1,334 @@
+import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { supabase } from '@/supabase/client'
+import { login as authLogin, logout as authLogout, register as authRegister } from '@/supabase/auth'
+import { createUsuario, getUsuarioById } from '@/supabase/services/usuarios'
+import { createEmpresa, getEmpresasByUsuario, leaveCompany } from '@/supabase/services/empresa'
+import { toast } from 'sonner'
+
+export interface User {
+    id: string
+    email: string
+    businessName: string
+}
+
+export interface Company {
+    id: string
+    name: string
+    ownerId: string
+    createdAt: Date
+    role?: string
+    logo?: string
+}
+
+interface AuthContextType {
+    user: User | null
+    companies: Company[]
+    currentCompanyId: string
+    isLoading: boolean
+    isGuestMode: boolean
+    setCurrentCompanyId: (id: string) => void
+    setCompanies: React.Dispatch<React.SetStateAction<Company[]>>
+    login: (email: string, password: string) => Promise<void>
+    register: (email: string, password: string, businessName: string) => Promise<void>
+    logout: () => Promise<void>
+    fetchCompanies: () => Promise<Company[]>
+    leaveCompanyHandler: (companyId: string) => Promise<void>
+}
+
+const AuthContext = createContext<AuthContextType | null>(null)
+
+export function useAuth() {
+    const context = useContext(AuthContext)
+    if (!context) {
+        throw new Error('useAuth must be used within an AuthProvider')
+    }
+    return context
+}
+
+// Helper para leer de localStorage con fallback
+function getStoredValue<T>(key: string, defaultValue: T): T {
+    if (typeof window === 'undefined') return defaultValue
+    try {
+        const raw = localStorage.getItem(key)
+        if (raw !== null) return JSON.parse(raw)
+    } catch (e) {
+        // Silencio errores de parseo
+    }
+    return defaultValue
+}
+
+// Helper para guardar en localStorage
+function setStoredValue<T>(key: string, value: T): void {
+    if (typeof window === 'undefined') return
+    try {
+        localStorage.setItem(key, JSON.stringify(value))
+    } catch (e) {
+        // Silencio errores de escritura
+    }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+    const [user, setUser] = useState<User | null>(() => getStoredValue('current-user', null))
+    const [companies, setCompanies] = useState<Company[]>(() => getStoredValue('companies', []))
+    const [currentCompanyId, setCurrentCompanyIdState] = useState<string>(() => getStoredValue('current-company-id', ''))
+    const [isLoading, setIsLoading] = useState(true)
+
+    // Sincronizar con localStorage
+    useEffect(() => {
+        setStoredValue('current-user', user)
+    }, [user])
+
+    useEffect(() => {
+        setStoredValue('companies', companies)
+    }, [companies])
+
+    useEffect(() => {
+        setStoredValue('current-company-id', currentCompanyId)
+    }, [currentCompanyId])
+
+    const setCurrentCompanyId = (id: string) => {
+        setCurrentCompanyIdState(id)
+    }
+
+    // Verificar si está en modo invitado
+    const isGuestMode = (() => {
+        if (!user || !currentCompanyId) return false
+        const currentCompany = companies.find(c => c.id === currentCompanyId)
+        return currentCompany ? currentCompany.ownerId !== user.id : false
+    })()
+
+    // Verificar sesión inicial
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            // Si hay usuario en localStorage pero no hay sesión válida, limpiar estado
+            const storedUser = localStorage.getItem('current-user')
+            if (!session && storedUser && storedUser !== 'null') {
+                console.log('[AUTH] Sesión expirada detectada, limpiando estado del usuario')
+                setUser(null)
+                setCompanies([])
+                setCurrentCompanyIdState('')
+                toast.info('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.', { duration: 5000 })
+            }
+            setIsLoading(false)
+        })
+
+        // Escuchar cambios de sesión
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            console.log('[AUTH] Evento de autenticación:', event)
+
+            if (event === 'SIGNED_OUT') {
+                console.log('[AUTH] Sesión terminada, limpiando estado')
+                setUser(null)
+                setCompanies([])
+                setCurrentCompanyIdState('')
+            }
+
+            if (event === 'TOKEN_REFRESHED' && !session) {
+                console.log('[AUTH] Token expiró y no se pudo refrescar')
+                setUser(null)
+                setCompanies([])
+                setCurrentCompanyIdState('')
+                toast.info('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.', { duration: 5000 })
+            }
+
+            setIsLoading(false)
+        })
+
+        return () => subscription.unsubscribe()
+    }, [])
+
+    const fetchCompanies = async (): Promise<Company[]> => {
+        if (!user?.id) return []
+        try {
+            const empresas = await getEmpresasByUsuario(user.id)
+            const uiCompanies = empresas.map((e: any) => ({
+                id: e.id,
+                name: e.nombre_empresa,
+                ownerId: e.usuario_id,
+                createdAt: new Date(e.created_at),
+                role: e.role,
+                logo: e.logo_url || undefined
+            }))
+            setCompanies(uiCompanies)
+
+            if (!currentCompanyId && uiCompanies.length > 0) {
+                setCurrentCompanyIdState(uiCompanies[0].id)
+            }
+            return uiCompanies
+        } catch (error) {
+            console.error('Error fetching companies:', error)
+            return []
+        }
+    }
+
+    const login = async (email: string, password: string) => {
+        setIsLoading(true)
+        try {
+            console.log('[LOGIN] iniciando login para', email)
+            const authUser = await authLogin(email, password)
+            console.log('[LOGIN] authUser recibido', authUser)
+
+            let row
+            try {
+                row = await getUsuarioById(authUser.id)
+            } catch (err: any) {
+                console.log('[LOGIN] usuario no existe en tabla usuarios, creando...')
+                row = await createUsuario({
+                    id: authUser.id,
+                    email: authUser.email || email,
+                    nombre: authUser.email?.split('@')[0] || 'Usuario'
+                })
+            }
+
+            console.log('[LOGIN] fila usuarios', row)
+            const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
+            setUser(newUser)
+
+            const empresas = await getEmpresasByUsuario(authUser.id)
+            const uiCompanies = empresas.map((e: any) => ({
+                id: e.id,
+                name: e.nombre_empresa,
+                ownerId: e.usuario_id,
+                createdAt: new Date(e.created_at),
+                role: e.role,
+                logo: e.logo_url || undefined
+            }))
+            setCompanies(uiCompanies)
+            if (uiCompanies.length > 0) {
+                setCurrentCompanyIdState(uiCompanies[0].id)
+            }
+
+            if (uiCompanies.length === 0) {
+                console.log('[LOGIN] No se encontraron empresas; creando empresa inicial')
+                try {
+                    const empresaCreada = await createEmpresa({ nombre_empresa: row.nombre, usuario_id: authUser.id })
+                    console.log('[LOGIN] Empresa inicial creada en login', empresaCreada)
+                    const nuevaCompany = {
+                        id: empresaCreada.id,
+                        name: empresaCreada.nombre_empresa,
+                        ownerId: empresaCreada.usuario_id,
+                        createdAt: new Date(empresaCreada.created_at),
+                        role: 'owner'
+                    }
+                    setCompanies([nuevaCompany])
+                    setCurrentCompanyIdState(nuevaCompany.id)
+                } catch (err: any) {
+                    console.error('[LOGIN] Error creando empresa inicial en login', err)
+                }
+            }
+
+            toast.success('¡Sesión iniciada exitosamente!')
+        } catch (e: any) {
+            console.error('[LOGIN] error', e)
+            if (e.message?.toLowerCase().includes('email not confirmed')) {
+                toast.error('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
+                    duration: 6000
+                })
+            } else {
+                toast.error(e.message || 'Error iniciando sesión')
+            }
+            throw e
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    const register = async (email: string, password: string, businessName: string) => {
+        try {
+            console.log('[REGISTER] iniciando registro para', email)
+            const authUser = await authRegister(email, password)
+            console.log('[REGISTER] authUser recibido', authUser)
+
+            const { data: sessionData } = await supabase.auth.getSession()
+
+            if (!sessionData.session) {
+                console.log('[REGISTER] confirmación de email requerida')
+                toast.success('¡Registro exitoso! Por favor revisa tu email para confirmar tu cuenta.', {
+                    duration: 6000
+                })
+                return
+            }
+
+            const row = await createUsuario({ id: authUser.id, email, nombre: businessName })
+            console.log('[REGISTER] fila insertada usuarios', row)
+
+            const empresa = await createEmpresa({ nombre_empresa: businessName, usuario_id: authUser.id })
+            console.log('[REGISTER] empresa creada', empresa)
+
+            const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
+            setUser(newUser)
+
+            const uiCompany = {
+                id: empresa.id,
+                name: empresa.nombre_empresa,
+                ownerId: empresa.usuario_id,
+                createdAt: new Date(empresa.created_at)
+            }
+            setCompanies([uiCompany])
+            setCurrentCompanyIdState(uiCompany.id)
+            toast.success('¡Cuenta creada exitosamente!')
+        } catch (e: any) {
+            console.error('[REGISTER] error', e)
+            if (e.message?.toLowerCase().includes('429')) {
+                toast.error('Demasiados intentos. Espera unos segundos e intenta de nuevo.')
+            } else if (e.message?.toLowerCase().includes('email not confirmed')) {
+                toast.info('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
+                    duration: 6000
+                })
+            } else {
+                toast.error(e.message || 'Error registrando usuario')
+            }
+            throw e
+        }
+    }
+
+    const logout = async () => {
+        await authLogout()
+        setUser(null)
+        setCompanies([])
+        setCurrentCompanyIdState('')
+        toast.success('¡Sesión cerrada!')
+    }
+
+    const leaveCompanyHandler = async (companyId: string) => {
+        if (!user) return
+        const company = companies.find(c => c.id === companyId)
+        if (!company) return
+
+        try {
+            await leaveCompany(companyId, user.email, user.id)
+            toast.success('Has abandonado la empresa correctamente')
+
+            // Cambiar a la empresa propia
+            const myCompany = companies.find(c => c.ownerId === user.id)
+            if (myCompany) {
+                setCurrentCompanyIdState(myCompany.id)
+            }
+            await fetchCompanies()
+        } catch (error) {
+            console.error('Error leaving company:', error)
+            toast.error('Error al abandonar la empresa')
+        }
+    }
+
+    const value: AuthContextType = {
+        user,
+        companies,
+        currentCompanyId,
+        isLoading,
+        isGuestMode,
+        setCurrentCompanyId,
+        setCompanies,
+        login,
+        register,
+        logout,
+        fetchCompanies,
+        leaveCompanyHandler
+    }
+
+    return (
+        <AuthContext.Provider value={value}>
+            {children}
+        </AuthContext.Provider>
+    )
+}

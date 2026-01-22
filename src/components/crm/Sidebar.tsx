@@ -1,13 +1,11 @@
 import { useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Microphone, Buildings, ChatCircleDots } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-// import { useKV } from '@github/spark/hooks'
-import { usePersistentState } from '@/hooks/usePersistentState'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useTranslation } from '@/lib/i18n'
-import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Company } from './CompanyManagement'
 
@@ -30,17 +28,33 @@ interface SidebarProps {
 
 export function Sidebar({ currentView, onViewChange, onLogout, user, currentCompanyId, onCompanyChange, companies = [], notificationCount = 0 }: SidebarProps) {
   const t = useTranslation('es')
-  // Eliminamos contador local de KV; usaremos el prop notificationCount proveniente de BD
+  const location = useLocation()
+  const navigate = useNavigate()
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   const [showCompanySelector, setShowCompanySelector] = useState(false)
-  // const [companies] = usePersistentState<Company[]>('companies', [])
 
   const unreadCount = notificationCount || 0
+
+  // Determinar si está en modo invitado basado en la URL
+  const isGuestMode = location.pathname.startsWith('/guest')
+
+  // Helper para generar rutas con prefijo guest si es necesario
+  const getPath = (path: string) => {
+    const basePath = path === 'dashboard' ? '' : path
+    return isGuestMode ? `/guest/${basePath}`.replace('//', '/') : `/${basePath}`.replace('//', '/')
+  }
+
+  // Determinar si una ruta está activa
+  const isActive = (itemId: string) => {
+    const pathWithoutGuest = location.pathname.replace('/guest', '')
+    const cleanPath = pathWithoutGuest === '/' ? 'dashboard' : pathWithoutGuest.slice(1)
+    return cleanPath === itemId || (itemId === 'dashboard' && cleanPath === '')
+  }
 
   const menuItems = [
     { id: 'dashboard', icon: House, label: t.nav.dashboard },
     { id: 'pipeline', icon: Kanban, label: t.nav.pipeline },
-    { id: 'chats', icon: ChatCircleDots, label: 'Chats' }, // Added Chats view
+    { id: 'chats', icon: ChatCircleDots, label: 'Chats' },
     { id: 'analytics', icon: ChartBar, label: t.nav.analytics },
     { id: 'calendar', icon: CalendarBlank, label: t.nav.calendar },
     { id: 'team', icon: Users, label: t.nav.team },
@@ -93,29 +107,29 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
           <ul className="space-y-1.5">
             {menuItems.map((item) => {
               const Icon = item.icon
-              const isActive = currentView === item.id
+              const active = isActive(item.id)
 
               return (
                 <li key={item.id}>
-                  <button
-                    onClick={() => onViewChange(item.id)}
+                  <NavLink
+                    to={getPath(item.id)}
                     className={cn(
                       'w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-200 group',
-                      isActive
+                      active
                         ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                         : 'text-foreground/70 hover:bg-primary/5 hover:text-primary'
                     )}
                   >
                     <Icon
                       size={20}
-                      weight={isActive ? 'fill' : 'bold'}
+                      weight={active ? 'fill' : 'bold'}
                       className={cn(
                         "transition-transform duration-200 group-hover:scale-110",
-                        isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary"
+                        active ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary"
                       )}
                     />
                     <span>{item.label}</span>
-                  </button>
+                  </NavLink>
                 </li>
               )
             })}
@@ -131,19 +145,19 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
             <span>{t.nav.voice}</span>
           </button>
 
-          <button
-            onClick={() => onViewChange('notifications')}
+          <NavLink
+            to={getPath('notifications')}
             className={cn(
               "w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all group relative",
-              currentView === 'notifications'
+              isActive('notifications')
                 ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
                 : "text-foreground/70 hover:bg-primary/5 hover:text-primary"
             )}
           >
             <Bell
               size={20}
-              weight={currentView === 'notifications' ? 'fill' : 'bold'}
-              className={cn(currentView === 'notifications' ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary")}
+              weight={isActive('notifications') ? 'fill' : 'bold'}
+              className={cn(isActive('notifications') ? "text-primary-foreground" : "text-muted-foreground group-hover:text-primary")}
             />
             <span>{t.nav.notifications}</span>
             {unreadCount > 0 && (
@@ -151,7 +165,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                 {unreadCount}
               </Badge>
             )}
-          </button>
+          </NavLink>
 
           <div className="pt-2">
             {onLogout && (
@@ -169,6 +183,7 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
         </div>
       </div>
 
+      {/* Mobile Bottom Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-background border-t border-border z-[9999] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] pb-[env(safe-area-inset-bottom)]">
         <nav className="flex items-center justify-between px-1 py-1.5 overflow-x-auto">
           {/* Botón de empresa */}
@@ -184,22 +199,22 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
 
           {menuItems.map((item) => {
             const Icon = item.icon
-            const isActive = currentView === item.id
+            const active = isActive(item.id)
 
             return (
-              <button
+              <NavLink
                 key={item.id}
-                onClick={() => onViewChange(item.id)}
+                to={getPath(item.id)}
                 className={cn(
                   'flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium transition-all min-w-fit',
-                  isActive
+                  active
                     ? 'text-primary'
                     : 'text-muted-foreground'
                 )}
               >
-                <Icon size={20} weight={isActive ? 'fill' : 'regular'} />
+                <Icon size={20} weight={active ? 'fill' : 'regular'} />
                 <span className="text-[9px]">{item.label}</span>
-              </button>
+              </NavLink>
             )
           })}
 
