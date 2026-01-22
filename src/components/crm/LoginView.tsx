@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,16 +8,18 @@ import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
 interface LoginViewProps {
-  onLogin: (email: string, password: string) => void
-  onSwitchToRegister: () => void
+  onLogin: (email: string, password: string) => Promise<void>
+  onSwitchToRegister?: () => void
 }
 
 function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
   const t = useTranslation('es')
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!email || !password) {
@@ -24,7 +27,23 @@ function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
       return
     }
 
-    onLogin(email, password)
+    setIsLoading(true)
+    try {
+      await onLogin(email, password)
+      navigate('/dashboard')
+    } catch (error) {
+      // Error ya manejado en useAuth
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSwitchToRegister = () => {
+    if (onSwitchToRegister) {
+      onSwitchToRegister()
+    } else {
+      navigate('/register')
+    }
   }
 
   return (
@@ -45,6 +64,7 @@ function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tu@empresa.com"
+                disabled={isLoading}
               />
             </div>
 
@@ -56,21 +76,27 @@ function LoginView({ onLogin, onSwitchToRegister }: LoginViewProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
+                disabled={isLoading}
               />
             </div>
 
-            <Button type="submit" className="w-full" size="lg">
-              {t.auth.login}
+            <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
+              {isLoading ? 'Iniciando sesión...' : t.auth.login}
             </Button>
 
             <div className="text-center mt-4">
-              <button
-                type="button"
-                onClick={onSwitchToRegister}
+              <Link
+                to="/register"
+                onClick={(e) => {
+                  if (onSwitchToRegister) {
+                    e.preventDefault()
+                    onSwitchToRegister()
+                  }
+                }}
                 className="text-sm text-primary hover:underline"
               >
                 {t.auth.createAccount}
-              </button>
+              </Link>
             </div>
           </form>
         </CardContent>
