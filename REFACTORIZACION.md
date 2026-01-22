@@ -1006,49 +1006,236 @@ quedamos en la última sesión.
 
 ---
 
-## Checklist de Progreso
+## ✅ Checklist de Progreso
 
-### Fase 1: Preparación
-- [ ] Migrar `empresa.js` → `empresa.ts`
-- [ ] Migrar `leads.js` → `leads.ts`
-- [ ] Migrar `equipos.js` → `equipos.ts`
-- [ ] Migrar `etapas.js` → `etapas.ts`
-- [ ] Migrar `panel.js` → `panel.ts`
-- [ ] Migrar `persona.js` → `persona.ts`
-- [ ] Migrar `pipeline.js` → `pipeline.ts`
-- [ ] Migrar `usuarios.js` → `usuarios.ts`
-- [ ] Eliminar `invitations.js` (duplicado)
-- [ ] Crear tipos DTOs en `types.ts`
-- [ ] Crear estructura de carpetas
-
-### Fase 2: Extracción de Hooks
-- [ ] Crear `useAudioRecorder`
-- [ ] Crear `useLeadsList`
-- [ ] Crear `useUnreadCounts`
-- [ ] Crear `useChatMessages`
-- [ ] Crear `usePipelineData`
-- [ ] Crear `useLeadDragDrop`
-- [ ] Crear `useLeadDetail`
-
-### Fase 3: Descomposición
-- [ ] Refactorizar `ChatsView`
-- [ ] Refactorizar `PipelineView`
-- [ ] Refactorizar `LeadDetailSheet`
-- [ ] Refactorizar `AddLeadDialog`
-
-### Fase 4: Servicios
-- [ ] Crear estructura de servicios
-- [ ] Implementar `leadsService`
-- [ ] Implementar `messagesService`
-- [ ] Implementar `pipelineService`
-- [ ] Migrar llamadas en componentes
-
-### Fase 5: Webhook
-- [ ] Crear estructura modular
-- [ ] Separar handlers
-- [ ] Separar utilidades
-- [ ] Actualizar entry point
+> Marca los items completados con `[x]` a medida que avanzas.
 
 ---
 
-> **Última actualización**: Enero 2026
+### 🧹 Fase 0: Limpieza de Archivos (Pre-refactorización)
+
+**Objetivo**: Eliminar código muerto y archivos innecesarios.
+
+#### Carpeta `database/`
+- [x] Eliminar `add_archived_flag_to_lead.sql`
+- [x] Eliminar `add_chat_fields_to_lead.sql`
+- [x] Eliminar `add_last_message_content_to_lead.sql`
+- [x] Eliminar `add_lead_reuniones_table.sql`
+- [x] Eliminar `add_location_to_leads.sql`
+- [x] Eliminar `chat_settings.sql`
+- [x] Eliminar `enable_admin_delete.sql`
+- [x] Eliminar `enable_message_delete.sql`
+- [x] Eliminar `fix_admin_delete_robust.sql`
+- [x] Eliminar `indexes_lead.sql`
+- [x] Eliminar `notificaciones_policies.sql`
+- [x] Eliminar `restore_guest_access_full.sql`
+- [x] Eliminar `restore_rls_policies.sql`
+- [x] Eliminar `rpc_delete_member.sql`
+- [x] Eliminar `storage_company_logos_policies.sql`
+- [x] Eliminar `super_api_chat_schema.sql`
+- [x] **Conservar** `schema.sql` (documentación de BD)
+
+#### Archivos duplicados y temporales
+- [x] Eliminar `src/supabase/services/invitations.js` (duplicado de `.ts`)
+- [x] Eliminar `tsc_output.txt` (archivo temporal)
+- [x] Eliminar carpeta vacía `src/types/`
+
+#### Archivos para revisar (opcional)
+- [x] Revisar `src/views/crm/` (carpeta casi vacía) - **Conservada**
+- [x] Decidir si mantener `src/supabase/diagnostics/empresaDebug.js` - **Conservado para debugging**
+
+---
+
+### 📦 Fase 1: Preparación
+
+**Objetivo**: Migrar archivos JS a TypeScript y establecer estructura base.
+
+#### 1.1 Migrar Services a TypeScript
+- [ ] `empresa.js` → `empresa.ts`
+- [ ] `leads.js` → `leads.ts`
+- [ ] `equipos.js` → `equipos.ts`
+- [ ] `etapas.js` → `etapas.ts`
+- [ ] `panel.js` → `panel.ts`
+- [ ] `persona.js` → `persona.ts`
+- [ ] `pipeline.js` → `pipeline.ts`
+- [ ] `usuarios.js` → `usuarios.ts`
+
+#### 1.2 Migrar Queries a TypeScript
+- [ ] `src/supabase/queries/empresa.js` → `.ts`
+- [ ] `src/supabase/queries/equipos.js` → `.ts`
+- [ ] `src/supabase/queries/etapas.js` → `.ts`
+- [ ] `src/supabase/queries/panel.js` → `.ts`
+- [ ] `src/supabase/queries/persona.js` → `.ts`
+- [ ] `src/supabase/queries/pipeline.js` → `.ts`
+
+#### 1.3 Migrar Hooks a TypeScript
+- [ ] `src/supabase/hooks/useEmpresa.js` → `.ts`
+- [ ] `src/supabase/hooks/useEquipos.js` → `.ts`
+- [ ] `src/supabase/hooks/useEtapas.js` → `.ts`
+- [ ] `src/supabase/hooks/usePanel.js` → `.ts`
+- [ ] `src/supabase/hooks/usePersona.js` → `.ts`
+- [ ] `src/supabase/hooks/usePipeline.js` → `.ts`
+- [ ] `src/supabase/hooks/useUsuarios.js` → `.ts`
+
+#### 1.4 Migrar Helpers a TypeScript
+- [ ] `src/supabase/helpers/auth.js` → `.ts`
+- [ ] `src/supabase/helpers/empresa.js` → `.ts`
+- [ ] `src/supabase/helpers/equipos.js` → `.ts`
+- [ ] `src/supabase/helpers/etapas.js` → `.ts`
+- [ ] `src/supabase/helpers/persona.js` → `.ts`
+- [ ] `src/supabase/helpers/personaPipeline.js` → `.ts`
+- [ ] `src/supabase/helpers/pipeline.js` → `.ts`
+- [ ] `src/supabase/helpers/user.js` → `.ts`
+
+#### 1.5 Otros archivos JS
+- [ ] `src/supabase/auth.js` → `.ts`
+- [ ] `src/supabase/client.js` → `.ts`
+- [ ] `src/supabase/diagnostics/empresaDebug.js` → `.ts` (opcional, es de debug)
+
+#### 1.6 Crear tipos faltantes
+- [ ] Agregar DTOs a `src/lib/types.ts` (CreateLeadDTO, UpdateLeadDTO, etc.)
+- [ ] Crear tipos para respuestas de API
+
+#### 1.7 Verificar compilación
+- [ ] Ejecutar `npm run build` sin errores de TypeScript
+
+---
+
+### 🪝 Fase 2: Extracción de Hooks
+
+**Objetivo**: Extraer lógica de negocio de componentes a hooks reutilizables.
+
+#### 2.1 Hooks Comunes
+- [ ] Crear `src/hooks/common/useAudioRecorder.ts`
+- [ ] Crear `src/hooks/common/useDebounce.ts`
+- [ ] Crear `src/hooks/common/useDateFormat.ts` (unificar formateo de fechas)
+
+#### 2.2 Hooks de Chat
+- [ ] Crear `useLeadsList.ts`
+- [ ] Crear `useUnreadCounts.ts`
+- [ ] Crear `useChatMessages.ts`
+
+#### 2.3 Hooks de Pipeline
+- [ ] Crear `usePipelineData.ts`
+- [ ] Crear `useLeadDragDrop.ts`
+- [ ] Crear `usePipelineCRUD.ts`
+- [ ] Crear `useStageCRUD.ts`
+
+#### 2.4 Hooks de Lead Detail
+- [ ] Crear `useLeadDetail.ts`
+- [ ] Crear `useLeadMessages.ts`
+- [ ] Crear `useLeadNotes.ts`
+- [ ] Crear `useLeadBudgets.ts`
+- [ ] Crear `useLeadMeetings.ts`
+
+---
+
+### 🧩 Fase 3: Descomposición de Componentes
+
+**Objetivo**: Dividir componentes gigantes en piezas pequeñas y manejables.
+
+#### 3.1 ChatsView (1,484 líneas → ~200)
+- [ ] Crear estructura de carpetas `src/components/features/chat/`
+- [ ] Extraer `ChatList.tsx`
+- [ ] Extraer `ChatListItem.tsx`
+- [ ] Extraer `ChatWindow.tsx`
+- [ ] Extraer `MessageList.tsx`
+- [ ] Extraer `MessageBubble.tsx`
+- [ ] Extraer `MessageInput.tsx`
+- [ ] Refactorizar `ChatsView.tsx` como contenedor
+
+#### 3.2 PipelineView (1,657 líneas → ~300)
+- [ ] Crear estructura de carpetas `src/components/features/pipeline/`
+- [ ] Extraer `PipelineBoard.tsx`
+- [ ] Extraer `StageColumn.tsx`
+- [ ] Extraer `LeadCard.tsx`
+- [ ] Extraer `PipelineSelector.tsx`
+- [ ] Extraer `PipelineToolbar.tsx`
+- [ ] Refactorizar `PipelineView.tsx` como contenedor
+
+#### 3.3 LeadDetailSheet (1,628 líneas → ~300)
+- [ ] Crear estructura de carpetas `src/components/features/leads/`
+- [ ] Extraer `LeadHeader.tsx`
+- [ ] Extraer `LeadInfo.tsx`
+- [ ] Extraer `MessagesTab.tsx`
+- [ ] Extraer `NotesTab.tsx`
+- [ ] Extraer `BudgetsTab.tsx`
+- [ ] Extraer `MeetingsTab.tsx`
+- [ ] Refactorizar `LeadDetailSheet.tsx` como contenedor
+
+#### 3.4 AddLeadDialog (58KB)
+- [ ] Dividir en secciones lógicas
+- [ ] Extraer subformularios
+
+---
+
+### 🔌 Fase 4: Servicios y API Layer
+
+**Objetivo**: Centralizar todas las llamadas a Supabase en servicios.
+
+#### 4.1 Crear estructura
+- [ ] Crear carpeta `src/services/`
+- [ ] Crear `src/services/api/supabaseClient.ts`
+- [ ] Crear `src/services/api/apiError.ts`
+
+#### 4.2 Implementar servicios
+- [ ] Crear `leadsService.ts`
+- [ ] Crear `messagesService.ts`
+- [ ] Crear `pipelineService.ts`
+- [ ] Crear `stagesService.ts`
+- [ ] Crear `companiesService.ts`
+
+#### 4.3 Migrar componentes
+- [ ] Reemplazar llamadas directas en `ChatsView`
+- [ ] Reemplazar llamadas directas en `PipelineView`
+- [ ] Reemplazar llamadas directas en `LeadDetailSheet`
+
+---
+
+### ⚡ Fase 5: Refactorización del Webhook
+
+**Objetivo**: Modularizar el webhook de 877 líneas.
+
+#### 5.1 Crear estructura
+- [ ] Crear carpeta `supabase/functions/webhook-chat/handlers/`
+- [ ] Crear carpeta `supabase/functions/webhook-chat/services/`
+- [ ] Crear carpeta `supabase/functions/webhook-chat/utils/`
+
+#### 5.2 Separar handlers
+- [ ] Crear `messageHandler.ts`
+- [ ] Crear `mediaHandler.ts`
+- [ ] Crear `leadHandler.ts`
+
+#### 5.3 Separar servicios
+- [ ] Crear `profileService.ts`
+- [ ] Crear `mediaService.ts`
+- [ ] Crear `notificationService.ts`
+
+#### 5.4 Separar utilidades
+- [ ] Crear `signature.ts`
+- [ ] Crear `phone.ts`
+- [ ] Crear `deduplication.ts`
+
+#### 5.5 Refactorizar entry point
+- [ ] Reducir `index.ts` a < 100 líneas
+- [ ] Probar localmente con `supabase functions serve`
+- [ ] Desplegar con `supabase functions deploy webhook-chat`
+
+---
+
+## 📊 Resumen de Progreso
+
+| Fase | Estado | Items Completados |
+|------|--------|-------------------|
+| Fase 0: Limpieza | ✅ Completada | 22/22 |
+| Fase 1: Preparación | ⚪ Pendiente | 0/25 |
+| Fase 2: Hooks | ⚪ Pendiente | 0/14 |
+| Fase 3: Componentes | ⚪ Pendiente | 0/22 |
+| Fase 4: Servicios | ⚪ Pendiente | 0/10 |
+| Fase 5: Webhook | ⚪ Pendiente | 0/12 |
+
+**Total**: ~105 items
+
+---
+
+> **Última actualización**: 22 de Enero 2026

@@ -782,12 +782,31 @@ serve(async (req) => {
                 asignado_a: '00000000-0000-0000-0000-000000000000'
               };
 
-              // Insertar Lead
-              const { data: newLead, error: createError } = await supabase
+              // Insertar Lead con UPSERT (evita duplicados por race condition)
+              // Si ya existe un lead con el mismo telefono+empresa, no hace nada
+              const { data: upsertResult, error: upsertError } = await supabase
                 .from('lead')
-                .insert(newLeadPayload)
+                .upsert(newLeadPayload, {
+                  onConflict: 'empresa_id,telefono',
+                  ignoreDuplicates: true
+                })
                 .select()
-                .single();
+                .maybeSingle();
+
+              // Si el upsert no devolvió nada (porque ya existía), buscamos el lead
+              let newLead = upsertResult;
+              if (!newLead && !upsertError) {
+                const { data: foundLead } = await supabase
+                  .from('lead')
+                  .select('*')
+                  .eq('empresa_id', empresa_id)
+                  .ilike('telefono', `%${cleanPhone}%`)
+                  .maybeSingle();
+                newLead = foundLead;
+                console.log(`🔄 [Empresa ${empresa_id}] Lead ya existía, usando: ${newLead?.id}`)
+              }
+
+              const createError = upsertError;
 
               if (newLead && !createError) {
                 console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id} (${sourceType})`);
