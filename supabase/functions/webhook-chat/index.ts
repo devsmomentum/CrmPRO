@@ -690,23 +690,53 @@ serve(async (req) => {
                 .ilike("telefono", `%${cleanPhone}%`)
                 .maybeSingle();
 
-              // 3. LÓGICA DE ACTUALIZACIÓN DE NOMBRE (SUPER API)
-              const apiClient = cleanConfiguredPhone || eventData.sender?.client || payload.sender?.client || payload.data?.sender?.client || payload.client;
+              // 3. LÓGICA DE OBTENCIÓN DE NOMBRE
+              // PRIORIDAD 1: Extraer nombre del payload (ya viene en el webhook)
+              const contactName = eventData.contact?.name || eventData.fromUsername || payload.contact?.name || payload.fromUsername;
+
+              // PRIORIDAD 2: El "client" para Super API (fallback)
+              const apiClient = cleanConfiguredPhone || Deno.env.get("SUPER_API_CLIENT") || "";
+
               let finalName = existingLead?.nombre_completo || `Nuevo Lead ${sourceType} ${cleanPhone}`;
 
-              // Solo ejecutamos esto si es un mensaje de usuario real y (el lead no existe o tiene nombre generico)
-              if (apiClient && payload.event !== "ai_response" && (!existingLead || finalName.startsWith("Nuevo Lead"))) {
-                console.log('Final name and client -->', apiClient, finalName, payload.event, existingLead);
-                const profileData = await fetchChatDetails(apiClient, cleanPhone);
-                console.log('Profile data -->', profileData);
-                if (profileData && profileData.name) {
-                  finalName = profileData.name;
-                  console.log(`👤 [PROFILE] Nombre detectado: ${finalName}`);
+              console.log(`🔍 [PROFILE] Debug - contactName: "${contactName}", apiClient: "${apiClient}", event: "${payload.event}", existingLead: ${!!existingLead}`);
 
-                  // Si el lead ya existía, le actualizamos el nombre
-                  if (existingLead) {
-                    await supabase.from('lead').update({ nombre_completo: finalName }).eq('id', existingLead.id);
-                    console.log(`🔄 [PROFILE] Lead actualizado con nombre real.`);
+              // Solo ejecutamos esto si:
+              // 1. Es un mensaje de usuario real (no AI response)
+              // 2. El lead no existe O tiene nombre genérico
+              if (payload.event !== "ai_response" && (!existingLead || finalName.startsWith("Nuevo Lead"))) {
+
+                // PRIORIDAD 1: Usar nombre del payload
+                if (contactName && contactName.trim() && !contactName.includes('@')) {
+                  finalName = contactName.trim();
+                  console.log(`✅ [PROFILE] Nombre obtenido del payload: ${finalName}`);
+                }
+                // PRIORIDAD 2: Llamar a Super API como fallback
+                else if (apiClient) {
+                  console.log(`👤 [PROFILE] No hay nombre en payload, intentando con Super API usando client ${apiClient}...`);
+                  const profileData = await fetchChatDetails(apiClient, cleanPhone);
+
+                  if (profileData && profileData.name) {
+                    finalName = profileData.name;
+                    console.log(`✅ [PROFILE] Nombre obtenido de Super API: ${finalName}`);
+                  } else {
+                    console.log(`⚠️ [PROFILE] No se pudo obtener nombre. Se usará: ${finalName}`);
+                  }
+                } else {
+                  console.log(`⚠️ [PROFILE] Sin nombre en payload ni apiClient configurado. Se usará: ${finalName}`);
+                }
+
+                // Si el lead ya existía con nombre genérico, actualizarlo
+                if (existingLead && existingLead.nombre_completo.startsWith("Nuevo Lead") && !finalName.startsWith("Nuevo Lead")) {
+                  const { error: updateError } = await supabase
+                    .from('lead')
+                    .update({ nombre_completo: finalName })
+                    .eq('id', existingLead.id);
+
+                  if (updateError) {
+                    console.error(`❌ [PROFILE] Error actualizando nombre:`, updateError);
+                  } else {
+                    console.log(`🔄 [PROFILE] Lead ${existingLead.id} actualizado con nombre: ${finalName}`);
                   }
                 }
               }
