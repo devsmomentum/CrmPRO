@@ -45,7 +45,6 @@ function App() {
           user ? <Navigate to="/dashboard" replace /> : (
             <LoginView
               onLogin={login}
-              onSwitchToRegister={() => { }}
             />
           )
         } />
@@ -53,7 +52,6 @@ function App() {
           user ? <Navigate to="/dashboard" replace /> : (
             <RegisterView
               onRegister={register}
-              onSwitchToLogin={() => { }}
             />
           )
         } />
