@@ -1088,8 +1088,8 @@ quedamos en la última sesión.
 - [ ] `src/supabase/helpers/user.js` → `.ts`
 
 #### 1.5 Otros archivos JS
-- [ ] `src/supabase/auth.js` → `.ts`
-- [ ] `src/supabase/client.js` → `.ts`
+- [x] `src/supabase/auth.js` → `.ts` ✅
+- [x] `src/supabase/client.js` → `.ts` ✅
 - [ ] `src/supabase/diagnostics/empresaDebug.js` → `.ts` (opcional, es de debug)
 
 #### 1.6 Crear tipos faltantes
