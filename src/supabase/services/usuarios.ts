@@ -1,0 +1,51 @@
+import { supabase } from '../client'
+import type { UsuarioDB } from '@/lib/types'
+
+interface CreateUsuarioDTO {
+    id: string
+    email: string
+    nombre: string
+}
+
+/**
+ * Crea un nuevo usuario en la tabla usuarios
+ */
+export async function createUsuario({ id, email, nombre }: CreateUsuarioDTO): Promise<UsuarioDB> {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .insert({ id, email, nombre })
+        .select()
+        .single()
+
+    if (error) throw error
+    return data
+}
+
+/**
+ * Obtiene un usuario por su ID
+ */
+export async function getUsuarioById(id: string): Promise<UsuarioDB> {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+    if (error) throw error
+    return data
+}
+
+/**
+ * Actualiza un usuario
+ */
+export async function updateUsuario(id: string, updates: Partial<Omit<UsuarioDB, 'id' | 'created_at'>>): Promise<UsuarioDB> {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+
+    if (error) throw error
+    return data
+}

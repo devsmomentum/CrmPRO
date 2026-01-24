@@ -1051,14 +1051,14 @@ quedamos en la última sesión.
 **Objetivo**: Migrar archivos JS a TypeScript y establecer estructura base.
 
 #### 1.1 Migrar Services a TypeScript
-- [ ] `empresa.js` → `empresa.ts`
-- [ ] `leads.js` → `leads.ts`
-- [ ] `equipos.js` → `equipos.ts`
-- [ ] `etapas.js` → `etapas.ts`
-- [ ] `panel.js` → `panel.ts`
-- [ ] `persona.js` → `persona.ts`
-- [ ] `pipeline.js` → `pipeline.ts`
-- [ ] `usuarios.js` → `usuarios.ts`
+- [x] `empresa.js` → `empresa.ts` ✅
+- [x] `leads.js` → `leads.ts` ✅
+- [x] `equipos.js` → `equipos.ts` ✅
+- [x] `etapas.js` → `etapas.ts` ✅
+- [x] `panel.js` → `panel.ts` ✅
+- [x] `persona.js` → `persona.ts` ✅
+- [x] `pipeline.js` → `pipeline.ts` ✅
+- [x] `usuarios.js` → `usuarios.ts` ✅
 
 #### 1.2 Migrar Queries a TypeScript
 - [ ] `src/supabase/queries/empresa.js` → `.ts`

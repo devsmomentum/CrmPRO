@@ -320,13 +320,13 @@ export interface EtapaDB {
 // ----- Equipo DTOs -----
 export interface EquipoDB {
   id: string
-  nombre: string
+  nombre_equipo: string
   empresa_id: string
   created_at: string
 }
 
 export interface CreateEquipoDTO {
-  nombre: string
+  nombre_equipo: string
   empresa_id: string
 }
 

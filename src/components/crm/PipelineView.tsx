@@ -133,6 +133,27 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
+
+  /**
+   * VISIBILIDAD DE LEADS SEGÚN ROL
+   * 
+   * Opciones de configuración (modificar canViewAllLeads):
+   * 
+   * 1. TODOS VEN TODO (configuración actual):
+   *    const canViewAllLeads = true
+   * 
+   * 2. SOLO ADMIN/OWNER VEN TODO (viewers solo ven sus leads asignados):
+   *    const canViewAllLeads = userRole === 'admin' || userRole === 'owner'
+   * 
+   * 3. ADMIN VE TODO, VIEWER VE SUS LEADS + LOS DE "TODOS":
+   *    const canViewAllLeads = userRole === 'admin' || userRole === 'owner'
+   *    (El servicio leads.ts ya filtra por asignado_a cuando isAdminOrOwner=false)
+   * 
+   * 4. ROL ESPECÍFICO CON VISTA COMPLETA:
+   *    const canViewAllLeads = ['admin', 'owner', 'lector_completo'].includes(userRole)
+   */
+  const canViewAllLeads = true // Cambiar a la opción deseada arriba
+
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
   // Viewers ahora pueden crear y editar leads, pero no eliminar ni gestionar pipelines
   const canEditLeads = true
@@ -288,7 +309,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         const { data, count } = await getLeadsPaged({
           empresaId: companyId,
           currentUserId: user?.id,
-          isAdminOrOwner,
+          isAdminOrOwner: canViewAllLeads, // Usa canViewAllLeads para visibilidad
           limit: BASE_STAGE_LIMIT,
           offset: 0,
           pipelineId: currentPipelineObj.id,
@@ -348,7 +369,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         getLeadsPaged({
           empresaId: companyId,
           currentUserId: user?.id,
-          isAdminOrOwner,
+          isAdminOrOwner: canViewAllLeads,
           limit: 1,
           offset: 0,
           pipelineId: currentPipelineObj.id,
@@ -363,7 +384,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           .catch((err) => console.error('Error counting leads:', err))
       })
       .catch(err => console.error('Error loading leads by stage:', err))
-  }, [companyId, activePipeline, pipelines, isAdminOrOwner, user?.id])
+  }, [companyId, activePipeline, pipelines, canViewAllLeads, user?.id])
 
   const handleLoadMoreStage = async (stageId: string) => {
     if (!companyId || !pipelines) return
@@ -378,7 +399,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       const { data, count } = await getLeadsPaged({
         empresaId: companyId,
         currentUserId: user?.id,
-        isAdminOrOwner,
+        isAdminOrOwner: canViewAllLeads,
         limit: STAGE_PAGE_SIZE,
         offset: current.offset,
         pipelineId: currentPipelineObj.id,
@@ -440,7 +461,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         return getLeadsPaged({
           empresaId: companyId,
           currentUserId: user?.id,
-          isAdminOrOwner,
+          isAdminOrOwner: canViewAllLeads,
           limit: STAGE_PAGE_SIZE,
           offset: current.offset,
           pipelineId: currentPipelineObj.id,
