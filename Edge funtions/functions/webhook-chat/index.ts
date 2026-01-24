@@ -782,36 +782,58 @@ serve(async (req) => {
                 asignado_a: '00000000-0000-0000-0000-000000000000'
               };
 
-              // Insertar Lead con UPSERT (evita duplicados por race condition)
-              // Si ya existe un lead con el mismo telefono+empresa, no hace nada
-              const { data: upsertResult, error: upsertError } = await supabase
+              // Insertar Lead (con manejo de race condition)
+              let newLead = null;
+              let createError = null;
+
+              // DOBLE VERIFICACIÓN: Buscar de nuevo justo antes de insertar
+              // Esto previene race conditions donde otro webhook creó el lead mientras procesábamos
+              const { data: lastMinuteCheck } = await supabase
                 .from('lead')
-                .upsert(newLeadPayload, {
-                  onConflict: 'empresa_id,telefono',
-                  ignoreDuplicates: true
-                })
-                .select()
+                .select('id, nombre_completo')
+                .eq('empresa_id', empresa_id)
+                .ilike('telefono', `%${cleanPhone}%`)
                 .maybeSingle();
 
-              // Si el upsert no devolvió nada (porque ya existía), buscamos el lead
-              let newLead = upsertResult;
-              if (!newLead && !upsertError) {
-                const { data: foundLead } = await supabase
+              if (lastMinuteCheck) {
+                // El lead fue creado por otro webhook mientras procesábamos
+                console.log(`🔄 [Empresa ${empresa_id}] Lead encontrado en doble verificación: ${lastMinuteCheck.id}`);
+                newLead = lastMinuteCheck;
+              } else {
+                // Intentar insertar
+                const { data: insertedLead, error: insertError } = await supabase
                   .from('lead')
-                  .select('*')
-                  .eq('empresa_id', empresa_id)
-                  .ilike('telefono', `%${cleanPhone}%`)
-                  .maybeSingle();
-                newLead = foundLead;
-                console.log(`🔄 [Empresa ${empresa_id}] Lead ya existía, usando: ${newLead?.id}`)
-              }
+                  .insert(newLeadPayload)
+                  .select()
+                  .single();
 
-              const createError = upsertError;
+                if (insertedLead && !insertError) {
+                  newLead = insertedLead;
+                  console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id} (${sourceType})`);
+                } else if (insertError) {
+                  // Si falló la inserción, puede ser un duplicado creado por race condition
+                  // Buscar el lead que debería existir ahora
+                  console.log(`⚠️ [Empresa ${empresa_id}] Insert falló, buscando lead existente...`);
+                  const { data: foundLead } = await supabase
+                    .from('lead')
+                    .select('*')
+                    .eq('empresa_id', empresa_id)
+                    .ilike('telefono', `%${cleanPhone}%`)
+                    .maybeSingle();
 
-              if (newLead && !createError) {
-                console.log(`✅ [Empresa ${empresa_id}] Lead creado: ${newLead.id} (${sourceType})`);
+                  if (foundLead) {
+                    newLead = foundLead;
+                    console.log(`🔄 [Empresa ${empresa_id}] Lead encontrado tras race condition: ${newLead.id}`);
+                  } else {
+                    createError = insertError;
+                    console.error(`❌ [Empresa ${empresa_id}] Error creando lead:`, insertError);
+                  }
+                } // Fin del if/else de inserción
+              } // Fin del else (insertar lead)
 
-                // --- Lógica original de Multimedia y Mensajes ---
+              // Guardar mensaje si tenemos un lead válido (ya sea nuevo o encontrado por race condition)
+              if (newLead) {
+                // --- Lógica de Multimedia y Mensajes ---
                 let storedMediaUrl: string | null = null;
                 if (mediaUrl) {
                   const mimeType = file?.mimeType || null;
@@ -841,7 +863,7 @@ serve(async (req) => {
                   external_id: externalId,
                   metadata: normalizedMetadata
                 });
-                console.log(`✅ [Empresa ${empresa_id}] Mensaje inicial guardado.`);
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para lead: ${newLead.id}`);
 
                 // Auto-read si es AI response
                 if (payload.event === "ai_response") {
@@ -849,47 +871,45 @@ serve(async (req) => {
                   if (!keepUnread) await markLeadMessagesAsRead(supabase, newLead.id);
                 }
 
-                // Notificación al Owner
-                try {
-                  const { data: empresa } = await supabase.from('empresa').select('owner_id, nombre').eq('id', empresa_id).single();
-                  if (empresa?.owner_id) {
-                    await supabase.from('notificaciones').insert({
-                      user_id: empresa.owner_id,
-                      tipo: `nuevo_lead_${sourceType.toLowerCase()}`,
-                      titulo: `Nuevo Lead desde ${sourceType}`,
-                      mensaje: `Se ha creado automáticamente un nuevo lead ${sourceIcon}: ${finalName}`,
-                      datos: { lead_id: newLead.id, telefono: cleanPhone, empresa_id: empresa_id },
-                      leido: false
-                    });
+                // Notificación al Owner (solo si es lead nuevo, no si se encontró por race condition)
+                if (!lastMinuteCheck && !createError) {
+                  try {
+                    const { data: empresa } = await supabase.from('empresa').select('owner_id, nombre').eq('id', empresa_id).single();
+                    if (empresa?.owner_id) {
+                      await supabase.from('notificaciones').insert({
+                        user_id: empresa.owner_id,
+                        tipo: `nuevo_lead_${sourceType.toLowerCase()}`,
+                        titulo: `Nuevo Lead desde ${sourceType}`,
+                        mensaje: `Se ha creado automáticamente un nuevo lead ${sourceIcon}: ${finalName}`,
+                        datos: { lead_id: newLead.id, telefono: cleanPhone, empresa_id: empresa_id },
+                        leido: false
+                      });
+                    }
+                  } catch (notifError) {
+                    console.warn("No se pudo crear notificación:", notifError);
                   }
-                } catch (notifError) {
-                  console.warn("No se pudo crear notificación:", notifError);
                 }
-
-              } else {
-                console.error(`❌ [Empresa ${empresa_id}] Error creando lead:`, createError);
               }
             }
           }
         }
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
       }
 
-      return new Response(JSON.stringify({ success: true }), {
+      return new Response("Method not allowed", {
+        headers: corsHeaders,
+        status: 405,
+      });
+
+    } catch (error: any) {
+      console.error("Error processing webhook:", error);
+      return new Response(JSON.stringify({ error: error.message }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+        status: 400,
       });
     }
-
-    return new Response("Method not allowed", {
-      headers: corsHeaders,
-      status: 405,
-    });
-
-  } catch (error: any) {
-    console.error("Error processing webhook:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
-  }
-});
+  });

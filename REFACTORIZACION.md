@@ -1093,8 +1093,8 @@ quedamos en la última sesión.
 - [ ] `src/supabase/diagnostics/empresaDebug.js` → `.ts` (opcional, es de debug)
 
 #### 1.6 Crear tipos faltantes
-- [ ] Agregar DTOs a `src/lib/types.ts` (CreateLeadDTO, UpdateLeadDTO, etc.)
-- [ ] Crear tipos para respuestas de API
+- [x] Agregar DTOs a `src/lib/types.ts` (CreateLeadDTO, UpdateLeadDTO, etc.) ✅
+- [x] Crear tipos para respuestas de API (PaginatedResponse, etc.) ✅
 
 #### 1.7 Verificar compilación
 - [ ] Ejecutar `npm run build` sin errores de TypeScript
