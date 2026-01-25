@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut, Archive, Gear, Trash, CaretLeft } from '@phosphor-icons/react'
-import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { LeadDetailSheet } from './LeadDetailSheet'
@@ -17,6 +16,7 @@ import { toast } from 'sonner'
 import { ChatSettingsDialog } from './ChatSettingsDialog'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { useLeadsList } from '@/hooks/useLeadsList'
+import { safeFormatDate } from '@/hooks/useDateFormat'
 
 interface ChatsViewProps {
   companyId: string
@@ -24,17 +24,7 @@ interface ChatsViewProps {
   canDeleteLead?: boolean
 }
 
-// Helper para formatear fechas de forma segura en este componente
-const safeFormat = (date: Date | string | undefined | null, fmt: string, options?: any) => {
-  if (!date) return ''
-  try {
-    const d = new Date(date)
-    if (isNaN(d.getTime())) return ''
-    return format(d, fmt, options)
-  } catch (e) {
-    return ''
-  }
-}
+// NOTA: safeFormatDate ahora viene de useDateFormat hook como safeFormatDate
 
 export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = false }: ChatsViewProps) {
   // ==========================================
@@ -532,7 +522,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                             "text-[10px] uppercase tracking-tighter whitespace-nowrap ml-2 font-bold",
                             unreadCounts[lead.id] > 0 ? "text-emerald-500" : "text-muted-foreground"
                           )}>
-                            {safeFormat(lead.lastMessageAt, 'HH:mm', { locale: es })}
+                            {safeFormatDate(lead.lastMessageAt, 'HH:mm', { locale: es })}
                           </span>
                         </div>
 
@@ -636,8 +626,8 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                 <div className="space-y-6 max-w-3xl mx-auto pb-4">
                   {messages.map((msg, idx) => {
                     const isTeam = msg.sender === 'team'
-                    const msgDate = safeFormat(msg.created_at, 'yyyy-MM-dd')
-                    const prevMsgDate = idx > 0 ? safeFormat(messages[idx - 1].created_at, 'yyyy-MM-dd') : null
+                    const msgDate = safeFormatDate(msg.created_at, 'yyyy-MM-dd')
+                    const prevMsgDate = idx > 0 ? safeFormatDate(messages[idx - 1].created_at, 'yyyy-MM-dd') : null
                     const showDateLabel = msgDate !== prevMsgDate
 
                     const data = msg.metadata?.data || msg.metadata || {};
@@ -661,7 +651,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                         {showDateLabel && (
                           <div className="flex justify-center my-8">
                             <span className="px-4 py-1.5 bg-background/80 backdrop-blur-md border border-border/40 text-[10px] font-black text-muted-foreground rounded-full uppercase tracking-widest shadow-sm z-10">
-                              {safeFormat(msg.created_at, "EEEE, d 'de' MMMM", { locale: es })}
+                              {safeFormatDate(msg.created_at, "EEEE, d 'de' MMMM", { locale: es })}
                             </span>
                           </div>
                         )}
@@ -770,7 +760,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                             })()}
 
                             <div className={cn("text-[10px] mt-1.5 flex items-center gap-1.5 font-bold tracking-tight uppercase opacity-60", isTeam ? "justify-end text-white/90" : "justify-start text-muted-foreground/90")}>
-                              {safeFormat(msg.created_at, 'HH:mm')}
+                              {safeFormatDate(msg.created_at, 'HH:mm')}
                               {isTeam && (
                                 (msg.metadata as any)?.error ? (
                                   <WarningCircle className="w-3.5 h-3.5 text-red-300" weight="fill" />

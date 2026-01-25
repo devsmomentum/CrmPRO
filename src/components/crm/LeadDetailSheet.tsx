@@ -36,7 +36,6 @@ import {
   Check,
   WarningCircle
 } from '@phosphor-icons/react'
-import { format } from 'date-fns'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
@@ -61,6 +60,7 @@ import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
 import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
+import { safeFormatDate } from '@/hooks/useDateFormat'
 
 interface User {
   id: string
@@ -82,13 +82,9 @@ interface LeadDetailSheetProps {
   onDeleteLead?: (leadId: string) => void | Promise<void>
 }
 
-// Helper function to safely format dates
-const formatSafeDate = (date: Date | string | null | undefined, formatStr: string): string => {
-  if (!date) return 'Invalid date'
-  const dateObj = date instanceof Date ? date : new Date(date)
-  if (isNaN(dateObj.getTime())) return 'Invalid date'
-  return format(dateObj, formatStr)
-}
+// NOTA: formatSafeDate ahora viene de useDateFormat hook como safeFormatDate
+// Usamos fallback 'Invalid date' para mantener compatibilidad
+const formatSafeDate = (date: any, fmt: string) => safeFormatDate(date, fmt, { fallback: 'Invalid date' })
 
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
