@@ -6,17 +6,17 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { MagnifyingGlass, WhatsappLogo, InstagramLogo, PaperPlaneRight, Paperclip, Microphone, Smiley, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, Stop, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut, Archive, Gear, Trash, CaretLeft } from '@phosphor-icons/react'
+import { MagnifyingGlass, WhatsappLogo, InstagramLogo, Check, ChatCircleDots, DownloadSimple, FilePdf, File as FileIcon, Spinner, X, CaretRight, VideoCamera, Phone, Info, ArrowLeft, WarningCircle, PencilSimple, ArrowSquareOut, Archive, Gear, Trash, CaretLeft, Microphone } from '@phosphor-icons/react'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { LeadDetailSheet } from './LeadDetailSheet'
-import { getMessages, sendMessage, subscribeToMessages, subscribeToAllMessages, getUnreadMessagesCount, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
+import { getMessages, subscribeToMessages, subscribeToAllMessages, getUnreadMessagesCount, markMessagesAsRead } from '@/supabase/services/mensajes'
 import type { Message as DbMessage } from '@/supabase/services/mensajes'
 import { toast } from 'sonner'
 import { ChatSettingsDialog } from './ChatSettingsDialog'
-import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { useLeadsList } from '@/hooks/useLeadsList'
 import { safeFormatDate } from '@/hooks/useDateFormat'
+import { MessageInput } from './chats/MessageInput'
 
 interface ChatsViewProps {
   companyId: string
@@ -57,44 +57,17 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
   const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'instagram'>('all')
   const [unreadFilter, setUnreadFilter] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [messageInput, setMessageInput] = useState('')
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
   const [archivingLeadId, setArchivingLeadId] = useState<string | null>(null)
   const [showChatSettings, setShowChatSettings] = useState(false)
   const listParentRef = useRef<HTMLDivElement | null>(null)
-
-  const [pendingImages, setPendingImages] = useState<Array<{ file: File; preview: string }>>([])
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
-
   const filterScrollRef = useRef<HTMLDivElement | null>(null)
-
-  const [isUploading, setIsUploading] = useState(false)
-
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Hook de grabación de audio
-  const handleAudioReady = useCallback(async (audioBlob: Blob, audioFile: File) => {
-    if (!selectedLeadId) return
-    setIsUploading(true)
-    try {
-      const mediaData = await uploadChatAttachment(audioFile, selectedLeadId)
-      const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
-      await sendMessage(selectedLeadId, '', 'team', channel, mediaData)
-      toast.success('Nota de voz enviada')
-    } catch (err) {
-      console.error('[Audio] Error sending:', err)
-      toast.error('Error enviando nota de voz')
-    } finally {
-      setIsUploading(false)
-    }
-  }, [selectedLeadId, lastChannelByLead])
-
-  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
-    onAudioReady: handleAudioReady,
-    onError: (error) => toast.error(error.message || 'No se pudo acceder al micrófono')
-  })
-
+  // NOTA: El input de mensajes, grabación de audio, e imágenes pendientes
+  // ahora son manejados por el componente MessageInput.
+  // Se eliminaron ~25 líneas de estados y ~70 líneas de código duplicado.
 
   // ==========================================
   // NOTA: Toda la lógica de loadLeads, fetchMoreLeads, loadUnreadCountsInBatches,
@@ -218,73 +191,9 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
     }
   }
 
-
-  // NOTA: startRecording y stopRecording ahora vienen del hook useAudioRecorder
-  // Se eliminaron ~90 líneas de código duplicado
-
-  const removePendingImage = (preview: string) => {
-    setPendingImages(prev => {
-      const next = prev.filter(p => p.preview !== preview)
-      URL.revokeObjectURL(preview)
-      return next
-    })
-  }
-
-  const clearPendingImages = () => {
-    setPendingImages(prev => {
-      prev.forEach(p => URL.revokeObjectURL(p.preview))
-      return []
-    })
-  }
-
-  const handlePasteClipboard = async (e: React.ClipboardEvent<HTMLInputElement>) => {
-    if (!selectedLeadId) return
-    const items = Array.from(e.clipboardData?.items || [])
-    const images = items.filter(item => item.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean) as File[]
-    if (!images.length) return
-
-    e.preventDefault()
-    const validImages = images.filter(file => file.size <= 16 * 1024 * 1024)
-    if (validImages.length !== images.length) {
-      toast.error('Alguna imagen supera 16MB y fue descartada')
-    }
-    if (!validImages.length) return
-
-    const mapped = validImages.map(file => ({ file, preview: URL.createObjectURL(file) }))
-    setPendingImages(prev => [...prev, ...mapped])
-  }
-
-  async function handleSendMessage(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedLeadId) return
-    if (!messageInput.trim() && pendingImages.length === 0) return
-    setIsUploading(true)
-    try {
-      const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
-
-      if (pendingImages.length > 0) {
-        for (let i = 0; i < pendingImages.length; i++) {
-          const { file } = pendingImages[i]
-          const mediaData = await uploadChatAttachment(file, selectedLeadId)
-          const content = i === 0 ? messageInput : ''
-          await sendMessage(selectedLeadId, content, 'team', channel, mediaData)
-        }
-      } else {
-        const content = messageInput
-        await sendMessage(selectedLeadId, content, 'team', channel)
-        setLeads(prev => prev.map(l => l.id === selectedLeadId ? { ...l, lastMessageAt: new Date(), lastMessageSender: 'team', lastMessage: content } : l))
-        setLastChannelByLead(prev => ({ ...prev, [selectedLeadId]: channel }))
-      }
-
-      setMessageInput('')
-      clearPendingImages()
-    } catch (e) {
-      console.error('Error sending message:', e)
-      toast.error('Error al enviar mensaje')
-    } finally {
-      setIsUploading(false)
-    }
-  }
+  // NOTA: Las funciones removePendingImage, clearPendingImages, handlePasteClipboard,
+  // handleSendMessage ahora están en el componente MessageInput.
+  // Se eliminaron ~70 líneas de código duplicado.
 
   const selectedLead = leads.find(l => l.id === selectedLeadId)
 
@@ -783,112 +692,21 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                   <div ref={messagesEndRef} id="scroll-bottom" />
                 </div>
               </div>
-              {/* Barra de entrada de mensaje */}
-              <div className="p-4 bg-background border-t shrink-0">
-                <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-3 items-end relative">
-                  {pendingImages.length > 0 && (
-                    <div className="absolute -top-28 left-0 right-0 flex gap-2 overflow-x-auto pb-2">
-                      {pendingImages.map(img => (
-                        <div key={img.preview} className="relative w-24 h-24 rounded-xl overflow-hidden border border-border shadow-sm">
-                          <img src={img.preview} alt="Pegado" className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            className="absolute top-1 right-1 bg-black/60 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-black"
-                            onClick={() => removePendingImage(img.preview)}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0]
-                      if (!file || !selectedLeadId) return
-                      if (file.size > 16 * 1024 * 1024) {
-                        toast.error('El archivo es muy grande. Máximo 16MB')
-                        return
-                      }
-                      setIsUploading(true)
-                      try {
-                        const mediaData = await uploadChatAttachment(file, selectedLeadId)
-                        const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
-                        await sendMessage(selectedLeadId, messageInput || '', 'team', channel, mediaData)
-                        setMessageInput('')
-                        toast.success('Archivo enviado')
-                      } catch (err) {
-                        console.error(err)
-                        toast.error('Error enviando archivo')
-                      } finally {
-                        setIsUploading(false)
-                        if (fileInputRef.current) fileInputRef.current.value = ''
-                      }
-                    }}
-                    className="hidden"
-                  />
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    className="rounded-full h-11 w-11 text-muted-foreground hover:bg-muted active:scale-90 transition-all"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isUploading}
-                  >
-                    {isUploading ? <Spinner size={20} className="animate-spin" /> : <Paperclip className="w-5 h-5" />}
-                  </Button>
-                  <div className="flex-1 bg-muted/50 border border-border/50 rounded-2xl px-4 py-2.5 flex items-center gap-2 focus-within:ring-2 focus-within:ring-primary/20 transition-all duration-300">
-                    <input
-                      className="flex-1 bg-transparent border-none focus:outline-none text-sm min-h-[24px] font-medium"
-                      placeholder={isRecording ? "Grabando... pulsa detener para enviar" : "Escribe un mensaje aquí..."}
-                      value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
-                      onPaste={handlePasteClipboard}
-                      disabled={isUploading || isRecording}
-                    />
-                    {!isRecording && !messageInput.trim() && (
-                      <button type="button" className="text-muted-foreground hover:text-primary transition-colors p-1">
-                        <Smiley className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                  {messageInput.trim() ? (
-                    <Button
-                      type="submit"
-                      size="icon"
-                      className="rounded-full h-11 w-11 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 active:scale-90 transition-all"
-                      disabled={isUploading || isRecording}
-                    >
-                      <PaperPlaneRight className="w-5 h-5 text-white" weight="fill" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant={isRecording ? "destructive" : "ghost"}
-                      className={cn(
-                        "rounded-full h-11 w-11 transition-all active:scale-90",
-                        isRecording ? "bg-destructive text-white hover:bg-destructive/90 animate-pulse" : "text-muted-foreground hover:bg-muted"
-                      )}
-                      disabled={isUploading}
-                      onClick={() => isRecording ? stopRecording() : startRecording()}
-                    >
-                      {isRecording ? <Stop className="w-5 h-5" weight="fill" /> : <Microphone className="w-5 h-5" />}
-                    </Button>
-                  )}
-                  {isRecording && (
-                    <div className="absolute left-1/2 -top-16 -translate-x-1/2 bg-background border border-border/50 px-4 py-2 rounded-2xl shadow-2xl flex items-center gap-3 text-destructive animate-in slide-in-from-bottom-2 z-50">
-                      <div className="w-3 h-3 rounded-full bg-destructive animate-ping" />
-                      <span className="text-sm font-black font-mono tracking-widest">
-                        {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
-                      </span>
-                    </div>
-                  )}
-                </form>
-              </div>
+              {/* Barra de entrada de mensaje - ahora usa componente extraído */}
+              <MessageInput
+                leadId={selectedLeadId!}
+                channel={lastChannelByLead[selectedLeadId!] || 'whatsapp'}
+                disabled={isLoadingMessages}
+                onMessageSent={() => {
+                  // Actualizar orden del lead en la lista (el más reciente arriba)
+                  const newMsg = {
+                    created_at: new Date().toISOString(),
+                    sender: 'team' as const,
+                    content: ''
+                  }
+                  updateLeadListOrder(selectedLeadId!, newMsg as any)
+                }}
+              />
             </div>
 
             {/* Panel de información de contacto (Derecha) */}

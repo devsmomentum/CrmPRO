@@ -1,9 +1,9 @@
 # 🔧 Guía de Refactorización del CRM
 
 > **Fecha de inicio**: Enero 2026  
-> **Última actualización**: 24 Enero 2026  
-> **Estado**: ✅ **Fase 1 COMPLETADA** | Fase 2 pendiente  
-> **Versión del documento**: 2.0
+> **Última actualización**: 25 Enero 2026  
+> **Estado**: ✅ **Fase 1 y 2 COMPLETADAS** | 🟡 Fase 3 en progreso  
+> **Versión del documento**: 3.0
 
 ---
 
@@ -23,21 +23,25 @@
 | 6 | 5 helpers migrados, 3 eliminados | ✅ |
 | 7 | Verificación final y build exitoso | ✅ |
 
-**Archivos JS restantes en `src/supabase/`**: Solo `diagnostics/empresaDebug.js` (opcional)
+### ✅ Fase 2 Completada: Extracción de Hooks (25 Ene 2026)
 
-### 🐛 Bugs Corregidos Durante la Migración
-- Race condition en TeamView (cambio rápido de empresa mezclaba datos)
-- Race condition en PipelineView (leads no cargaban a veces)
-- Cache de pipelines en SettingsView mostraba empresa incorrecta
+| Hook | Ubicación | Impacto |
+|------|-----------|---------|
+| `useAudioRecorder` | `src/hooks/useAudioRecorder.ts` | ~210 líneas reducidas |
+| `useLeadsList` | `src/hooks/useLeadsList.ts` | ~306 líneas reducidas |
+| `useDateFormat` | `src/hooks/useDateFormat.ts` | ~25 líneas reducidas |
 
-### 🔜 Fase 2 Pendiente: Refactorización de Componentes
+**Total reducido en Fase 2**: ~540 líneas de código duplicado eliminadas
 
-Los componentes gigantes aún necesitan ser divididos:
-- `PipelineView.tsx` → 1,700+ líneas
-- `ChatsView.tsx` → 1,484 líneas
-- `LeadDetailSheet.tsx` → 1,628 líneas
+### 🟡 Fase 3 En Progreso: Descomposición de Componentes
 
-**Para continuar**: Ve a la sección [Fase 2: Refactorización de Componentes](#fase-2-refactorización-de-componentes-tsx)
+| Componente | Estado | Progreso |
+|------------|--------|----------|
+| `chats/MessageInput.tsx` | ✅ Creado | ~230 líneas |
+| `chats/index.ts` | ✅ Creado | Exports |
+| Integración en ChatsView | 🟡 Pendiente | - |
+
+**Para continuar**: Integrar MessageInput en ChatsView, luego extraer ChatList y ChatWindow.
 
 ---
 
