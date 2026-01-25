@@ -40,3 +40,53 @@ export async function deletePipeline(id: string): Promise<boolean> {
     if (error) throw error
     return true
 }
+
+/**
+ * Obtiene un pipeline por su ID
+ * 
+ * Nota: Esta función fue agregada para completar el CRUD de pipelines.
+ * Anteriormente existía en queries/pipeline.js (archivo obsoleto eliminado).
+ */
+export async function getPipelineById(id: string): Promise<PipelineDB | null> {
+    const { data, error } = await supabase
+        .from('pipeline')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+    if (error) {
+        if (error.code === 'PGRST116') return null // Not found
+        throw error
+    }
+    return data
+}
+
+/**
+ * Actualiza un pipeline existente
+ * 
+ * Nota: Esta función fue agregada para completar el CRUD de pipelines.
+ * Anteriormente existía en queries/pipeline.js (archivo obsoleto eliminado).
+ * 
+ * @param id - UUID del pipeline a actualizar
+ * @param updates - Campos a actualizar (nombre, tipo, etc.)
+ * @returns El pipeline actualizado
+ * 
+ * @example
+ * ```typescript
+ * const updated = await updatePipeline('uuid-del-pipeline', { nombre: 'Nuevo Nombre' })
+ * ```
+ */
+export async function updatePipeline(
+    id: string,
+    updates: Partial<Omit<CreatePipelineDTO, 'empresa_id'>>
+): Promise<PipelineDB> {
+    const { data, error } = await supabase
+        .from('pipeline')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+
+    if (error) throw error
+    return data
+}

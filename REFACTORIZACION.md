@@ -1060,22 +1060,14 @@ quedamos en la última sesión.
 - [x] `pipeline.js` → `pipeline.ts` ✅
 - [x] `usuarios.js` → `usuarios.ts` ✅
 
-#### 1.2 Migrar Queries a TypeScript
-- [ ] `src/supabase/queries/empresa.js` → `.ts`
-- [ ] `src/supabase/queries/equipos.js` → `.ts`
-- [ ] `src/supabase/queries/etapas.js` → `.ts`
-- [ ] `src/supabase/queries/panel.js` → `.ts`
-- [ ] `src/supabase/queries/persona.js` → `.ts`
-- [ ] `src/supabase/queries/pipeline.js` → `.ts`
+#### 1.2 ~~Migrar Queries a TypeScript~~ → **ELIMINADOS** ✅
+> ⚠️ La carpeta `queries/` contenía código duplicado de `services/` que nadie importaba.
+> Fue eliminada completamente. Las funciones útiles (`updatePipeline`, `getPipelineById`) 
+> se agregaron a `services/pipeline.ts`.
 
-#### 1.3 Migrar Hooks a TypeScript
-- [ ] `src/supabase/hooks/useEmpresa.js` → `.ts`
-- [ ] `src/supabase/hooks/useEquipos.js` → `.ts`
-- [ ] `src/supabase/hooks/useEtapas.js` → `.ts`
-- [ ] `src/supabase/hooks/usePanel.js` → `.ts`
-- [ ] `src/supabase/hooks/usePersona.js` → `.ts`
-- [ ] `src/supabase/hooks/usePipeline.js` → `.ts`
-- [ ] `src/supabase/hooks/useUsuarios.js` → `.ts`
+#### 1.3 ~~Migrar Hooks a TypeScript~~ → **ELIMINADOS** ✅
+> ⚠️ La carpeta `hooks/` contenía wrappers de React Query que nadie importaba.
+> Las vistas llaman directamente a `services/`. Eliminados para evitar redundancia.
 
 #### 1.4 Migrar Helpers a TypeScript
 - [ ] `src/supabase/helpers/auth.js` → `.ts`

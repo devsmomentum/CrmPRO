@@ -204,11 +204,17 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   // Cargar miembros del equipo desde BD para tener pipelines actualizados
   useEffect(() => {
     if (!companyId) return
+    let cancelled = false
+
       ; (async () => {
         try {
           const equipos = await getEquipos(companyId)
+          if (cancelled) return
+
           const equiposIds = (equipos as any[]).map(e => e.id)
           const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
+          if (cancelled) return
+
           const personas = allPersonas.flat()
 
           const mapped = await Promise.all(personas.map(async p => {
@@ -234,20 +240,26 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               userId: p.usuario_id || undefined
             }
           }))
-          setTeamMembers(mapped)
+
+          if (!cancelled) setTeamMembers(mapped)
         } catch (e) {
           console.error('Error loading team members in PipelineView', e)
         }
       })()
+
+    return () => { cancelled = true }
   }, [companyId])
 
   // Cargar pipelines y luego leads paginados por pipeline
   useEffect(() => {
     if (!companyId) return
+    let cancelled = false
 
     // Cargar pipelines de BD
     getPipelines(companyId)
       .then(({ data }) => {
+        if (cancelled) return
+
         if (data) {
           const dbPipelines: Pipeline[] = data.map((p: any) => ({
             id: p.id,
@@ -289,6 +301,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         }
       })
       .catch(err => console.error('Error loading pipelines:', err))
+
+    return () => { cancelled = true }
   }, [companyId])
 
   // Carga inicial: 100 leads por etapa al cambiar de pipeline
@@ -296,6 +310,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     if (!companyId || !pipelines || pipelines.length === 0) return
     const currentPipelineObj = pipelines.find(p => p.type === activePipeline)
     if (!currentPipelineObj?.id) return
+
+    let cancelled = false
 
     const BASE_STAGE_LIMIT = 100
     const stages = currentPipelineObj.stages || []
@@ -320,6 +336,9 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       })
     )
       .then((results) => {
+        // Si cambió la empresa/pipeline mientras cargaba, ignorar resultados
+        if (cancelled) return
+
         const mappedAll = results.flatMap(({ data }) =>
           data.map((l: any) => ({
             id: l.id,
@@ -347,7 +366,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         // Cargar conteos de notas en segundo plano
         if (unique.length > 0) {
           getNotasCountByLeads(unique.map(l => l.id))
-            .then(counts => setNotasCounts(counts))
+            .then(counts => { if (!cancelled) setNotasCounts(counts) })
             .catch(err => console.warn('[PipelineView] Error cargando conteos de notas:', err))
         }
 
@@ -376,6 +395,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           order: 'desc'
         })
           .then(({ count }) => {
+            if (cancelled) return
             if (typeof count === 'number') {
               setPipelineHasMore(count > unique.length)
               setPipelineOffset(unique.length)
@@ -384,6 +404,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           .catch((err) => console.error('Error counting leads:', err))
       })
       .catch(err => console.error('Error loading leads by stage:', err))
+
+    return () => { cancelled = true }
   }, [companyId, activePipeline, pipelines, canViewAllLeads, user?.id])
 
   const handleLoadMoreStage = async (stageId: string) => {
