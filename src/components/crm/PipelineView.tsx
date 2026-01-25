@@ -2,19 +2,16 @@ import { useEffect, useState, useRef } from 'react'
 import { useLeadsRealtime } from '@/hooks/useLeadsRealtime';
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Lead, Pipeline, Stage, PipelineType, TeamMember } from '@/lib/types'
-import { Card } from '@/components/ui/card'
+import { Lead, Pipeline, PipelineType, TeamMember } from '@/lib/types'
+// import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, DotsThree, Funnel, Trash, Note, CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { Plus, Funnel, Trash, CaretLeft, CaretRight } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
-import { ExcelImportDialog } from './ExcelImportDialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   AlertDialog,
@@ -27,7 +24,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { deletePipeline, getPipelines } from '@/supabase/helpers/pipeline'
@@ -41,6 +37,7 @@ import { getNotasCountByLeads } from '@/supabase/services/notas'
 import { supabase } from '@/lib/supabase'
 
 import { Building } from '@phosphor-icons/react'
+import { PipelineBoard } from './pipeline/PipelineBoard'
 import { Company } from './CompanyManagement'
 import { LeadSearchDialog } from './LeadSearchDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -232,7 +229,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
             return {
               id: p.id,
-              name: p.nombre,
+              name: p.nombre || 'Sin Nombre',
               email: p.email,
               avatar: '',
               role: p.titulo_trabajo || '',
@@ -256,15 +253,20 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     if (!companyId) return
     let cancelled = false
 
-    // Cargar pipelines de BD
-    getPipelines(companyId)
-      .then(({ data }) => {
+    const loadPipelines = async () => {
+      try {
+        const { data, error } = await getPipelines(companyId)
         if (cancelled) return
+
+        if (error) {
+          console.error('Error loading pipelines:', error)
+          return
+        }
 
         if (data) {
           const dbPipelines: Pipeline[] = data.map((p: any) => ({
             id: p.id,
-            name: p.nombre,
+            name: p.nombre || 'Sin Nombre',
             type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
             stages: (p.etapas || []).map((s: any) => ({
               id: s.id,
@@ -300,8 +302,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             return current
           })
         }
-      })
-      .catch(err => console.error('Error loading pipelines:', err))
+      } catch (err) {
+        console.error('Error loading pipelines:', err)
+      }
+    }
+
+    loadPipelines()
 
     return () => { cancelled = true }
   }, [companyId])
@@ -1299,291 +1305,42 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto md:overflow-hidden bg-background/50">
-        {(!pipelines || pipelines.length === 0) && (
-          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <p className="text-lg font-medium">No hay pipelines disponibles</p>
-            <p className="text-sm">Ve a Configuración para crear uno nuevo.</p>
-          </div>
-        )}
-        <div className="h-full md:overflow-x-auto px-4 md:px-6 py-4 md:py-6 pb-24 md:pb-6">
-          <div className="flex flex-col md:flex-row gap-6 md:gap-4 h-auto md:h-full md:min-w-max">
-            {(currentPipeline?.stages || []).map(stage => {
-              const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
-              const totalStageLeads = stageCounts[stage.id] ?? allPipelineLeads.filter(l => l.stage === stage.id).length
-              const remainingStageLeads = Math.max(0, totalStageLeads - stageLeads.length)
-
-              return (
-                <div
-                  key={stage.id}
-                  className="w-full md:w-80 flex flex-col shrink-0"
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, stage.id)}
-                >
-                  {/* Stage Header - Title Row */}
-                  <div className="sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0 mb-3">
-                    {/* Row 1: Stage Name and Count */}
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <div className={cn('w-3 h-3 rounded-full shrink-0')} style={{ backgroundColor: stage.color }} />
-                        <h3 className="font-semibold text-sm md:text-base truncate max-w-[120px]" title={stage.name}>{stage.name}</h3>
-                        <Badge variant="secondary" className="text-xs shrink-0">{totalStageLeads}</Badge>
-                      </div>
-                      {/* Action buttons on the right of title row */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        {isAdminOrOwner && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteStage(stage.id)}
-                            title="Eliminar etapa"
-                          >
-                            <Trash size={16} />
-                          </Button>
-                        )}
-                        {canEditLeads && (
-                          <AddLeadDialog
-                            pipelineType={activePipeline}
-                            pipelineId={currentPipeline?.id}
-                            stages={currentPipeline?.stages || []}
-                            teamMembers={teamMembers}
-                            onAdd={handleAddLead}
-                            onImport={handleImportLeads}
-                            defaultStageId={stage.id}
-                            companies={companies}
-                            currentUser={user}
-                            companyName={currentCompany?.name}
-                            companyId={companyId}
-                            trigger={
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 w-7 p-0 text-muted-foreground"
-                                type="button"
-                                title={t.pipeline.addLead}
-                              >
-                                <Plus size={16} />
-                                <span className="sr-only">{t.pipeline.addLead}</span>
-                              </Button>
-                            }
-                          />
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Row 2: Load More Controls */}
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleLoadMoreStage(stage.id)}
-                        disabled={!stagePages[stage.id]?.hasMore}
-                        title={remainingStageLeads > 0 ? `Cargar más leads de esta etapa (quedan ${remainingStageLeads})` : 'No hay más leads que cargar'}
-                        className="text-xs h-7 px-2"
-                      >
-                        Cargar + ({stageLeads.length})
-                      </Button>
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                        Quedan {remainingStageLeads}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-row md:flex-col gap-3 md:gap-2 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto min-h-[120px] md:min-h-[200px] bg-muted/30 rounded-lg p-2 md:flex-1 no-scrollbar-mobile pb-4 md:pb-2">
-                    {stageLeads.map(lead => (
-                      <Card
-                        key={lead.id}
-                        id={`lead-card-${lead.id}`}
-                        draggable
-                        onDragStart={(e) => handleDragStart(e, lead)}
-                        className={cn(
-                          "w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50",
-                          highlightedLeadId === lead.id && "ring-2 ring-primary ring-offset-2 animate-pulse"
-                        )}
-                        style={{ borderLeftColor: stage.color }}
-                        onClick={() => setSelectedLead(lead)}
-                      >
-                        <div className="flex items-start justify-between mb-1">
-                          <div className="flex-1 min-w-0 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
-                              <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
-                            </div>
-                            {unreadLeads.has(lead.id) && (
-                              <div className="w-2 h-2 rounded-full bg-destructive shrink-0 animate-pulse" title="Mensajes no leídos" />
-                            )}
-                          </div>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0">
-                                <DotsThree size={14} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
-                              {isMobile ? (
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    setMoveDialogLead(lead)
-                                    setMoveDialogOpen(true)
-                                  }}
-                                >
-                                  Mover a Etapa
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuSub>
-                                  <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
-                                  <DropdownMenuSubContent>
-                                    {(currentPipeline?.stages || []).map(s => (
-                                      <DropdownMenuItem
-                                        key={s.id}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          handleMoveLead(lead, s.id)
-                                        }}
-                                        disabled={s.id === lead.stage}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                                          {s.name}
-                                        </div>
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-                              )}
-                              {isAdminOrOwner && (
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    handleDeleteLead(lead.id)
-                                  }}
-                                >
-                                  {t.buttons.delete}
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-
-                        <div className="flex items-center gap-1 mb-1">
-                          <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
-                          <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
-                          {notasCounts[lead.id] > 0 && (
-                            <TooltipProvider delayDuration={300}>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <div className="flex items-center gap-0.5 ml-1 text-amber-600">
-                                    <Note size={12} weight="fill" />
-                                    <span className="text-[10px] font-medium">{notasCounts[lead.id]}</span>
-                                  </div>
-                                </TooltipTrigger>
-                                <TooltipContent side="top" className="text-xs">
-                                  {notasCounts[lead.id]} nota{notasCounts[lead.id] > 1 ? 's' : ''}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          )}
-                        </div>
-
-                        {lead.budget > 0 && (
-                          <p className="text-sm font-medium text-primary mb-1">
-                            ${lead.budget.toLocaleString()}
-                          </p>
-                        )}
-
-                        <div className="flex flex-wrap gap-1 mb-1">
-                          {lead.tags.slice(0, 2).map(tag => (
-                            <Badge
-                              key={tag.id}
-                              variant="outline"
-                              className="text-xs h-4 px-1 max-w-20 truncate"
-                              style={{ borderColor: tag.color, color: tag.color }}
-                              title={tag.name}
-                            >
-                              {tag.name}
-                            </Badge>
-                          ))}
-                          {lead.tags.length > 2 && (
-                            <Badge variant="outline" className="text-xs h-4 px-1">
-                              +{lead.tags.length - 2}
-                            </Badge>
-                          )}
-                        </div>
-
-                        <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
-                          {t.lead.assignedTo}: {(() => {
-                            const NIL_UUID = '00000000-0000-0000-0000-000000000000'
-                            const member = teamMembers.find(m => m.id === lead.assignedTo)
-                            if (member) return member.name
-                            if (lead.assignedTo === NIL_UUID || lead.assignedTo == null) {
-                              return 'Todos'
-                            }
-                            if (user && user.id === lead.assignedTo) {
-                              return `${currentCompany?.name || user.businessName || user.email} (Yo)`
-                            }
-                            // Si el asignado es el dueño/owner de la empresa, mostrar nombre de la empresa
-                            if (currentCompany && currentCompany.ownerId === lead.assignedTo) {
-                              return `${currentCompany.name} (Owner)`
-                            }
-                            return 'Sin asignar'
-                          })()}
-                        </div>
-                      </Card>
-                    ))}
-
-                    {stageLeads.length === 0 && (
-                      <div className="text-center py-8 text-muted-foreground text-sm">
-                        {t.pipeline.noLeads}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-
-            {(currentPipeline?.stages || []).length === 0 && (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <p className="mb-4">{t.pipeline.noStages}</p>
-                  {isAdminOrOwner && (
-                    <AddStageDialog
-                      pipelineType={activePipeline}
-                      currentStagesCount={0}
-                      onAdd={handleAddStage}
-                      trigger={
-                        <Button>
-                          <Plus className="mr-2" size={20} />
-                          {t.pipeline.addFirstStage}
-                        </Button>
-                      }
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {(currentPipeline?.stages || []).length > 0 && canEditLeads && (
-              <div className="w-72 md:w-80 flex flex-col shrink-0 min-h-0">
-                <AddStageDialog
-                  pipelineType={activePipeline}
-                  currentStagesCount={currentPipeline?.stages.length || 0}
-                  onAdd={handleAddStage}
-                  trigger={
-                    <div className="flex-1 space-y-2 overflow-y-auto min-h-[200px] bg-muted/20 rounded-lg p-2 border-2 border-dashed border-border hover:border-primary transition-colores cursor-pointer flex flex-col items-center justify-center" title={t.pipeline.addStage}>
-                      <Plus size={22} className="text-muted-foreground mb-1" />
-                      <span className="text-xs font-medium text-muted-foreground">{t.pipeline.addStage}</span>
-                    </div>
-                  }
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <PipelineBoard
+        currentPipeline={currentPipeline}
+        pipelines={pipelines}
+        pipelineLeads={pipelineLeads}
+        allPipelineLeads={allPipelineLeads}
+        stageCounts={stageCounts}
+        stagePages={stagePages}
+        unreadLeads={unreadLeads}
+        notasCounts={notasCounts}
+        highlightedLeadId={highlightedLeadId}
+        isAdminOrOwner={isAdminOrOwner}
+        canEditLeads={canEditLeads}
+        isMobile={isMobile}
+        activePipeline={activePipeline}
+        teamMembers={teamMembers}
+        currentCompany={currentCompany}
+        user={user}
+        companies={companies}
+        companyId={companyId}
+        onAddStage={handleAddStage}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDeleteStage={handleDeleteStage}
+        onAddLead={handleAddLead}
+        onImportLeads={handleImportLeads}
+        onLoadMore={handleLoadMoreStage}
+        onDragStart={handleDragStart}
+        onLeadClick={(lead) => setSelectedLead(lead)}
+        onDeleteLead={handleDeleteLead}
+        onMoveToStage={handleMoveLead}
+        onOpenMoveDialog={(lead) => {
+          setMoveDialogLead(lead)
+          setMoveDialogOpen(true)
+        }}
+        t={t}
+      />
 
       {/* Botón inferior eliminado: ahora hay botones arriba y por etapa */}
 

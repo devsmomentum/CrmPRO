@@ -39,9 +39,15 @@
 |------------|--------|----------|
 | `chats/MessageInput.tsx` | ✅ Creado | ~230 líneas |
 | `chats/index.ts` | ✅ Creado | Exports |
-| Integración en ChatsView | 🟡 Pendiente | - |
+| `chats/index.ts` | ✅ Creado | Exports |
+| Integración en ChatsView | ✅ Completado | Layout principal limpio |
+| `pipeline/LeadCard.tsx` | ✅ Completado | Memoizado, DnD optimizado |
+| `pipeline/PipelineColumn.tsx` | ✅ Completado | Virtualización, DropZone |
+| `pipeline/PipelineBoard.tsx` | ✅ Completado | Orquestación general |
+| `pipeline/index.ts` | ✅ Completado | Barrel file exports |
+| Integración en PipelineView | ✅ Completado | Vista principal limpia |
 
-**Para continuar**: Integrar MessageInput en ChatsView, luego extraer ChatList y ChatWindow.
+**Para continuar (Fase 3.5)**: Refactorizar `LeadDetailSheet.tsx` (Panel Lateral) dividiéndolo en Tabs.
 
 ---
 

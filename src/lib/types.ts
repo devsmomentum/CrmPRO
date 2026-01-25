@@ -345,6 +345,9 @@ export interface PersonaDB {
   empresa_id: string
   nombre?: string
   email: string
+  titulo_trabajo?: string
+  equipo_id?: string
+  permisos?: string[]
   created_at: string
 }
 
