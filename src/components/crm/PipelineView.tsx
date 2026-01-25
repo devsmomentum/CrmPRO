@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useLeadsRealtime } from '@/hooks/useLeadsRealtime'
 import { usePipelineData } from '@/hooks/usePipelineData'
+import { usePipelineLeadActions } from '@/hooks/usePipelineLeadActions'
 import { useDragDrop } from '@/hooks/useDragDrop'
 import { Lead, Pipeline, PipelineType, TeamMember, Stage } from '@/lib/types'
 // import { Card } from '@/components/ui/card'
@@ -27,7 +28,7 @@ import {
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { deletePipeline, getPipelines } from '@/supabase/helpers/pipeline'
-import { createLead, deleteLead, getLeads, getLeadsPaged, updateLead, searchLeads } from '@/supabase/services/leads'
+import { deleteLead, getLeads, getLeadsPaged, updateLead, searchLeads } from '@/supabase/services/leads'
 import { getEquipos } from '@/supabase/services/equipos'
 import { getPersonas } from '@/supabase/services/persona'
 import { getPipelinesForPersona } from '@/supabase/helpers/personaPipeline'
@@ -173,6 +174,27 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
   // Viewers ahora pueden crear y editar leads, pero no eliminar ni gestionar pipelines
   const canEditLeads = true
+
+  // ==========================================
+  // HOOK: Acciones del Pipeline (CRUD leads/stages)
+  // ==========================================
+  const {
+    handleAddStage,
+    handleAddLead,
+    handleImportLeads,
+    handleDeleteLead
+  } = usePipelineLeadActions({
+    companyId: companyId || '',
+    activePipeline,
+    pipelines,
+    setPipelines,
+    setLeads,
+    setStageCounts,
+    teamMembers,
+    user,
+    isAdminOrOwner,
+    currentCompany
+  })
 
   // ==========================================
   // HOOK: Drag & Drop con Optimistic UI
@@ -352,247 +374,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     }
   }
 
-  const handleAddStage = async (stage: Stage) => {
-    if (!isAdminOrOwner) {
-      toast.error('No tienes permisos para agregar etapas')
-      return
-    }
 
-    const currentPipeline = pipelines.find(p => p.type === activePipeline)
-    let stageToState = stage
 
-    // Validar si es un UUID real
-    const isPipelineUUID = currentPipeline?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentPipeline.id)
 
-    // Si el pipeline existe en BD (tiene UUID), guardamos la etapa en BD
-    if (currentPipeline && isPipelineUUID) {
-      try {
-        const { data: newStage, error } = await createEtapa({
-          nombre: stage.name,
-          pipeline_id: currentPipeline.id,
-          orden: stage.order,
-          color: stage.color
-        })
 
-        if (error) throw error
 
-        // Usamos el ID real de la BD
-        stageToState = { ...stage, id: newStage.id }
-        toast.success('Etapa guardada en BD')
-      } catch (err: any) {
-        console.error('Error creating stage:', err)
-        toast.error(`Error al guardar etapa en BD: ${err.message}`)
-        return // No actualizamos estado local si falla BD
-      }
-    } else {
-      // Si es un pipeline default (no UUID), advertimos que solo es local
-      if (['sales', 'support', 'administrative'].includes(activePipeline)) {
-        // Opcional: Podríamos crear el pipeline en BD aquí si quisiéramos persistencia total
-        // Por ahora solo guardamos local
-      }
-    }
 
-    setPipelines((current) => {
-      const pipelines = current || []
-      const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
 
-      if (pipelineIndex === -1) {
-        // Esto no debería pasar para pipelines de BD, solo para defaults si no existen
-        const newPipeline: Pipeline = {
-          id: `${activePipeline}-pipeline`,
-          name: activePipeline === 'sales' ? 'Sales Pipeline' :
-            activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline',
-          type: activePipeline,
-          stages: [stageToState]
-        }
-        return [...pipelines, newPipeline]
-      }
-
-      const updatedPipelines = [...pipelines]
-      updatedPipelines[pipelineIndex] = {
-        ...updatedPipelines[pipelineIndex],
-        stages: [...updatedPipelines[pipelineIndex].stages, stageToState]
-      }
-
-      return updatedPipelines
-    })
-  }
-
-  const handleAddLead = async (lead: Lead) => {
-    try {
-      // Resolver el UUID del pipeline actual
-      const currentPipeline = pipelines.find(p => p.type === activePipeline)
-      let pipelineIdToSave = currentPipeline?.id
-
-      if (!pipelineIdToSave) {
-        toast.error('No se ha seleccionado un pipeline válido')
-        return
-      }
-
-      const payload: any = {
-        nombre_completo: lead.name,
-        correo_electronico: lead.email,
-        telefono: lead.phone,
-        empresa: lead.company,
-        ubicacion: lead.location,
-        presupuesto: lead.budget,
-        etapa_id: lead.stage,
-        pipeline_id: pipelineIdToSave,
-        prioridad: lead.priority,
-        asignado_a: null,
-        empresa_id: companyId
-      }
-
-      // Antes el formulario usaba nombre; ahora usa ID. Soportar ambos.
-      // 1. Si lead.assignedTo coincide con un ID directo.
-      const byId = teamMembers.find(m => m.id === lead.assignedTo)
-      if (byId) {
-        payload.asignado_a = byId.id
-      } else {
-        // 2. Intentar por nombre (legacy)
-        const byName = teamMembers.find(m => m.name === lead.assignedTo)
-        if (byName) {
-          payload.asignado_a = byName.id
-        } else if (lead.assignedTo === 'todos') {
-          // 3. Asignar a todos: usar UUID nulo estándar en BD
-          payload.asignado_a = '00000000-0000-0000-0000-000000000000'
-        } else if (user && user.id === lead.assignedTo) {
-          // 3. Asignado al usuario efectivo
-          payload.asignado_a = user.id
-        }
-      }
-
-      // Si el pipeline es custom (tiene UUID), intentamos guardar
-      if (pipelineIdToSave) {
-        // Validar que la etapa sea UUID
-        const isStageUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead.stage)
-
-        if (!isStageUUID) {
-          toast.warning('No se puede guardar en BD: La etapa no está sincronizada (ID inválido). Se guardará localmente.')
-          setLeads((current) => [...(current || []), lead])
-          setStageCounts(prev => ({
-            ...prev,
-            [lead.stage]: (prev[lead.stage] || 0) + 1
-          }))
-          return
-        }
-
-        const created = await createLead(payload)
-        // IMPORTANTE: Usar el UUID del pipeline (pipelineIdToSave) para el estado local
-        // para que coincida con el filtro de allPipelineLeads
-        const newLead = {
-          ...lead,
-          id: created.id,
-          pipeline: pipelineIdToSave || lead.pipeline
-        }
-        // setLeads((current) => [...(current || []), newLead])
-        // Comentado para evitar duplicados en UI (Realtime lo agregará)
-        toast.success('Lead guardado en BD')
-
-        // Notificar asignación si corresponde (solo admin/owner y asignado específico)
-        const NIL_UUID = '00000000-0000-0000-0000-000000000000'
-        const assignedId = payload.asignado_a
-        if (isAdminOrOwner && assignedId && assignedId !== NIL_UUID) {
-          const recipient = teamMembers.find(m => m.id === assignedId)
-          if (recipient?.email) {
-            try {
-              await supabase.functions.invoke('send-lead-assigned', {
-                body: {
-                  leadId: created.id,
-                  leadName: lead.name,
-                  empresaId: companyId,
-                  empresaNombre: currentCompany?.name,
-                  assignedUserId: recipient?.userId || assignedId,
-                  assignedUserEmail: recipient?.email,
-                  assignedByEmail: user?.email,
-                  assignedByNombre: user?.businessName || currentCompany?.name || user?.email
-                }
-              })
-            } catch (e) {
-              console.error('[PipelineView] Error enviando notificación de asignación', e)
-            }
-          }
-        }
-      } else {
-        // Fallback local para defaults
-        setLeads((current) => [...(current || []), lead])
-        setStageCounts(prev => ({
-          ...prev,
-          [lead.stage]: (prev[lead.stage] || 0) + 1
-        }))
-        toast.warning('Lead guardado localmente (Pipeline default)')
-      }
-
-    } catch (error: any) {
-      console.error('Error creating lead:', error)
-      toast.error(`Error al crear lead: ${error.message}`)
-    }
-  }
-
-  const handleImportLeads = (importedLeads: Lead[]) => {
-    if (!importedLeads || importedLeads.length === 0) return
-
-    const stageIncrements: Record<string, number> = {}
-
-    setLeads((current) => {
-      const byId = new Map<string, Lead>()
-      const currentPipeline = pipelines.find(p => p.type === activePipeline)
-
-        ; (current || []).forEach(l => byId.set(l.id, l))
-
-      importedLeads.forEach((lead) => {
-        const normalizedLead = {
-          ...lead,
-          pipeline: lead.pipeline || currentPipeline?.id || activePipeline
-        }
-
-        if (!byId.has(normalizedLead.id)) {
-          stageIncrements[normalizedLead.stage] = (stageIncrements[normalizedLead.stage] || 0) + 1
-        }
-
-        byId.set(normalizedLead.id, normalizedLead)
-      })
-
-      return Array.from(byId.values())
-    })
-
-    if (Object.keys(stageIncrements).length > 0) {
-      setStageCounts((prev) => {
-        const next = { ...prev }
-        Object.entries(stageIncrements).forEach(([stageId, count]) => {
-          next[stageId] = (next[stageId] || 0) + count
-        })
-        return next
-      })
-    }
-  }
-
-  const handleDeleteLead = async (leadId: string) => {
-    try {
-      // Intentar borrar de BD si parece un UUID
-      if (leadId.length > 20) { // Simple check
-        await deleteLead(leadId)
-      }
-
-      // Encontrar el lead antes de borrarlo para saber su etapa
-      setLeads((current) => {
-        const lead = current?.find(l => l.id === leadId)
-        if (lead) {
-          setStageCounts(prev => ({
-            ...prev,
-            [lead.stage]: Math.max(0, (prev[lead.stage] || 0) - 1)
-          }))
-        }
-        return (current || []).filter(l => l.id !== leadId)
-      })
-
-      setSelectedLead((current) => current?.id === leadId ? null : current)
-      toast.success(t.messages.leadDeleted)
-    } catch (error: any) {
-      console.error('Error deleting lead:', error)
-      toast.error('Error al eliminar lead')
-    }
-  }
 
   const handleDeleteMultipleLeads = async (ids: string[]) => {
     // Optimistic delete or parallel delete
@@ -1020,7 +808,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           currentUser={user}
           companyId={companyId}
           canDeleteLead={isAdminOrOwner}
-          onDeleteLead={handleDeleteLead}
+          onDeleteLead={(id) => handleDeleteLead(id, () => setSelectedLead(null))}
         />
       )}
 

@@ -2,8 +2,8 @@
 
 > **Fecha de inicio**: Enero 2026  
 > **Última actualización**: 25 Enero 2026  
-> **Estado**: ✅ **Fase 1 y 2 COMPLETADAS** | 🟡 Fase 3 en progreso  
-> **Versión del documento**: 3.0
+> **Estado**: ✅ **Fase 1, 2 y 3 COMPLETADAS** | 🟡 Fase 4 Pendiente
+> **Versión del documento**: 3.1
 
 ---
 
@@ -48,15 +48,21 @@
 | `LeadDetailSheet.tsx` | ✅ Completado | 4 sub-componentes extraídos |
 | `lead-detail/ChatTab.tsx` | ✅ Completado | Scroll fix, responsive, clean channels |
 
-**Para continuar (Fase 3.1)**: Extraer hooks restantes de `PipelineView.tsx`:
+### ✅ Fase 3.1 Completada: Hooks de Pipeline (25 Ene 2026)
 
 | Hook | Responsabilidad | Estado |
 |------|-----------------|--------|
 | `usePipelineData` | Carga pipelines, leads, paginación | ✅ Completado |
 | `useDragDrop` | Lógica D&D con Optimistic UI | ✅ Completado |
-| `usePipelineLeadActions` | CRUD leads/stages | ⚪ Pendiente (Próximo paso) |
+| `usePipelineLeadActions` | CRUD leads/stages | ✅ Completado |
 
 **Patrón de Arquitectura**: Inyección de dependencias entre hooks (PipelineView como orquestador).
+
+### 🟡 Siguiente Paso: Fase 4 - Servicios y API Layer
+
+El siguiente objetivo es refactorizar la capa de servicios (`src/supabase/services`) para usar **Clases** e inyección de dependencias, eliminando la mezcla de estilos (funciones sueltas) y mejorando el manejo de errores.
+
+Ver [Plan de Refactorización - Fase 4](#fase-4-servicios-y-api-layer-2-3-días) más abajo.
 
 ---
 

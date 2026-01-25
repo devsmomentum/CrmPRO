@@ -10,7 +10,7 @@
  * Extraído de LeadDetailSheet para mantener el código organizado.
  */
 
-import { useRef } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Message, Channel } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,6 +32,7 @@ import {
     PaperPlaneRight,
     WhatsappLogo,
     InstagramLogo,
+    FacebookLogo,
     Trash,
     DownloadSimple,
     FilePdf,
@@ -81,11 +82,12 @@ interface ChatTabProps {
 // Solo canales activos - whatsapp e instagram
 const channelIcons: Partial<Record<Channel, any>> = {
     whatsapp: WhatsappLogo,
-    instagram: InstagramLogo
+    instagram: InstagramLogo,
+    facebook: FacebookLogo,
 }
 
 // Lista de canales disponibles para renderizar
-const availableChannels: Channel[] = ['whatsapp', 'instagram']
+const availableChannels: Channel[] = ['whatsapp', 'instagram', 'facebook']
 
 function getChannelIcon(channel: Channel) {
     return channelIcons[channel] || WhatsappLogo
@@ -304,8 +306,24 @@ export function ChatTab({
     translations: t
 }: ChatTabProps) {
     const fileInputRef = useRef<HTMLInputElement>(null)
+    const [historyLimit, setHistoryLimit] = useState(20)
 
     const filteredMessages = messages.filter(m => m.channel === selectedChannel)
+    const displayedMessages = filteredMessages.slice(-historyLimit)
+    const hasMoreHistory = filteredMessages.length > historyLimit
+
+    // Auto-scroll to bottom when channel changes
+    useEffect(() => {
+        // Timeout ensures layout is complete
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+        }, 50)
+    }, [selectedChannel])
+
+    // Reset history limit when channel changes
+    useEffect(() => {
+        setHistoryLimit(20)
+    }, [selectedChannel])
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
@@ -319,10 +337,10 @@ export function ChatTab({
     }
 
     return (
-        <div className="flex-1 flex flex-col px-4 sm:px-6 py-4 sm:py-6 overflow-hidden min-h-0">
+        <div className="flex-1 flex flex-col px-3 sm:px-6 py-2 sm:py-6 sm:overflow-hidden overflow-visible h-auto sm:h-full min-h-0">
             {/* Channel Selector & Clear Button */}
-            <div className="flex justify-between items-center mb-3 flex-shrink-0">
-                <div className="flex gap-2 flex-wrap">
+            <div className="flex justify-between items-start mb-1 flex-shrink-0">
+                <div className="flex gap-1.5 flex-wrap">
                     {availableChannels.map(channel => {
                         const Icon = getChannelIcon(channel)
                         return (
@@ -331,8 +349,9 @@ export function ChatTab({
                                 variant={selectedChannel === channel ? 'default' : 'outline'}
                                 size="sm"
                                 onClick={() => onChannelChange(channel)}
+                                className="h-7 text-xs px-2"
                             >
-                                <Icon size={16} className="mr-2" />
+                                <Icon size={14} className="mr-1.5" />
                                 {channel}
                             </Button>
                         )
@@ -365,60 +384,74 @@ export function ChatTab({
                 )}
             </div>
 
-            {/* Messages List */}
-            <ScrollArea className="flex-1 pr-3 sm:pr-4 mb-4 min-h-[320px]">
-                <div className="space-y-3">
-                    {filteredMessages.map(msg => (
-                        <div
-                            key={msg.id}
-                            className={cn(
-                                'group relative p-3 rounded-lg max-w-[80%]',
-                                msg.sender === 'team'
-                                    ? 'ml-auto bg-primary text-primary-foreground'
-                                    : 'bg-muted'
-                            )}
-                        >
-                            {canEdit && (
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        onDeleteMessage(msg.id)
-                                    }}
-                                    className={cn(
-                                        "absolute -top-2 p-1 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10",
-                                        msg.sender === 'team' ? "-left-2" : "-right-2"
-                                    )}
-                                    title="Eliminar mensaje"
+            {/* Messages List - Mobile: Grow auto (external scroll), Desktop: ScrollArea (internal) */}
+            <div className="flex-1 pr-1 sm:pr-4 mb-2 sm:min-h-0 h-auto sm:h-full sm:overflow-hidden">
+                <ScrollArea className="h-full">
+                    <div className="space-y-3 pb-2">
+                        {hasMoreHistory && (
+                            <div className="text-center py-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setHistoryLimit(prev => prev + 20)}
+                                    className="text-xs text-muted-foreground"
                                 >
-                                    <Trash size={12} weight="bold" />
-                                </button>
-                            )}
-
-                            <MessageContent msg={msg} />
-                            <MessageMedia msg={msg} />
-
-                            <div className="flex justify-between items-center mt-1 opacity-70">
-                                <span className="text-xs">{safeFormatDate(msg.timestamp, 'h:mm a')}</span>
-                                {msg.sender === 'team' && (
-                                    (msg.metadata as any)?.error ? (
-                                        <span title="Error enviando a WhatsApp">
-                                            <WarningCircle className="w-3.5 h-3.5 text-red-500 ml-1" weight="fill" />
-                                        </span>
-                                    ) : (
-                                        msg.read ? <Check size={14} weight="bold" className="text-blue-500 ml-1" /> : <Check size={14} className="ml-1" />
-                                    )
-                                )}
+                                    Cargar mensajes anteriores
+                                </Button>
                             </div>
-                        </div>
-                    ))}
-                    <div ref={messagesEndRef} />
-                    {filteredMessages.length === 0 && (
-                        <p className="text-center text-muted-foreground text-sm py-8">
-                            {t.noMessages}
-                        </p>
-                    )}
-                </div>
-            </ScrollArea>
+                        )}
+                        {displayedMessages.map(msg => (
+                            <div
+                                key={msg.id}
+                                className={cn(
+                                    'group relative p-3 rounded-lg max-w-[80%]',
+                                    msg.sender === 'team'
+                                        ? 'ml-auto bg-primary text-primary-foreground'
+                                        : 'bg-muted'
+                                )}
+                            >
+                                {canEdit && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            onDeleteMessage(msg.id)
+                                        }}
+                                        className={cn(
+                                            "absolute -top-2 p-1 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10",
+                                            msg.sender === 'team' ? "-left-2" : "-right-2"
+                                        )}
+                                        title="Eliminar mensaje"
+                                    >
+                                        <Trash size={12} weight="bold" />
+                                    </button>
+                                )}
+
+                                <MessageContent msg={msg} />
+                                <MessageMedia msg={msg} />
+
+                                <div className="flex justify-between items-center mt-1 opacity-70">
+                                    <span className="text-xs">{safeFormatDate(msg.timestamp, 'h:mm a')}</span>
+                                    {msg.sender === 'team' && (
+                                        (msg.metadata as any)?.error ? (
+                                            <span title="Error enviando a WhatsApp">
+                                                <WarningCircle className="w-3.5 h-3.5 text-red-500 ml-1" weight="fill" />
+                                            </span>
+                                        ) : (
+                                            msg.read ? <Check size={14} weight="bold" className="text-blue-500 ml-1" /> : <Check size={14} className="ml-1" />
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                        <div ref={messagesEndRef} />
+                        {filteredMessages.length === 0 && (
+                            <p className="text-center text-muted-foreground text-sm py-8">
+                                {t.noMessages}
+                            </p>
+                        )}
+                    </div>
+                </ScrollArea>
+            </div>
 
             {/* Input Area */}
             <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
