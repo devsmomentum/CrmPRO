@@ -1069,15 +1069,18 @@ quedamos en la última sesión.
 > ⚠️ La carpeta `hooks/` contenía wrappers de React Query que nadie importaba.
 > Las vistas llaman directamente a `services/`. Eliminados para evitar redundancia.
 
-#### 1.4 Migrar Helpers a TypeScript
-- [ ] `src/supabase/helpers/auth.js` → `.ts`
-- [ ] `src/supabase/helpers/empresa.js` → `.ts`
-- [ ] `src/supabase/helpers/equipos.js` → `.ts`
-- [ ] `src/supabase/helpers/etapas.js` → `.ts`
-- [ ] `src/supabase/helpers/persona.js` → `.ts`
-- [ ] `src/supabase/helpers/personaPipeline.js` → `.ts`
-- [ ] `src/supabase/helpers/pipeline.js` → `.ts`
-- [ ] `src/supabase/helpers/user.js` → `.ts`
+#### 1.4 ~~Migrar Helpers a TypeScript~~ → **COMPLETADO** ✅
+> 5 archivos migrados a TS, 3 eliminados (no usados).
+
+**Migrados:**
+- [x] `pipeline.js` → `pipeline.ts` (incluye `createPipelineWithStages`)
+- [x] `personaPipeline.js` → `personaPipeline.ts`
+- [x] `etapas.js` → `etapas.ts`
+- [x] `persona.js` → `persona.ts`
+- [x] `equipos.js` → `equipos.ts`
+
+**Eliminados:**
+- [x] `auth.js`, `empresa.js`, `user.js` (duplicados en services/)
 
 #### 1.5 Otros archivos JS
 - [x] `src/supabase/auth.js` → `.ts` ✅
