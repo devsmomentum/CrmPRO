@@ -1,0 +1,486 @@
+/**
+ * ChatTab Component
+ * 
+ * Maneja el chat del lead con:
+ * - Selector de canales (WhatsApp, Email, etc.)
+ * - Lista de mensajes con renderizado de multimedia
+ * - Input de mensajes con soporte para archivos adjuntos
+ * - Grabación de notas de voz
+ * 
+ * Extraído de LeadDetailSheet para mantener el código organizado.
+ */
+
+import { useRef } from 'react'
+import { Message, Channel } from '@/lib/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import {
+    PaperPlaneRight,
+    WhatsappLogo,
+    InstagramLogo,
+    Trash,
+    DownloadSimple,
+    FilePdf,
+    File as FileIcon,
+    Paperclip,
+    Spinner,
+    Microphone,
+    Stop,
+    Check,
+    WarningCircle
+} from '@phosphor-icons/react'
+import { safeFormatDate } from '@/hooks/useDateFormat'
+
+// ============================================
+// TIPOS
+// ============================================
+
+interface ChatTabProps {
+    leadId: string
+    messages: Message[]
+    selectedChannel: Channel
+    onChannelChange: (channel: Channel) => void
+    messageInput: string
+    onMessageInputChange: (value: string) => void
+    onSendMessage: () => void
+    onDeleteMessage: (messageId: string) => void
+    onDeleteConversation: () => void
+    onFileUpload: (file: File) => Promise<void>
+    isUploading: boolean
+    canEdit: boolean
+    messagesEndRef: React.RefObject<HTMLDivElement>
+    // Audio recording
+    isRecording: boolean
+    recordingTime: number
+    onStartRecording: () => void
+    onStopRecording: () => void
+    translations: {
+        noMessages: string
+        typeMessage: string
+    }
+}
+
+// ============================================
+// UTILIDADES
+// ============================================
+
+// Solo canales activos - whatsapp e instagram
+const channelIcons: Partial<Record<Channel, any>> = {
+    whatsapp: WhatsappLogo,
+    instagram: InstagramLogo
+}
+
+// Lista de canales disponibles para renderizar
+const availableChannels: Channel[] = ['whatsapp', 'instagram']
+
+function getChannelIcon(channel: Channel) {
+    return channelIcons[channel] || WhatsappLogo
+}
+
+// ============================================
+// SUB-COMPONENTES
+// ============================================
+
+/** Renderiza el contenido multimedia de un mensaje */
+function MessageMedia({ msg }: { msg: Message }) {
+    const data = (msg.metadata as any)?.data || msg.metadata || {}
+
+    // Detectar URL de media
+    let mediaUrl =
+        data.mediaUrl ||
+        data.media?.links?.download ||
+        data.media?.url ||
+        data.media?.publicUrl ||
+        data.media?.downloadUrl ||
+        (data.type === 'image' && data.body?.startsWith('http') ? data.body : null)
+
+    // Buscar URLs en el contenido del mensaje
+    if (!mediaUrl && msg.content) {
+        const urlRegex = /(https?:\/\/[^\s]+)/g
+        const matches = msg.content.match(urlRegex)
+        if (matches) {
+            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.csv']
+            const foundUrl = matches.find(url => {
+                const lower = url.toLowerCase()
+                return imageExtensions.some(ext => lower.includes(ext))
+            }) || matches[matches.length - 1]
+            if (foundUrl) mediaUrl = foundUrl
+        }
+    }
+
+    if (!mediaUrl) return null
+
+    const lowerUrl = mediaUrl.toLowerCase()
+    const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image')
+    const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video')
+    const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
+        (data.type === 'audio') || (data.type === 'ptt')
+    const isPdf = lowerUrl.includes('.pdf')
+
+    if (isImage) {
+        return (
+            <div className="mt-2 rounded-md overflow-hidden">
+                <img
+                    src={mediaUrl}
+                    alt="Imagen adjunta"
+                    className="max-w-full h-auto object-cover max-h-60"
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.style.display = 'none' }}
+                />
+            </div>
+        )
+    }
+
+    if (isVideo) {
+        return (
+            <div className="mt-2 rounded-md overflow-hidden">
+                <video src={mediaUrl} controls className="max-w-full h-auto max-h-60" />
+            </div>
+        )
+    }
+
+    if (isAudio) {
+        return (
+            <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full">
+                <div className="bg-gradient-to-br from-green-500 to-green-600 p-2 rounded-full text-white shadow-sm">
+                    <Microphone size={20} />
+                </div>
+                <div className="flex-1">
+                    <p className="text-xs text-muted-foreground mb-1">
+                        {data.type === 'ptt' ? '🎤 Nota de voz' : '🔊 Audio'}
+                    </p>
+                    <audio src={mediaUrl} controls className="w-full max-w-sm h-8" style={{ maxHeight: '32px' }}>
+                        Tu navegador no soporta reproducción de audio.
+                    </audio>
+                </div>
+            </div>
+        )
+    }
+
+    // Archivo genérico (PDF u otro)
+    const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto'
+    return (
+        <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
+            <div className="bg-background p-2 rounded-md text-primary shadow-sm">
+                {isPdf ? <FilePdf size={24} weight="duotone" /> : <FileIcon size={24} weight="duotone" />}
+            </div>
+            <div className="flex-1 min-w-0 overflow-hidden">
+                <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
+                <a
+                    href={mediaUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-blue-500 hover:underline flex items-center gap-1"
+                >
+                    Abrir en nueva pestaña
+                </a>
+            </div>
+            <a
+                href={mediaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
+                title="Descargar"
+                download
+            >
+                <DownloadSimple size={20} />
+            </a>
+        </div>
+    )
+}
+
+/** Renderiza el contenido de texto del mensaje */
+function MessageContent({ msg }: { msg: Message }) {
+    const data = (msg.metadata as any)?.data || msg.metadata || {}
+    let mediaUrl =
+        data.mediaUrl ||
+        data.media?.links?.download ||
+        data.media?.url ||
+        (data.type === 'image' && data.body?.startsWith('http') ? data.body : null)
+
+    if (!mediaUrl && msg.content) {
+        const urlRegex = /(https?:\/\/[^\s]+)/g
+        const matches = msg.content.match(urlRegex)
+        if (matches) {
+            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.csv', '.mp3', '.wav', '.ogg', '.oga', '.m4a']
+            const foundUrl = matches.find(url => {
+                const lower = url.toLowerCase()
+                return imageExtensions.some(ext => lower.includes(ext))
+            }) || matches[matches.length - 1]
+            if (foundUrl) mediaUrl = foundUrl
+        }
+    }
+
+    // Determinar tipo de contenido para badge
+    let contentType: string | null = null
+    let contentIcon: string | null = null
+    if (mediaUrl) {
+        const lowerUrl = mediaUrl.toLowerCase()
+        const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image')
+        const isVideo = ['.mp4', '.webm', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video')
+        const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
+            (data.type === 'audio') || (data.type === 'ptt')
+        const isPdf = lowerUrl.includes('.pdf')
+
+        if (isAudio) {
+            contentType = data.type === 'ptt' ? 'Nota de voz' : 'Audio'
+            contentIcon = '🎤'
+        } else if (isImage) {
+            contentType = 'Imagen'
+            contentIcon = '📷'
+        } else if (isVideo) {
+            contentType = 'Video'
+            contentIcon = '🎬'
+        } else if (isPdf) {
+            contentType = 'PDF'
+            contentIcon = '📄'
+        } else {
+            contentType = 'Archivo'
+            contentIcon = '📎'
+        }
+    }
+
+    // Si el contenido es solo una URL, no mostrarlo
+    if (!msg.content) return null
+    if (msg.content.startsWith('http')) return null
+
+    // Si hay mediaUrl, limpiar URLs del texto
+    if (mediaUrl) {
+        const urlRegex = /https?:\/\/[^\s]+/gi
+        const cleanedContent = msg.content.replace(urlRegex, '').trim()
+        if (!cleanedContent || cleanedContent.length === 0) return null
+        return (
+            <div className="space-y-1">
+                {contentType && (
+                    <div className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-medium">
+                        <span>{contentIcon}</span>
+                        <span>{contentType}</span>
+                    </div>
+                )}
+                <p className="text-sm">{cleanedContent}</p>
+            </div>
+        )
+    }
+
+    return <p className="text-sm">{msg.content}</p>
+}
+
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
+export function ChatTab({
+    leadId,
+    messages,
+    selectedChannel,
+    onChannelChange,
+    messageInput,
+    onMessageInputChange,
+    onSendMessage,
+    onDeleteMessage,
+    onDeleteConversation,
+    onFileUpload,
+    isUploading,
+    canEdit,
+    messagesEndRef,
+    isRecording,
+    recordingTime,
+    onStartRecording,
+    onStopRecording,
+    translations: t
+}: ChatTabProps) {
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    const filteredMessages = messages.filter(m => m.channel === selectedChannel)
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        if (file.size > 16 * 1024 * 1024) {
+            toast.error('El archivo es muy grande. Máximo 16MB')
+            return
+        }
+        await onFileUpload(file)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+
+    return (
+        <div className="flex-1 flex flex-col px-4 sm:px-6 py-4 sm:py-6 overflow-hidden min-h-0">
+            {/* Channel Selector & Clear Button */}
+            <div className="flex justify-between items-center mb-3 flex-shrink-0">
+                <div className="flex gap-2 flex-wrap">
+                    {availableChannels.map(channel => {
+                        const Icon = getChannelIcon(channel)
+                        return (
+                            <Button
+                                key={channel}
+                                variant={selectedChannel === channel ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => onChannelChange(channel)}
+                            >
+                                <Icon size={16} className="mr-2" />
+                                {channel}
+                            </Button>
+                        )
+                    })}
+                </div>
+
+                {canEdit && messages.length > 0 && (
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+                                <Trash size={16} className="mr-2" />
+                                Limpiar
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>¿Eliminar conversación?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Esta acción eliminará todos los mensajes de este lead permanentemente.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                <AlertDialogAction onClick={onDeleteConversation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                    Eliminar
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                )}
+            </div>
+
+            {/* Messages List */}
+            <ScrollArea className="flex-1 pr-3 sm:pr-4 mb-4 min-h-[320px]">
+                <div className="space-y-3">
+                    {filteredMessages.map(msg => (
+                        <div
+                            key={msg.id}
+                            className={cn(
+                                'group relative p-3 rounded-lg max-w-[80%]',
+                                msg.sender === 'team'
+                                    ? 'ml-auto bg-primary text-primary-foreground'
+                                    : 'bg-muted'
+                            )}
+                        >
+                            {canEdit && (
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onDeleteMessage(msg.id)
+                                    }}
+                                    className={cn(
+                                        "absolute -top-2 p-1 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10",
+                                        msg.sender === 'team' ? "-left-2" : "-right-2"
+                                    )}
+                                    title="Eliminar mensaje"
+                                >
+                                    <Trash size={12} weight="bold" />
+                                </button>
+                            )}
+
+                            <MessageContent msg={msg} />
+                            <MessageMedia msg={msg} />
+
+                            <div className="flex justify-between items-center mt-1 opacity-70">
+                                <span className="text-xs">{safeFormatDate(msg.timestamp, 'h:mm a')}</span>
+                                {msg.sender === 'team' && (
+                                    (msg.metadata as any)?.error ? (
+                                        <span title="Error enviando a WhatsApp">
+                                            <WarningCircle className="w-3.5 h-3.5 text-red-500 ml-1" weight="fill" />
+                                        </span>
+                                    ) : (
+                                        msg.read ? <Check size={14} weight="bold" className="text-blue-500 ml-1" /> : <Check size={14} className="ml-1" />
+                                    )
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                    {filteredMessages.length === 0 && (
+                        <p className="text-center text-muted-foreground text-sm py-8">
+                            {t.noMessages}
+                        </p>
+                    )}
+                </div>
+            </ScrollArea>
+
+            {/* Input Area */}
+            <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+                    onChange={handleFileChange}
+                    className="hidden"
+                />
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!canEdit || isUploading}
+                    title="Adjuntar archivo"
+                >
+                    {isUploading ? <Spinner size={20} className="animate-spin" /> : <Paperclip size={20} />}
+                </Button>
+                <Input
+                    value={messageInput}
+                    onChange={(e) => onMessageInputChange(e.target.value)}
+                    placeholder={t.typeMessage}
+                    onKeyDown={(e) => e.key === 'Enter' && !isUploading && onSendMessage()}
+                    disabled={!canEdit || isUploading}
+                    className="flex-1 min-w-0"
+                />
+                <Button onClick={onSendMessage} disabled={!canEdit || isUploading || isRecording}>
+                    <PaperPlaneRight size={20} />
+                </Button>
+
+                {/* Audio Recording Button */}
+                <Button
+                    variant={isRecording ? "destructive" : "ghost"}
+                    size="icon"
+                    disabled={!canEdit || isUploading}
+                    title={isRecording ? "Detener grabación" : "Grabar nota de voz"}
+                    onClick={() => {
+                        if (isRecording) {
+                            onStopRecording()
+                        } else {
+                            onStartRecording()
+                        }
+                    }}
+                >
+                    {isRecording ? (
+                        <Stop size={20} weight="fill" />
+                    ) : (
+                        <Microphone size={20} />
+                    )}
+                </Button>
+
+                {/* Recording Time Indicator */}
+                {isRecording && (
+                    <div className="flex items-center gap-2 text-destructive animate-pulse">
+                        <div className="w-2 h-2 rounded-full bg-destructive" />
+                        <span className="text-sm font-mono">
+                            {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
+                        </span>
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}

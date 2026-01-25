@@ -39,15 +39,24 @@
 |------------|--------|----------|
 | `chats/MessageInput.tsx` | ✅ Creado | ~230 líneas |
 | `chats/index.ts` | ✅ Creado | Exports |
-| `chats/index.ts` | ✅ Creado | Exports |
 | Integración en ChatsView | ✅ Completado | Layout principal limpio |
 | `pipeline/LeadCard.tsx` | ✅ Completado | Memoizado, DnD optimizado |
 | `pipeline/PipelineColumn.tsx` | ✅ Completado | Virtualización, DropZone |
 | `pipeline/PipelineBoard.tsx` | ✅ Completado | Orquestación general |
 | `pipeline/index.ts` | ✅ Completado | Barrel file exports |
 | Integración en PipelineView | ✅ Completado | Vista principal limpia |
+| `LeadDetailSheet.tsx` | ✅ Completado | 4 sub-componentes extraídos |
+| `lead-detail/ChatTab.tsx` | ✅ Completado | Scroll fix, responsive, clean channels |
 
-**Para continuar (Fase 3.5)**: Refactorizar `LeadDetailSheet.tsx` (Panel Lateral) dividiéndolo en Tabs.
+**Para continuar (Fase 3.1)**: Extraer hooks restantes de `PipelineView.tsx`:
+
+| Hook | Responsabilidad | Estado |
+|------|-----------------|--------|
+| `usePipelineData` | Carga pipelines, leads, paginación | ✅ Completado |
+| `useDragDrop` | Lógica D&D con Optimistic UI | ✅ Completado |
+| `usePipelineLeadActions` | CRUD leads/stages | ⚪ Pendiente (Próximo paso) |
+
+**Patrón de Arquitectura**: Inyección de dependencias entre hooks (PipelineView como orquestador).
 
 ---
 

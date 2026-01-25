@@ -61,6 +61,7 @@ import { useTranslation } from '@/lib/i18n'
 import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { safeFormatDate } from '@/hooks/useDateFormat'
+import { NotesTab, MeetingsTab, OverviewTab, ChatTab } from './lead-detail'
 
 interface User {
   id: string
@@ -350,6 +351,34 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     } catch (e) {
       console.error(e)
       toast.error('Error enviando mensaje')
+    }
+  }
+
+  // Handler para subir archivos desde ChatTab
+  const handleFileUpload = async (file: File) => {
+    setIsUploading(true)
+    try {
+      const mediaData = await uploadChatAttachment(file, lead.id)
+      const sentMsg = await sendDbMessage(lead.id, messageInput || '', 'team', selectedChannel, mediaData)
+      if (sentMsg) {
+        const mappedMsg = {
+          id: sentMsg.id,
+          leadId: sentMsg.lead_id,
+          channel: sentMsg.channel as Channel,
+          content: sentMsg.content,
+          timestamp: new Date(sentMsg.created_at),
+          sender: sentMsg.sender as 'team' | 'lead',
+          read: sentMsg.read || false
+        }
+        setMessages(prev => prev.find(p => p.id === mappedMsg.id) ? prev : [...prev, mappedMsg])
+      }
+      setMessageInput('')
+      toast.success('Archivo enviado')
+    } catch (err) {
+      console.error(err)
+      toast.error('Error enviando archivo')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -760,480 +789,50 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             <TabsTrigger value="notes">{t.tabs.notes}</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="flex-1 px-4 sm:px-6 py-4 sm:py-6 space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-xs text-muted-foreground">{t.lead.assignedTo}</Label>
-                <div className="mt-1">
-                  <Select value={assignedTo || 'todos'} onValueChange={handleUpdateAssignedTo} disabled={!canEdit}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="todos">Todos</SelectItem>
-                      {currentUser && (
-                        <SelectItem value={currentUser.id}>{`${currentUser.businessName || currentUser.email || 'Yo'} (Yo)`}</SelectItem>
-                      )}
-                      {teamMembers.map(m => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">{t.lead.budget}</Label>
-                <div className="mt-1">
-                  <InlineEdit
-                    value={lead.budget}
-                    onSave={(value) => updateField('budget', value)}
-                    type="number"
-                    min={0}
-                    max={MAX_BUDGET}
-                    prefix="$"
-                    displayClassName="font-medium text-primary !m-0 !p-0 hover:bg-transparent justify-start w-auto"
-                    disabled={!canEdit}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">{t.lead.createdAt}</Label>
-                <p className="font-medium mt-1">{formatSafeDate(lead.createdAt, 'MMM d, yyyy')}</p>
-              </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">{t.lead.lastContact}</Label>
-                <p className="font-medium mt-1">{lead.lastContact ? formatSafeDate(lead.lastContact, 'MMM d, yyyy') : 'No contactado'}</p>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div>
-              <h3 className="font-semibold mb-3">Actividad Reciente</h3>
-              <div className="space-y-2">
-                {leadMessages.slice(-3).map(msg => {
-                  const Icon = getChannelIcon(msg.channel)
-                  return (
-                    <div key={msg.id} className="text-sm p-2 bg-muted rounded">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-muted-foreground">
-                          <Icon size={14} />
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {formatSafeDate(msg.timestamp, 'MMM d, h:mm a')}
-                        </span>
-                      </div>
-                      <p>{msg.content}</p>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+          <TabsContent value="overview" className="flex-1">
+            <OverviewTab
+              lead={lead}
+              teamMembers={teamMembers}
+              currentUser={currentUser}
+              assignedTo={assignedTo}
+              onUpdateAssignedTo={handleUpdateAssignedTo}
+              onUpdateField={updateField}
+              recentMessages={leadMessages}
+              canEdit={canEdit}
+              maxBudget={MAX_BUDGET}
+              translations={{
+                assignedTo: t.lead.assignedTo,
+                budget: t.lead.budget,
+                createdAt: t.lead.createdAt,
+                lastContact: t.lead.lastContact
+              }}
+            />
           </TabsContent>
 
-          <TabsContent value="chat" className="flex-1 flex flex-col px-4 sm:px-6 py-4 sm:py-6 min-h-0 gap-3">
-            <div className="flex justify-between items-center mb-4">
-              <div className="flex gap-2 flex-wrap">
-                {(Object.keys(channelIcons) as Channel[]).map(channel => {
-                  const Icon = getChannelIcon(channel)
-                  return (
-                    <Button
-                      key={channel}
-                      variant={selectedChannel === channel ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setSelectedChannel(channel)}
-                    >
-                      <Icon size={16} className="mr-2" />
-                      {channel}
-                    </Button>
-                  )
-                })}
-              </div>
-
-              {canEdit && leadMessages.length > 0 && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10">
-                      <Trash size={16} className="mr-2" />
-                      Limpiar
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>¿Eliminar conversación?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Esta acción eliminará todos los mensajes de este lead permanentemente.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeleteConversation} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                        Eliminar
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-            </div>
-
-            <ScrollArea className="flex-1 pr-3 sm:pr-4 mb-4 min-h-[320px]">
-              <div className="space-y-3">
-                {leadMessages
-                  .filter(m => m.channel === selectedChannel)
-                  .map(msg => (
-                    <div
-                      key={msg.id}
-                      className={cn(
-                        'group relative p-3 rounded-lg max-w-[80%]',
-                        msg.sender === 'team'
-                          ? 'ml-auto bg-primary text-primary-foreground'
-                          : 'bg-muted'
-                      )}
-                    >
-                      {canEdit && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleDeleteMessage(msg.id)
-                          }}
-                          className={cn(
-                            "absolute -top-2 p-1 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-sm z-10",
-                            msg.sender === 'team' ? "-left-2" : "-right-2"
-                          )}
-                          title="Eliminar mensaje"
-                        >
-                          <Trash size={12} weight="bold" />
-                        </button>
-                      )}
-                      {/* Contenido del mensaje con indicador de tipo */}
-                      {(() => {
-                        const data = msg.metadata?.data || msg.metadata || {};
-                        let mediaUrl =
-                          data.media?.links?.download ||
-                          data.media?.url ||
-                          data.mediaUrl ||
-                          (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
-
-                        if (!mediaUrl && msg.content) {
-                          const urlRegex = /(https?:\/\/[^\s]+)/g;
-                          const matches = msg.content.match(urlRegex);
-                          if (matches) {
-                            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.csv', '.mp3', '.wav', '.ogg', '.oga', '.m4a'];
-                            const foundUrl = matches.find(url => {
-                              const lower = url.toLowerCase();
-                              return imageExtensions.some(ext => lower.includes(ext));
-                            }) || matches[matches.length - 1];
-                            if (foundUrl) mediaUrl = foundUrl;
-                          }
-                        }
-
-                        // Determinar el tipo de contenido
-                        let contentType: string | null = null;
-                        let contentIcon: string | null = null;
-                        if (mediaUrl) {
-                          const lowerUrl = mediaUrl.toLowerCase();
-                          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
-                          const isVideo = ['.mp4', '.webm', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
-                          const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
-                            (data.type === 'audio') ||
-                            (data.type === 'ptt');
-                          const isPdf = lowerUrl.includes('.pdf');
-
-                          if (isAudio) {
-                            contentType = data.type === 'ptt' ? 'Nota de voz' : 'Audio';
-                            contentIcon = '🎤';
-                          } else if (isImage) {
-                            contentType = 'Imagen';
-                            contentIcon = '📷';
-                          } else if (isVideo) {
-                            contentType = 'Video';
-                            contentIcon = '🎬';
-                          } else if (isPdf) {
-                            contentType = 'PDF';
-                            contentIcon = '📄';
-                          } else {
-                            contentType = 'Archivo';
-                            contentIcon = '📎';
-                          }
-                        }
-
-                        return (
-                          <div className="space-y-1">
-                            {contentType && (
-                              <div className="inline-flex items-center gap-1 bg-primary/10 text-primary px-2 py-0.5 rounded-full text-xs font-medium">
-                                <span>{contentIcon}</span>
-                                <span>{contentType}</span>
-                              </div>
-                            )}
-                            {(() => {
-                              // Si hay mediaUrl, intentamos limpiar el contenido de URLs
-                              if (!msg.content) return null;
-
-                              // Si el contenido es solo una URL, no lo mostramos
-                              if (msg.content.startsWith('http')) return null;
-
-                              // Si hay un mediaUrl detectado, quitamos las URLs del texto
-                              if (mediaUrl) {
-                                const urlRegex = /https?:\/\/[^\s]+/gi;
-                                const cleanedContent = msg.content.replace(urlRegex, '').trim();
-                                // Si después de quitar URLs queda algo útil, mostrarlo
-                                if (cleanedContent && cleanedContent.length > 0) {
-                                  return <p className="text-sm">{cleanedContent}</p>;
-                                }
-                                return null;
-                              }
-
-                              // Si no hay mediaUrl, mostrar el contenido normal
-                              return <p className="text-sm">{msg.content}</p>;
-                            })()}
-                          </div>
-                        );
-                      })()}
-                      {/* Renderizado de archivos multimedia */}
-                      {(() => {
-                        const data = msg.metadata?.data || msg.metadata || {};
-
-                        // DEBUG: Ver qué estructura tiene la metadata
-                        if (msg.metadata && !msg.read) {
-                          console.log('[LeadDetailSheet] Metadata:', {
-                            hasData: !!msg.metadata.data,
-                            type: msg.metadata.type || msg.metadata.data?.type,
-                            hasMediaUrl: !!(msg.metadata.data?.mediaUrl),
-                            keys: Object.keys(msg.metadata)
-                          });
-                        }
-
-                        // 1. Buscar en metadata normalizada (nueva estructura)
-                        let mediaUrl =
-                          data.mediaUrl ||  // Campo directo de metadata normalizada
-                          data.media?.links?.download ||
-                          data.media?.url ||
-                          data.media?.publicUrl ||
-                          data.media?.downloadUrl ||
-                          (data.type === 'image' && data.body?.startsWith('http') ? data.body : null);
-
-                        // 2. Si no hay en metadata, buscar en el contenido del mensaje
-                        if (!mediaUrl && msg.content) {
-                          // Regex simple para buscar URLs
-                          const urlRegex = /(https?:\/\/[^\s]+)/g;
-                          const matches = msg.content.match(urlRegex);
-                          if (matches) {
-                            // Tomamos la última URL encontrada, asumiendo que es la que adjuntamos al final
-                            // O buscamos una que parezca imagen
-                            const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.pdf', '.csv'];
-                            const foundUrl = matches.find(url => {
-                              const lower = url.toLowerCase();
-                              return imageExtensions.some(ext => lower.includes(ext));
-                            }) || matches[matches.length - 1]; // Fallback a la última URL si no hay extensión obvia
-
-                            if (foundUrl) mediaUrl = foundUrl;
-                          }
-                        }
-
-                        if (mediaUrl) {
-                          const lowerUrl = mediaUrl.toLowerCase();
-                          const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'].some(ext => lowerUrl.includes(ext)) || (data.type === 'image');
-                          const isVideo = ['.mp4', '.webm', '.ogg', '.mov'].some(ext => lowerUrl.includes(ext)) || (data.type === 'video');
-                          const isAudio = ['.mp3', '.wav', '.ogg', '.oga', '.m4a', '.aac', '.opus'].some(ext => lowerUrl.includes(ext)) ||
-                            (data.type === 'audio') ||
-                            (data.type === 'ptt'); // WhatsApp voice message
-
-                          if (isImage) {
-                            return (
-                              <div className="mt-2 rounded-md overflow-hidden">
-                                <img
-                                  src={mediaUrl}
-                                  alt="Imagen adjunta"
-                                  className="max-w-full h-auto object-cover max-h-60"
-                                  loading="lazy"
-                                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                />
-                              </div>
-                            );
-                          } else if (isVideo) {
-                            return (
-                              <div className="mt-2 rounded-md overflow-hidden">
-                                <video
-                                  src={mediaUrl}
-                                  controls
-                                  className="max-w-full h-auto max-h-60"
-                                />
-                              </div>
-                            );
-                          } else if (isAudio) {
-                            // Renderizado especial para audios de WhatsApp
-                            return (
-                              <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full">
-                                <div className="bg-gradient-to-br from-green-500 to-green-600 p-2 rounded-full text-white shadow-sm">
-                                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 256 256" fill="currentColor">
-                                    <path d="M128,176a48.05,48.05,0,0,0,48-48V64a48,48,0,0,0-96,0v64A48.05,48.05,0,0,0,128,176ZM96,64a32,32,0,0,1,64,0v64a32,32,0,0,1-64,0Zm40,143.6V232a8,8,0,0,1-16,0V207.6A80.11,80.11,0,0,1,48,128a8,8,0,0,1,16,0,64,64,0,0,0,128,0,8,8,0,0,1,16,0A80.11,80.11,0,0,1,136,207.6Z"></path>
-                                  </svg>
-                                </div>
-                                <div className="flex-1">
-                                  <p className="text-xs text-muted-foreground mb-1">
-                                    {data.type === 'ptt' ? '🎤 Nota de voz' : '🔊 Audio'}
-                                  </p>
-                                  <audio
-                                    src={mediaUrl}
-                                    controls
-                                    className="w-full max-w-sm h-8"
-                                    style={{ maxHeight: '32px' }}
-                                  >
-                                    Tu navegador no soporta reproducción de audio.
-                                  </audio>
-                                </div>
-                              </div>
-                            );
-                          } else {
-                            // Intentar adivinar el nombre del archivo
-                            const fileName = mediaUrl.split('/').pop()?.split('?')[0] || 'Archivo adjunto';
-                            const isPdf = lowerUrl.includes('.pdf');
-
-                            return (
-                              <div className="mt-2 flex items-center gap-3 bg-muted/50 p-3 rounded-md border border-border max-w-full hover:bg-muted transition-colors">
-                                <div className="bg-background p-2 rounded-md text-primary shadow-sm">
-                                  {isPdf ? <FilePdf size={24} weight="duotone" /> : <FileIcon size={24} weight="duotone" />}
-                                </div>
-                                <div className="flex-1 min-w-0 overflow-hidden">
-                                  <p className="text-sm font-medium truncate" title={fileName}>{fileName}</p>
-                                  <a
-                                    href={mediaUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs text-blue-500 hover:underline flex items-center gap-1"
-                                  >
-                                    Abrir en nueva pestaña
-                                  </a>
-                                </div>
-                                <a
-                                  href={mediaUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 hover:bg-background rounded-full transition-colors text-muted-foreground hover:text-foreground"
-                                  title="Descargar"
-                                  download
-                                >
-                                  <DownloadSimple size={20} />
-                                </a>
-                              </div>
-                            )
-                          }
-                        }
-                        return null;
-                      })()}
-                      <div className="flex justify-between items-center mt-1 opacity-70">
-                        <span className="text-xs">{formatSafeDate(msg.timestamp, 'h:mm a')}</span>
-                        {msg.sender === 'team' && (
-                          (msg.metadata as any)?.error ? (
-                            <WarningCircle className="w-3.5 h-3.5 text-red-500 ml-1" weight="fill" title="Error enviando a WhatsApp (404 Client not found)" />
-                          ) : (
-                            msg.read ? <Check size={14} weight="bold" className="text-blue-500 ml-1" /> : <Check size={14} className="ml-1" />
-                          )
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                <div ref={messagesEndRef} />
-                {leadMessages.filter(m => m.channel === selectedChannel).length === 0 && (
-                  <p className="text-center text-muted-foreground text-sm py-8">
-                    {t.chat.noMessages}
-                  </p>
-                )}
-              </div>
-            </ScrollArea>
-
-            <div className="flex flex-wrap gap-1 sm:gap-2 items-center">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  if (file.size > 16 * 1024 * 1024) {
-                    toast.error('El archivo es muy grande. Máximo 16MB')
-                    return
-                  }
-                  setIsUploading(true)
-                  try {
-                    const mediaData = await uploadChatAttachment(file, lead.id)
-                    const sentMsg = await sendDbMessage(lead.id, messageInput || '', 'team', selectedChannel, mediaData)
-                    if (sentMsg) {
-                      const mappedMsg = {
-                        id: sentMsg.id,
-                        leadId: sentMsg.lead_id,
-                        channel: sentMsg.channel as Channel,
-                        content: sentMsg.content,
-                        timestamp: new Date(sentMsg.created_at),
-                        sender: sentMsg.sender as 'team' | 'lead',
-                        read: sentMsg.read || false
-                      }
-                      setMessages(prev => prev.find(p => p.id === mappedMsg.id) ? prev : [...prev, mappedMsg])
-                    }
-                    setMessageInput('')
-                    toast.success('Archivo enviado')
-                  } catch (err) {
-                    console.error(err)
-                    toast.error('Error enviando archivo')
-                  } finally {
-                    setIsUploading(false)
-                    if (fileInputRef.current) fileInputRef.current.value = ''
-                  }
-                }}
-                className="hidden"
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={!canEdit || isUploading}
-                title="Adjuntar archivo"
-              >
-                {isUploading ? <Spinner size={20} className="animate-spin" /> : <Paperclip size={20} />}
-              </Button>
-              <Input
-                value={messageInput}
-                onChange={(e) => setMessageInput(e.target.value)}
-                placeholder={t.chat.typeMessage}
-                onKeyDown={(e) => e.key === 'Enter' && !isUploading && sendMessage()}
-                disabled={!canEdit || isUploading}
-                className="flex-1 min-w-0"
-              />
-              <Button onClick={sendMessage} disabled={!canEdit || isUploading || isRecording}>
-                <PaperPlaneRight size={20} />
-              </Button>
-
-              {/* Botón de grabar audio */}
-              <Button
-                variant={isRecording ? "destructive" : "ghost"}
-                size="icon"
-                disabled={!canEdit || isUploading}
-                title={isRecording ? "Detener grabación" : "Grabar nota de voz"}
-                onClick={() => {
-                  if (isRecording) {
-                    stopRecording()
-                  } else {
-                    startRecording()
-                  }
-                }}
-              >
-                {isRecording ? (
-                  <Stop size={20} weight="fill" />
-                ) : (
-                  <Microphone size={20} />
-                )}
-              </Button>
-
-              {/* Indicador de tiempo de grabación */}
-              {isRecording && (
-                <div className="flex items-center gap-2 text-destructive animate-pulse">
-                  <div className="w-2 h-2 rounded-full bg-destructive" />
-                  <span className="text-sm font-mono">
-                    {Math.floor(recordingTime / 60).toString().padStart(2, '0')}:{(recordingTime % 60).toString().padStart(2, '0')}
-                  </span>
-                </div>
-              )}
-            </div>
+          <TabsContent value="chat" className="flex-1 flex flex-col min-h-0">
+            <ChatTab
+              leadId={lead.id}
+              messages={leadMessages}
+              selectedChannel={selectedChannel}
+              onChannelChange={setSelectedChannel}
+              messageInput={messageInput}
+              onMessageInputChange={setMessageInput}
+              onSendMessage={sendMessage}
+              onDeleteMessage={handleDeleteMessage}
+              onDeleteConversation={handleDeleteConversation}
+              onFileUpload={handleFileUpload}
+              isUploading={isUploading}
+              canEdit={canEdit}
+              messagesEndRef={messagesEndRef as React.RefObject<HTMLDivElement>}
+              isRecording={isRecording}
+              recordingTime={recordingTime}
+              onStartRecording={startRecording}
+              onStopRecording={stopRecording}
+              translations={{
+                noMessages: t.chat.noMessages,
+                typeMessage: t.chat.typeMessage
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="budget" className="flex-1 p-6 overflow-y-auto">
@@ -1382,125 +981,39 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="meetings" className="flex-1 p-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">{t.meeting.title}</h3>
-                {canEdit && (
-                  <Button size="sm" onClick={() => setShowMeetingDialog(true)}>
-                    <Plus size={16} className="mr-2" />
-                    {t.meeting.addMeeting}
-                  </Button>
-                )}
-              </div>
-
-              {leadMeetings.map(meeting => {
-                const participantNames = meeting.participants.map(participant => participant.name).filter(Boolean)
-                const participantDisplay = participantNames.length > 0 ? participantNames.join(', ') : 'Sin participantes'
-
-                return (
-                  <div key={meeting.id} className="p-4 border border-border rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <h4 className="font-medium">{meeting.title}</h4>
-                        <p className="text-sm text-muted-foreground">
-                          {formatSafeDate(meeting.date, 'MMM d, yyyy h:mm a')} • {meeting.duration}min
-                        </p>
-                      </div>
-                      {canEdit && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              disabled={deletingMeetingId === meeting.id}
-                            >
-                              <Trash size={16} />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Eliminar reunión</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Esta acción eliminará la reunión permanentemente.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => handleDeleteMeeting(meeting.id)}
-                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                disabled={deletingMeetingId === meeting.id}
-                              >
-                                {deletingMeetingId === meeting.id ? 'Eliminando…' : 'Eliminar'}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
-                    </div>
-                    <p className="text-sm mt-2">{meeting.notes}</p>
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      {t.meeting.participants}: {participantDisplay}
-                    </div>
-                  </div>
-                )
-              })}
-
-              {leadMeetings.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">{t.meeting.noMeetings}</p>
-              )}
-            </div>
+          <TabsContent value="meetings" className="flex-1">
+            <MeetingsTab
+              meetings={leadMeetings}
+              onShowMeetingDialog={() => setShowMeetingDialog(true)}
+              onDeleteMeeting={handleDeleteMeeting}
+              deletingMeetingId={deletingMeetingId}
+              canEdit={canEdit}
+              translations={{
+                title: t.meeting.title,
+                addMeeting: t.meeting.addMeeting,
+                noMeetings: t.meeting.noMeetings,
+                participants: t.meeting.participants
+              }}
+            />
           </TabsContent>
 
-          <TabsContent value="notes" className="flex-1 p-6 flex flex-col">
-            <div className="mb-4">
-              <Textarea
-                value={noteInput}
-                onChange={(e) => setNoteInput(e.target.value)}
-                placeholder={t.notes.placeholder}
-                className="mb-2"
-                disabled={!canEdit}
-              />
-              <Button onClick={addNote} size="sm" disabled={!canEdit}>
-                <NoteIcon size={16} className="mr-2" />
-                {t.notes.addNote}
-              </Button>
-            </div>
-
-            <ScrollArea className="flex-1">
-              <div className="space-y-3">
-                {leadNotes.map(note => (
-                  <div key={note.id} className="p-3 border border-border rounded-lg overflow-hidden">
-                    <div className="flex justify-between items-start gap-2">
-                      <p className="text-sm flex-1 min-w-0 break-all whitespace-pre-wrap overflow-hidden">{note.content}</p>
-                      {canEdit && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDeleteNote(note.id)}
-                          title="Eliminar nota"
-                        >
-                          <Trash size={14} />
-                        </Button>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-2 text-xs text-muted-foreground">
-                      <span>{note.createdBy}</span>
-                      <span>{formatSafeDate(note.createdAt, 'MMM d, yyyy h:mm a')}</span>
-                    </div>
-                  </div>
-                ))}
-                {leadNotes.length === 0 && (
-                  <p className="text-center text-muted-foreground py-8">{t.notes.noNotes}</p>
-                )}
-              </div>
-            </ScrollArea>
+          <TabsContent value="notes" className="flex-1 flex flex-col">
+            <NotesTab
+              notes={leadNotes}
+              noteInput={noteInput}
+              onNoteInputChange={setNoteInput}
+              onAddNote={addNote}
+              onDeleteNote={handleDeleteNote}
+              canEdit={canEdit}
+              translations={{
+                placeholder: t.notes.placeholder,
+                addNote: t.notes.addNote,
+                noNotes: t.notes.noNotes
+              }}
+            />
           </TabsContent>
-        </Tabs>
-      </SheetContent>
+        </Tabs >
+      </SheetContent >
 
       <AddBudgetDialog
         leadId={lead.id}
@@ -1517,14 +1030,16 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         teamMembers={teamMembers}
       />
 
-      {editingBudget && (
-        <EditBudgetDialog
-          budget={editingBudget}
-          open={true}
-          onClose={() => setEditingBudget(null)}
-          onUpdate={handleUpdateBudget}
-        />
-      )}
-    </Sheet>
+      {
+        editingBudget && (
+          <EditBudgetDialog
+            budget={editingBudget}
+            open={true}
+            onClose={() => setEditingBudget(null)}
+            onUpdate={handleUpdateBudget}
+          />
+        )
+      }
+    </Sheet >
   )
 }
