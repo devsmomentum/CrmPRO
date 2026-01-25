@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import type { Lead } from '@/lib/types'
@@ -11,12 +11,12 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { LeadDetailSheet } from './LeadDetailSheet'
-import { getLeadsPaged, setLeadArchived, deleteLead } from '@/supabase/services/leads'
-import { getMessages, sendMessage, subscribeToMessages, getLastMessagesForLeadIds, subscribeToAllMessages, getUnreadMessagesCount, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
+import { getMessages, sendMessage, subscribeToMessages, subscribeToAllMessages, getUnreadMessagesCount, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import type { Message as DbMessage } from '@/supabase/services/mensajes'
 import { toast } from 'sonner'
-import { getCachedLeads, setCachedLeads, updateCachedLeads, invalidateLeadsCache } from '@/lib/chatsCache'
 import { ChatSettingsDialog } from './ChatSettingsDialog'
+import { useAudioRecorder } from '@/hooks/useAudioRecorder'
+import { useLeadsList } from '@/hooks/useLeadsList'
 
 interface ChatsViewProps {
   companyId: string
@@ -37,7 +37,29 @@ const safeFormat = (date: Date | string | undefined | null, fmt: string, options
 }
 
 export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = false }: ChatsViewProps) {
-  const [leads, setLeads] = useState<Lead[]>([])
+  // ==========================================
+  // Hook de leads paginados (antes era ~250 líneas de código duplicado)
+  // ==========================================
+  const {
+    leads,
+    isInitialLoading,
+    isFetchingMore,
+    loadError,
+    hasMore,
+    unreadCounts,
+    channelByLead: lastChannelByLead,
+    chatScope,
+    setScope: handleScopeChange,
+    refresh: loadLeads,
+    loadMore: fetchMoreLeads,
+    updateLead: handleLeadUpdate,
+    toggleArchive,
+    removeLead,
+    updateLeadOrder: updateLeadListOrder,
+    updateUnreadCount
+  } = useLeadsList({ companyId })
+
+  // Estados UI locales (no relacionados con datos de leads)
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showContactInfo, setShowContactInfo] = useState(false)
   const [detailSheetOpen, setDetailSheetOpen] = useState(false)
@@ -47,9 +69,6 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
   const [searchTerm, setSearchTerm] = useState('')
   const [messageInput, setMessageInput] = useState('')
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
-  const [lastChannelByLead, setLastChannelByLead] = useState<Record<string, 'whatsapp' | 'instagram'>>({})
-  const [chatScope, setChatScope] = useState<'active' | 'archived'>('active')
   const [archivingLeadId, setArchivingLeadId] = useState<string | null>(null)
   const [showChatSettings, setShowChatSettings] = useState(false)
   const listParentRef = useRef<HTMLDivElement | null>(null)
@@ -60,313 +79,44 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
   const filterScrollRef = useRef<HTMLDivElement | null>(null)
 
   const [isUploading, setIsUploading] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
 
-  const PAGE_SIZE = 500
-  const [offset, setOffset] = useState(0)
-  const [hasMore, setHasMore] = useState(true)
-  const [isFetchingMore, setIsFetchingMore] = useState(false)
-
-  // Estados para diagnóstico de carga
-  const [isInitialLoading, setIsInitialLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
-
-  // Cargar leads: primero verificar caché, si no hay cargar de la BD
-  useEffect(() => {
-    if (!companyId) return
-
-    if (chatScope === 'archived') {
-      console.log('[ChatsView] Cargando chats archivados para empresa', companyId)
-      setIsInitialLoading(true)
-      setLoadError(null)
-      setHasMore(true)
-      setOffset(0)
-      setLastChannelByLead({})
-      setUnreadCounts({})
-      void loadLeads({ scope: 'archived', forceRefresh: true })
-      return
+  // Hook de grabación de audio
+  const handleAudioReady = useCallback(async (audioBlob: Blob, audioFile: File) => {
+    if (!selectedLeadId) return
+    setIsUploading(true)
+    try {
+      const mediaData = await uploadChatAttachment(audioFile, selectedLeadId)
+      const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
+      await sendMessage(selectedLeadId, '', 'team', channel, mediaData)
+      toast.success('Nota de voz enviada')
+    } catch (err) {
+      console.error('[Audio] Error sending:', err)
+      toast.error('Error enviando nota de voz')
+    } finally {
+      setIsUploading(false)
     }
+  }, [selectedLeadId, lastChannelByLead])
 
-    const cached = getCachedLeads(companyId)
-    if (cached && cached.leads.length > 0) {
-      console.log('[ChatsView] ✅ Usando datos cacheados:', cached.leads.length, 'leads')
-      setLeads(cached.leads as Lead[])
+  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
+    onAudioReady: handleAudioReady,
+    onError: (error) => toast.error(error.message || 'No se pudo acceder al micrófono')
+  })
 
-      const computedChannelMap: Record<string, 'whatsapp' | 'instagram'> = {}
-      for (const l of cached.leads) {
-        const phone = (l.phone || '').replace(/\D/g, '')
-        let isInstagram = phone.length >= 15
-        if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
-        if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
-        computedChannelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
-      }
-      setLastChannelByLead(computedChannelMap)
 
-      setUnreadCounts(cached.unreadCounts)
-      setHasMore(cached.hasMore)
-      setOffset(cached.offset)
-      setIsInitialLoading(false)
-      setLoadError(null)
+  // ==========================================
+  // NOTA: Toda la lógica de loadLeads, fetchMoreLeads, loadUnreadCountsInBatches,
+  // loadLastMessagesInBackground y handleScopeChange ahora viene del hook useLeadsList.
+  // Se eliminaron ~280 líneas de código duplicado.
+  // ==========================================
 
-      refreshUnreadCountsInBackground(cached.leads.map((l: any) => l.id), 'active')
-    } else {
-      void loadLeads({ scope: 'active' })
-    }
-  }, [companyId, chatScope])
-
+  // Scroll automático a nuevos mensajes
   useEffect(() => {
     const el = document.getElementById('chat-scroll-area')
     if (el) el.scrollTop = el.scrollHeight
   }, [messages, selectedLeadId])
-
-  // Actualizar conteos de no leídos en segundo plano (usando batches)
-  async function refreshUnreadCountsInBackground(leadIds: string[], scope: 'active' | 'archived' = chatScope) {
-    console.log('[ChatsView] Actualizando conteos de no leídos para', leadIds.length, 'leads...')
-    loadUnreadCountsInBatches(leadIds, scope)
-  }
-
-  async function loadLeads({ scope = chatScope, forceRefresh = false }: { scope?: 'active' | 'archived'; forceRefresh?: boolean } = {}) {
-    if (!companyId) return
-    const targetScope = scope ?? 'active'
-    console.log('[ChatsView] Iniciando carga de leads para empresa:', companyId, '| scope:', targetScope, forceRefresh ? '(forzado)' : '')
-    setIsInitialLoading(true)
-    setLoadError(null)
-
-    try {
-      console.log('[ChatsView] Llamando getLeadsPaged...')
-      const startTime = Date.now()
-      const { data: page } = await getLeadsPaged({ empresaId: companyId, limit: PAGE_SIZE, offset: 0, archived: targetScope === 'archived' })
-      console.log('[ChatsView] getLeadsPaged respondió en', Date.now() - startTime, 'ms con', page?.length || 0, 'leads')
-
-      const data = page || []
-      const mapped: Lead[] = data.map((d: any) => ({
-        ...d,
-        id: d.id,
-        name: d.nombre_completo || d.name || 'Sin Nombre',
-        phone: d.telefono || d.phone,
-        email: d.correo_electronico || d.email,
-        createdAt: d.created_at ? new Date(d.created_at) : new Date(),
-        lastMessage: d.last_message || '',
-        lastMessageAt: d.last_message_at ? new Date(d.last_message_at) : (d.created_at ? new Date(d.created_at) : undefined),
-        lastMessageSender: d.last_message_sender || 'team',
-        lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
-        avatar: d.avatar || undefined,
-        company: d.empresa || d.company || undefined,
-        archived: !!d.archived,
-        archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
-      }))
-
-      console.log('[ChatsView] Leads mapeados:', mapped.length)
-
-      const channelMap: Record<string, 'whatsapp' | 'instagram'> = {}
-      let igCount = 0;
-      let waCount = 0;
-
-      for (const l of mapped) {
-        const rawPhone = l.phone || ''
-        const phone = rawPhone.replace(/\D/g, '')
-
-        let isInstagram = phone.length >= 15
-        if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
-        if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
-
-        console.log(`[ChatsView] Lead ${l.name} (${rawPhone}) -> Clean: ${phone} (Len: ${phone.length}) -> ${isInstagram ? 'INSTAGRAM' : 'WHATSAPP'}`)
-
-        if (isInstagram) igCount++; else waCount++
-
-        channelMap[l.id] = isInstagram ? 'instagram' : 'whatsapp'
-      }
-      console.log(`[ChatsView] Resumen canales: ${igCount} Instagram, ${waCount} WhatsApp`)
-
-      setLeads(mapped)
-      setLastChannelByLead(channelMap)
-      setUnreadCounts({})
-      setOffset(mapped.length)
-      setHasMore(mapped.length >= PAGE_SIZE)
-      setIsInitialLoading(false)
-
-      if (targetScope === 'active') {
-        setCachedLeads(companyId, {
-          leads: mapped,
-          lastChannelByLead: channelMap,
-          unreadCounts: {},
-          hasMore: mapped.length >= PAGE_SIZE,
-          offset: mapped.length
-        })
-      }
-
-      console.log('[ChatsView] ✅ UI lista con', mapped.length, 'leads. Cargando datos adicionales en background...')
-
-      const ids = mapped.map(l => l.id)
-      loadUnreadCountsInBatches(ids, targetScope)
-
-      const missingIds = mapped.filter(l => !l.lastMessageAt || !l.lastMessage).map(l => l.id)
-      if (missingIds.length > 0 && missingIds.length <= 100) {
-        loadLastMessagesInBackground(missingIds, mapped)
-      }
-
-    } catch (e: any) {
-      console.error('[ChatsView] ❌ Error crítico cargando leads:', e)
-      setLoadError(e?.message || 'Error desconocido al cargar chats')
-      toast.error('Error al cargar los chats: ' + (e?.message || 'Error desconocido'))
-      setIsInitialLoading(false)
-    }
-  }
-
-  function handleScopeChange(nextScope: 'active' | 'archived') {
-    if (nextScope === chatScope) return
-    setSelectedLeadId(null)
-    setMessages([])
-    setLeads([])
-    setUnreadCounts({})
-    setLastChannelByLead({})
-    setOffset(0)
-    setHasMore(true)
-    setLoadError(null)
-    setIsInitialLoading(true)
-    setChatScope(nextScope)
-  }
-
-  // Cargar conteos de no leídos en batches para evitar timeouts
-  async function loadUnreadCountsInBatches(allIds: string[], scope: 'active' | 'archived' = chatScope) {
-    const BATCH_SIZE = 100
-    const batches: string[][] = []
-    for (let i = 0; i < allIds.length; i += BATCH_SIZE) {
-      batches.push(allIds.slice(i, i + BATCH_SIZE))
-    }
-
-    let allCounts: Record<string, number> = {}
-
-    for (const batch of batches) {
-      try {
-        const counts = await getUnreadMessagesCount(batch)
-        // Prellenar con ceros para TODOS los ids del batch, luego sobreescribir con los no-cero
-        const filled: Record<string, number> = {}
-        for (const id of batch) filled[id] = 0
-        for (const [id, value] of Object.entries(counts)) filled[id] = value
-
-        allCounts = { ...allCounts, ...filled }
-        setUnreadCounts(prev => ({ ...prev, ...filled }))
-      } catch (err) {
-        console.warn('[ChatsView] Error en batch de conteos:', err)
-      }
-    }
-
-    if (scope === 'active') {
-      updateCachedLeads(companyId, { unreadCounts: allCounts })
-    }
-    console.log('[ChatsView] ✅ Conteos de no leídos cargados:', Object.keys(allCounts).length)
-  }
-
-  // Cargar últimos mensajes en segundo plano
-  async function loadLastMessagesInBackground(missingIds: string[], currentLeads: Lead[]) {
-    try {
-      const lastByLead = await getLastMessagesForLeadIds(missingIds) as Record<string, DbMessage>
-
-      setLeads(prev => prev.map(l => {
-        const m = lastByLead[l.id]
-        if (m) {
-          return {
-            ...l,
-            lastMessage: m.content || l.lastMessage || '',
-            lastMessageAt: new Date(m.created_at),
-            lastMessageSender: m.sender as any
-          }
-        }
-        return l
-      }))
-
-      console.log('[ChatsView] ✅ Últimos mensajes cargados:', Object.keys(lastByLead).length)
-    } catch (err) {
-      console.warn('[ChatsView] Error cargando últimos mensajes:', err)
-    }
-  }
-
-  async function fetchMoreLeads(scope: 'active' | 'archived' = chatScope) {
-    if (!hasMore || isFetchingMore) return
-    setIsFetchingMore(true)
-    try {
-      const { data: page } = await getLeadsPaged({ empresaId: companyId, limit: PAGE_SIZE, offset, archived: scope === 'archived' })
-      const data = page || []
-      const mapped: Lead[] = data.map((d: any) => ({
-        ...d,
-        id: d.id,
-        name: d.nombre_completo || d.name || 'Sin Nombre',
-        phone: d.telefono || d.phone,
-        email: d.correo_electronico || d.email,
-        createdAt: d.created_at ? new Date(d.created_at) : new Date(),
-        lastMessage: d.last_message || '',
-        lastMessageAt: d.last_message_at ? new Date(d.last_message_at) : (d.created_at ? new Date(d.created_at) : undefined),
-        lastMessageSender: d.last_message_sender || 'team',
-        lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
-        avatar: d.avatar || undefined,
-        company: d.empresa || d.company || undefined,
-        archived: !!d.archived,
-        archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
-      }))
-
-      const missingIds = mapped.filter(l => !l.lastMessageAt || !l.lastMessage).map(l => l.id)
-      if (missingIds.length) {
-        const lastByLead = await getLastMessagesForLeadIds(missingIds) as Record<string, DbMessage>
-        for (const id of Object.keys(lastByLead)) {
-          const m = lastByLead[id]
-          const l = mapped.find(x => x.id === id)
-          if (l && m) {
-            l.lastMessage = m.content || l.lastMessage || ''
-            l.lastMessageAt = new Date(m.created_at)
-            l.lastMessageSender = m.sender as any
-          }
-        }
-      }
-
-      setLastChannelByLead(prev => {
-        const next = { ...prev }
-        for (const l of mapped) {
-          const phone = (l.phone || '').replace(/\D/g, '')
-          let isInstagram = phone.length >= 15
-          if ((l.company || '').toLowerCase().includes('instagram')) isInstagram = true
-          if ((l.name || '').toLowerCase().includes('instagram')) isInstagram = true
-
-          next[l.id] = next[l.id] || (isInstagram ? 'instagram' : 'whatsapp')
-        }
-        return next
-      })
-
-      const ids = mapped.map(l => l.id)
-      const counts = await getUnreadMessagesCount(ids)
-      setUnreadCounts(prev => ({ ...prev, ...counts }))
-
-      const newLeads = [...leads, ...mapped]
-      const newOffset = offset + mapped.length
-      const newHasMore = mapped.length >= PAGE_SIZE
-
-      setLeads(newLeads)
-      setOffset(newOffset)
-      setHasMore(newHasMore)
-
-      // Actualizar caché con los nuevos leads
-      if (scope === 'active') {
-        updateCachedLeads(companyId, {
-          leads: newLeads,
-          unreadCounts: { ...unreadCounts, ...counts },
-          hasMore: newHasMore,
-          offset: newOffset
-        })
-      }
-    } catch (e) {
-      console.error('Error fetching more leads:', e)
-    } finally {
-      setIsFetchingMore(false)
-    }
-  }
 
   const sortedLeads = useMemo(() => {
     let filtered = leads
@@ -396,13 +146,15 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
     overscan: 8
   })
 
+  // Cargar más leads al llegar al final de la lista (paginación infinita)
   useEffect(() => {
     const items = rowVirtualizer.getVirtualItems()
     const last = items[items.length - 1]
     if (!last) return
-    if (last.index >= sortedLeads.length - 10) fetchMoreLeads(chatScope)
-  }, [rowVirtualizer.getVirtualItems(), sortedLeads.length, chatScope])
+    if (last.index >= sortedLeads.length - 10) fetchMoreLeads()
+  }, [rowVirtualizer.getVirtualItems(), sortedLeads.length, fetchMoreLeads])
 
+  // Cargar mensajes cuando se selecciona un lead
   useEffect(() => {
     if (!selectedLeadId) return
     const load = async () => {
@@ -410,80 +162,52 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
       try { setMessages(await getMessages(selectedLeadId)) } catch (e) { console.error('Error loading messages:', e) } finally { setIsLoadingMessages(false) }
     }
     void load()
-      ; (async () => { try { await markMessagesAsRead(selectedLeadId); setUnreadCounts(prev => ({ ...prev, [selectedLeadId]: 0 })) } catch { } })()
+      ; (async () => { try { await markMessagesAsRead(selectedLeadId); updateUnreadCount(selectedLeadId, 0) } catch { } })()
+
     const sub = subscribeToMessages(selectedLeadId, (newMsg) => {
       setMessages(prev => [...prev, newMsg])
       updateLeadListOrder(selectedLeadId, newMsg)
-      if (newMsg?.channel) setLastChannelByLead(prev => ({ ...prev, [selectedLeadId]: (newMsg.channel === 'instagram' ? 'instagram' : 'whatsapp') }))
-      if (newMsg.sender === 'lead') { (async () => { try { await markMessagesAsRead(selectedLeadId); setUnreadCounts(prev => ({ ...prev, [selectedLeadId]: 0 })) } catch { } })() }
+      if (newMsg.sender === 'lead') { (async () => { try { await markMessagesAsRead(selectedLeadId); updateUnreadCount(selectedLeadId, 0) } catch { } })() }
     })
     return () => { try { sub.unsubscribe() } catch { } }
-  }, [selectedLeadId])
+  }, [selectedLeadId, updateLeadListOrder, updateUnreadCount])
 
+  // Suscripción global a mensajes para actualizar lista
   useEffect(() => {
     if (leads.length === 0) return
     const ch = subscribeToAllMessages((msg) => {
       updateLeadListOrder(msg.lead_id, msg)
-      if (msg?.lead_id && msg?.channel) setLastChannelByLead(prev => ({ ...prev, [msg.lead_id]: (msg.channel === 'instagram' ? 'instagram' : 'whatsapp') }))
       if (msg.sender === 'lead') {
         if (selectedLeadId !== msg.lead_id) {
-          setUnreadCounts(prev => ({ ...prev, [msg.lead_id]: (prev[msg.lead_id] || 0) + 1 }))
+          // Incrementar contador de no leídos
+          const currentCount = unreadCounts[msg.lead_id] || 0
+          updateUnreadCount(msg.lead_id, currentCount + 1)
         }
       } else {
-        // Respuesta del equipo/IA:
-        // No marcamos como leídos aquí ciegamente, dejamos que el webhook decida (por keywords).
-        // Solo actualizamos el contador desde el servidor para reflejar la decisión del webhook.
-        (async () => {
+        // Respuesta del equipo/IA: actualizar desde servidor
+        setTimeout(async () => {
           try {
-            // Esperamos un momento para que el webhook procese
-            setTimeout(async () => {
-              const counts = await getUnreadMessagesCount([msg.lead_id])
-              const nextVal = counts[msg.lead_id] ?? 0
-              setUnreadCounts(prev => ({ ...prev, [msg.lead_id]: nextVal }))
-            }, 1000)
+            const counts = await getUnreadMessagesCount([msg.lead_id])
+            updateUnreadCount(msg.lead_id, counts[msg.lead_id] ?? 0)
           } catch { }
-        })()
+        }, 1000)
       }
     })
     return () => { try { ch.unsubscribe() } catch { } }
-  }, [leads, selectedLeadId])
+  }, [leads.length, selectedLeadId, updateLeadListOrder, updateUnreadCount, unreadCounts])
 
-  function updateLeadListOrder(leadId: string, msg: DbMessage) {
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, lastMessageAt: new Date(msg.created_at), lastMessageSender: msg.sender as any, lastMessage: msg.content } : l))
-  }
-
-  function handleLeadUpdate(updatedLead: Lead) {
-    setLeads(prev => prev.map(l => l.id === updatedLead.id ? { ...l, ...updatedLead } : l))
-  }
-
+  // Handlers para archivar/eliminar leads (ahora usan funciones del hook)
   async function handleArchiveToggle(lead: Lead | undefined, nextState: boolean) {
     if (!lead) return
     setArchivingLeadId(lead.id)
     try {
-      await setLeadArchived(lead.id, nextState)
-      invalidateLeadsCache(companyId)
-      toast.success(nextState ? 'Chat archivado' : 'Chat restaurado')
-
-      if ((nextState && chatScope === 'active') || (!nextState && chatScope === 'archived')) {
-        setLeads(prev => prev.filter(l => l.id !== lead.id))
-        setSelectedLeadId(prev => {
-          if (prev === lead.id) {
-            setMessages([])
-            return null
-          }
-          return prev
-        })
-        setUnreadCounts(prev => {
-          const next = { ...prev }
-          delete next[lead.id]
-          return next
-        })
-      } else {
-        setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, archived: nextState, archivedAt: nextState ? new Date() : undefined } : l))
+      await toggleArchive(lead, nextState)
+      if (selectedLeadId === lead.id && ((nextState && chatScope === 'active') || (!nextState && chatScope === 'archived'))) {
+        setSelectedLeadId(null)
+        setMessages([])
       }
     } catch (err) {
-      console.error('[ChatsView] Error actualizando archivado:', err)
-      toast.error('No se pudo actualizar el estado del chat')
+      // Error handling done in hook
     } finally {
       setArchivingLeadId(null)
     }
@@ -494,121 +218,19 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
     const confirmed = window.confirm(`¿Eliminar el lead "${lead.name || lead.phone || lead.id}"? Esta acción no se puede deshacer.`)
     if (!confirmed) return
     try {
-      await deleteLead(lead.id)
-      invalidateLeadsCache(companyId)
-      toast.success('Lead eliminado')
-
-      setLeads(prev => prev.filter(l => l.id !== lead.id))
-      setSelectedLeadId(prev => {
-        if (prev === lead.id) {
-          setMessages([])
-          return null
-        }
-        return prev
-      })
-      setUnreadCounts(prev => {
-        const next = { ...prev }
-        delete next[lead.id]
-        return next
-      })
+      await removeLead(lead.id)
+      if (selectedLeadId === lead.id) {
+        setSelectedLeadId(null)
+        setMessages([])
+      }
     } catch (err) {
-      console.error('[ChatsView] Error eliminando lead:', err)
-      toast.error('No se pudo eliminar el lead')
+      // Error handling done in hook
     }
   }
 
-  const startRecording = async () => {
-    if (!selectedLeadId) return
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
 
-      let mimeType = ''
-      const preferredFormats = [
-        'audio/ogg;codecs=opus',
-        'audio/ogg',
-        'audio/mp4',
-        'audio/webm;codecs=opus',
-        'audio/webm'
-      ]
-
-      for (const format of preferredFormats) {
-        if (MediaRecorder.isTypeSupported(format)) {
-          mimeType = format
-          break
-        }
-      }
-
-      const mediaRecorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream)
-
-      mediaRecorderRef.current = mediaRecorder
-      audioChunksRef.current = []
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
-        }
-      }
-
-      mediaRecorder.onstop = async () => {
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
-          streamRef.current = null
-        }
-
-        setRecordingTime(0)
-        setIsRecording(false)
-
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' })
-
-        if (audioBlob.size === 0) {
-          toast.error('No se grabó audio')
-          return
-        }
-
-        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.ogg`, {
-          type: 'audio/ogg'
-        })
-
-        setIsUploading(true)
-        try {
-          const mediaData = await uploadChatAttachment(audioFile, selectedLeadId)
-          const channel = lastChannelByLead[selectedLeadId] || 'whatsapp'
-          await sendMessage(selectedLeadId, '', 'team', channel, mediaData)
-          toast.success('Nota de voz enviada')
-        } catch (err) {
-          console.error('[Audio] Error sending:', err)
-          toast.error('Error enviando nota de voz')
-        } finally {
-          setIsUploading(false)
-        }
-      }
-
-      mediaRecorder.start(500)
-      setIsRecording(true)
-      setRecordingTime(0)
-
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
-      }, 1000)
-
-    } catch (err) {
-      console.error('[Audio] Error accessing microphone:', err)
-      toast.error('No se pudo acceder al micrófono')
-    }
-  }
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current)
-        recordingIntervalRef.current = null
-      }
-    }
-  }
+  // NOTA: startRecording y stopRecording ahora vienen del hook useAudioRecorder
+  // Se eliminaron ~90 líneas de código duplicado
 
   const removePendingImage = (preview: string) => {
     setPendingImages(prev => {
@@ -752,75 +374,75 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
               ref={filterScrollRef}
               className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent pr-12"
             >
-            <button
-              onClick={() => handleScopeChange('active')}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
-                chatScope === 'active'
-                  ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
-              )}
-            >
-              Activos
-            </button>
-            <button
-              onClick={() => handleScopeChange('archived')}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
-                chatScope === 'archived'
-                  ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
-              )}
-            >
-              Archivados
-            </button>
-            <div className="w-px h-4 bg-border mx-1 shrink-0" />
-            <button
-              onClick={() => { setUnreadFilter(false); setChannelFilter('all'); setSearchTerm(''); handleScopeChange('active') }}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
-                !unreadFilter && channelFilter === 'all'
-                  ? "bg-zinc-900 text-white border-zinc-900 shadow-md shadow-black/10"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
-              )}
-            >
-              Todos
-            </button>
-            <button
-              onClick={() => { setUnreadFilter(!unreadFilter); handleScopeChange('active') }}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
-                unreadFilter
-                  ? "bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-500/20"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
-              )}
-            >
-              No leídos
-            </button>
-            <button
-              onClick={() => { setChannelFilter(channelFilter === 'whatsapp' ? 'all' : 'whatsapp'); handleScopeChange('active') }}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
-                channelFilter === 'whatsapp'
-                  ? "bg-[#25D366] text-white border-[#25D366] shadow-md shadow-[#25D366]/20"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
-              )}
-            >
-              <WhatsappLogo weight="fill" className="h-3.5 w-3.5" />
-              WhatsApp
-            </button>
-            <button
-              onClick={() => { setChannelFilter(channelFilter === 'instagram' ? 'all' : 'instagram'); handleScopeChange('active') }}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
-                channelFilter === 'instagram'
-                  ? "bg-[#E1306C] text-white border-[#E1306C] shadow-md shadow-[#E1306C]/20"
-                  : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
-              )}
-            >
-              <InstagramLogo weight="fill" className="h-3.5 w-3.5" />
-              Instagram
-            </button>
+              <button
+                onClick={() => handleScopeChange('active')}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
+                  chatScope === 'active'
+                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                )}
+              >
+                Activos
+              </button>
+              <button
+                onClick={() => handleScopeChange('archived')}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
+                  chatScope === 'archived'
+                    ? "bg-primary text-white border-primary shadow-md shadow-primary/20"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                )}
+              >
+                Archivados
+              </button>
+              <div className="w-px h-4 bg-border mx-1 shrink-0" />
+              <button
+                onClick={() => { setUnreadFilter(false); setChannelFilter('all'); setSearchTerm(''); handleScopeChange('active') }}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
+                  !unreadFilter && channelFilter === 'all'
+                    ? "bg-zinc-900 text-white border-zinc-900 shadow-md shadow-black/10"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                )}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => { setUnreadFilter(!unreadFilter); handleScopeChange('active') }}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
+                  unreadFilter
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-md shadow-emerald-500/20"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                )}
+              >
+                No leídos
+              </button>
+              <button
+                onClick={() => { setChannelFilter(channelFilter === 'whatsapp' ? 'all' : 'whatsapp'); handleScopeChange('active') }}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
+                  channelFilter === 'whatsapp'
+                    ? "bg-[#25D366] text-white border-[#25D366] shadow-md shadow-[#25D366]/20"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                )}
+              >
+                <WhatsappLogo weight="fill" className="h-3.5 w-3.5" />
+                WhatsApp
+              </button>
+              <button
+                onClick={() => { setChannelFilter(channelFilter === 'instagram' ? 'all' : 'instagram'); handleScopeChange('active') }}
+                className={cn(
+                  "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
+                  channelFilter === 'instagram'
+                    ? "bg-[#E1306C] text-white border-[#E1306C] shadow-md shadow-[#E1306C]/20"
+                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                )}
+              >
+                <InstagramLogo weight="fill" className="h-3.5 w-3.5" />
+                Instagram
+              </button>
             </div>
             <div className="hidden md:flex absolute inset-y-0 right-1 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button
@@ -1105,20 +727,22 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
                                 );
                               } else if (isAudio) {
 
-                                {lightboxImage && (
-                                  <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImage(null)}>
-                                    <div className="relative max-w-6xl max-h-[90vh] w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                                      <img src={lightboxImage} alt="Imagen ampliada" className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl" />
-                                      <button
-                                        type="button"
-                                        className="absolute top-3 right-3 bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-black"
-                                        onClick={() => setLightboxImage(null)}
-                                      >
-                                        ×
-                                      </button>
+                                {
+                                  lightboxImage && (
+                                    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setLightboxImage(null)}>
+                                      <div className="relative max-w-6xl max-h-[90vh] w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                        <img src={lightboxImage} alt="Imagen ampliada" className="max-h-[90vh] max-w-full rounded-2xl shadow-2xl" />
+                                        <button
+                                          type="button"
+                                          className="absolute top-3 right-3 bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center hover:bg-black"
+                                          onClick={() => setLightboxImage(null)}
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  )
+                                }
                                 return (
                                   <div className={cn("mt-1 flex items-center gap-3 p-2 rounded-xl border max-w-full backdrop-blur-sm", isTeam ? "bg-white/10 border-white/10" : "bg-muted/30 border-border/30")}>
                                     <div className={cn("p-2 rounded-full text-white shrink-0 shadow-sm", isTeam ? "bg-white/20" : "bg-primary")}>

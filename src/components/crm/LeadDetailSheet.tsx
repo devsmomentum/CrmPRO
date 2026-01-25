@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Lead, Message, Note, Budget, Meeting, Channel, Tag, TeamMember } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -60,6 +60,7 @@ import { EditBudgetDialog } from './EditBudgetDialog'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
 import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
+import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 
 interface User {
   id: string
@@ -118,135 +119,41 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [isUploading, setIsUploading] = useState(false)
 
-  // Estados para grabación de audio
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
-  const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-
-  // Función para detener la grabación
-  const stopRecording = () => {
-    console.log('[Audio] Stopping recording...')
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      mediaRecorderRef.current.stop()
-    }
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current)
-      recordingIntervalRef.current = null
-    }
-  }
-
-  // Función para iniciar la grabación
-  const startRecording = async () => {
+  // Hook de grabación de audio (antes era código duplicado de ~120 líneas)
+  const handleAudioReady = useCallback(async (audioBlob: Blob, audioFile: File) => {
+    setIsUploading(true)
     try {
-      console.log('[Audio] Starting recording...')
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-
-      // Priorizar OGG/Opus (formato nativo de WhatsApp) para mejor compatibilidad
-      let mimeType = ''
-      const preferredFormats = [
-        'audio/ogg;codecs=opus',  // Formato nativo de WhatsApp
-        'audio/ogg',
-        'audio/mp4',
-        'audio/webm;codecs=opus',
-        'audio/webm'
-      ]
-
-      for (const format of preferredFormats) {
-        if (MediaRecorder.isTypeSupported(format)) {
-          mimeType = format
-          break
+      const mediaData = await uploadChatAttachment(audioFile, lead.id)
+      const sentMsg = await sendDbMessage(lead.id, '', 'team', selectedChannel, mediaData)
+      if (sentMsg) {
+        const mappedMsg = {
+          id: sentMsg.id,
+          leadId: sentMsg.lead_id,
+          channel: sentMsg.channel as Channel,
+          content: sentMsg.content,
+          timestamp: new Date(sentMsg.created_at),
+          sender: sentMsg.sender as 'team' | 'lead',
+          read: sentMsg.read || false
         }
+        setMessages(prev => prev.find(p => p.id === mappedMsg.id) ? prev : [...prev, mappedMsg])
       }
-      console.log('[Audio] Using mimeType:', mimeType || 'default')
-
-      const mediaRecorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream)
-
-      mediaRecorderRef.current = mediaRecorder
-      audioChunksRef.current = []
-
-      mediaRecorder.ondataavailable = (event) => {
-        console.log('[Audio] Data available:', event.data.size)
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
-        }
-      }
-
-      mediaRecorder.onstop = async () => {
-        console.log('[Audio] onstop triggered, chunks:', audioChunksRef.current.length)
-
-        // Detener el stream
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop())
-          streamRef.current = null
-        }
-
-        // Limpiar estado de grabación inmediatamente
-        setRecordingTime(0)
-        setIsRecording(false)
-
-        // Crear el archivo de audio
-        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' })
-        console.log('[Audio] Blob created:', audioBlob.size, 'bytes')
-
-        if (audioBlob.size === 0) {
-          toast.error('No se grabó audio')
-          return
-        }
-
-        // Forzar formato OGG para compatibilidad con WhatsApp (notas de voz)
-        // WhatsApp reconoce .ogg como formato de nota de voz
-        const audioFile = new File([audioBlob], `voice-note-${Date.now()}.ogg`, {
-          type: 'audio/ogg'
-        })
-        console.log('[Audio] File created as OGG for WhatsApp compatibility')
-
-        // Subir y enviar
-        setIsUploading(true)
-        try {
-          const mediaData = await uploadChatAttachment(audioFile, lead.id)
-          const sentMsg = await sendDbMessage(lead.id, '', 'team', selectedChannel, mediaData)
-          if (sentMsg) {
-            const mappedMsg = {
-              id: sentMsg.id,
-              leadId: sentMsg.lead_id,
-              channel: sentMsg.channel as Channel,
-              content: sentMsg.content,
-              timestamp: new Date(sentMsg.created_at),
-              sender: sentMsg.sender as 'team' | 'lead',
-              read: sentMsg.read || false
-            }
-            setMessages(prev => prev.find(p => p.id === mappedMsg.id) ? prev : [...prev, mappedMsg])
-          }
-          toast.success('Nota de voz enviada')
-        } catch (err) {
-          console.error('[Audio] Error sending:', err)
-          toast.error('Error enviando nota de voz')
-        } finally {
-          setIsUploading(false)
-        }
-      }
-
-      // Usar timeslice de 500ms para capturar datos durante la grabación
-      mediaRecorder.start(500)
-      setIsRecording(true)
-      setRecordingTime(0)
-
-      // Iniciar temporizador
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1)
-      }, 1000)
-
+      toast.success('Nota de voz enviada')
     } catch (err) {
-      console.error('[Audio] Error accessing microphone:', err)
-      toast.error('No se pudo acceder al micrófono')
+      console.error('[Audio] Error sending:', err)
+      toast.error('Error enviando nota de voz')
+    } finally {
+      setIsUploading(false)
     }
-  }
+  }, [lead.id, selectedChannel])
+
+  const { isRecording, recordingTime, startRecording, stopRecording } = useAudioRecorder({
+    onAudioReady: handleAudioReady,
+    onError: (error) => toast.error(error.message || 'No se pudo acceder al micrófono')
+  })
+
+
+  // NOTA: startRecording y stopRecording ahora vienen del hook useAudioRecorder
+  // Se eliminaron ~120 líneas de código duplicado
 
   useEffect(() => {
     if (!lead.id || !open) return
