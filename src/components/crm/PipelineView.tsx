@@ -74,6 +74,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [activePipeline, setActivePipeline] = useState<PipelineType>('sales')
   const [draggedLead, setDraggedLead] = useState<Lead | null>(null)
+  const draggedLeadRef = useRef<Lead | null>(null)
   const [filterByMember, setFilterByMember] = useState<string>('all')
   const [unreadLeads, setUnreadLeads] = useState<Set<string>>(new Set())
   const [pipelineOffset, setPipelineOffset] = useState(0)
@@ -1021,7 +1022,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       e.preventDefault()
       return
     }
-    setDraggedLead(lead)
+    // Usar ref para evitar re-render durante el drag
+    draggedLeadRef.current = lead
     e.dataTransfer.effectAllowed = 'move'
   }
 
@@ -1038,43 +1040,44 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
       return
     }
 
-    if (!draggedLead) return
+    const lead = draggedLeadRef.current
+    if (!lead) return
 
-    if (draggedLead.stage === targetStageId) {
-      setDraggedLead(null)
+    if (lead.stage === targetStageId) {
+      draggedLeadRef.current = null
       return
     }
 
     const updatedLead = {
-      ...draggedLead,
+      ...lead,
       stage: targetStageId
     }
 
     setLeads((current) =>
-      (current || []).map(l => l.id === draggedLead.id ? updatedLead : l)
+      (current || []).map(l => l.id === lead.id ? updatedLead : l)
     )
 
     // Actualizar conteos optimísticamente
     setStageCounts(prev => ({
       ...prev,
-      [draggedLead.stage]: Math.max(0, (prev[draggedLead.stage] || 0) - 1),
+      [lead.stage]: Math.max(0, (prev[lead.stage] || 0) - 1),
       [targetStageId]: (prev[targetStageId] || 0) + 1
     }))
 
     // Actualizar en BD
-    if (draggedLead.id.length > 20) { // Check simple de UUID
-      updateLead(draggedLead.id, { etapa_id: targetStageId })
+    if (lead.id.length > 20) { // Check simple de UUID
+      updateLead(lead.id, { etapa_id: targetStageId })
         .catch(err => {
           console.error('Error updating lead stage in DB:', err)
           toast.error(`Error al mover lead: ${err.message || 'Error desconocido'}`)
           // Revertir cambio local
           setLeads((current) =>
-            (current || []).map(l => l.id === draggedLead.id ? draggedLead : l)
+            (current || []).map(l => l.id === lead.id ? lead : l)
           )
         })
     }
 
-    setDraggedLead(null)
+    draggedLeadRef.current = null
     toast.success('Lead movido a nueva etapa')
   }
 

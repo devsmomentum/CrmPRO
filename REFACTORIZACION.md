@@ -1,8 +1,43 @@
 # 🔧 Guía de Refactorización del CRM
 
 > **Fecha de inicio**: Enero 2026  
-> **Estado**: En progreso  
-> **Versión del documento**: 1.0
+> **Última actualización**: 24 Enero 2026  
+> **Estado**: ✅ **Fase 1 COMPLETADA** | Fase 2 pendiente  
+> **Versión del documento**: 2.0
+
+---
+
+## 🚀 RESUMEN PARA LA PRÓXIMA IA
+
+> **Lee esto primero si estás continuando la refactorización**
+
+### ✅ Fase 1 Completada: Migración JS → TypeScript (24 Ene 2026)
+
+| Etapa | Descripción | Estado |
+|-------|-------------|--------|
+| 1 | DTOs y tipos en `types.ts` | ✅ |
+| 2 | `client.ts`, `auth.ts` (base) | ✅ |
+| 3 | 8 services migrados a TS | ✅ |
+| 4 | Carpeta `queries/` eliminada (redundante) | ✅ |
+| 5 | Carpeta `hooks/` eliminada (redundante) | ✅ |
+| 6 | 5 helpers migrados, 3 eliminados | ✅ |
+| 7 | Verificación final y build exitoso | ✅ |
+
+**Archivos JS restantes en `src/supabase/`**: Solo `diagnostics/empresaDebug.js` (opcional)
+
+### 🐛 Bugs Corregidos Durante la Migración
+- Race condition en TeamView (cambio rápido de empresa mezclaba datos)
+- Race condition en PipelineView (leads no cargaban a veces)
+- Cache de pipelines en SettingsView mostraba empresa incorrecta
+
+### 🔜 Fase 2 Pendiente: Refactorización de Componentes
+
+Los componentes gigantes aún necesitan ser divididos:
+- `PipelineView.tsx` → 1,700+ líneas
+- `ChatsView.tsx` → 1,484 líneas
+- `LeadDetailSheet.tsx` → 1,628 líneas
+
+**Para continuar**: Ve a la sección [Fase 2: Refactorización de Componentes](#fase-2-refactorización-de-componentes-tsx)
 
 ---
 
@@ -28,14 +63,16 @@ Este documento describe el proceso de refactorización del CRM para mejorar:
 - **Testeabilidad**: Permitir pruebas unitarias y de integración
 - **Rendimiento**: Reducir re-renders y optimizar carga de datos
 
-### Estado Actual
+### Estado Actual (24 Enero 2026)
 
-| Métrica | Valor Actual | Objetivo |
-|---------|--------------|----------|
-| Componente más grande | 1,657 líneas | < 300 líneas |
-| Servicios en JS | 10 archivos | 0 archivos |
-| Hooks reutilizables | 4 | 15+ |
-| Cobertura de tipos | ~60% | 100% |
+| Métrica | Antes | Ahora | Objetivo |
+|---------|-------|-------|----------|
+| Servicios en JS | 10 archivos | **0** ✅ | 0 archivos |
+| Helpers en JS | 8 archivos | **0** ✅ | 0 archivos |
+| Carpetas redundantes | 2 (queries, hooks) | **0** ✅ | 0 |
+| Componente más grande | 1,657 líneas | 1,700 líneas | < 300 líneas |
+| Hooks reutilizables | 4 | 4 | 15+ |
+| Cobertura de tipos | ~60% | **~85%** | 100% |
 
 ---
 
