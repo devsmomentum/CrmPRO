@@ -264,7 +264,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           const equipos = await getEquipos(companyId)
           if (cancelled) return
 
-          const equiposIds = (equipos as any[]).map(e => e.id)
+          const equiposIds = equipos.map(e => e.id)
           const allPersonas = await Promise.all(equiposIds.map(id => getPersonas(id)))
           if (cancelled) return
 

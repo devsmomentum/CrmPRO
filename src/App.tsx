@@ -24,7 +24,7 @@ function App() {
 
   // Debug tools
   useEffect(() => {
-    ; (window as any).empDiag = {
+    ; window.empDiag = {
       verifyEmpresaTable,
       testInsertEmpresa,
       listEmpresasCurrentUser,
