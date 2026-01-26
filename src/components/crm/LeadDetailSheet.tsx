@@ -53,9 +53,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { AddBudgetDialog } from './AddBudgetDialog'
-import { AddMeetingDialog, AddMeetingFormData } from './AddMeetingDialog'
-import { EditBudgetDialog } from './EditBudgetDialog'
+import { AddBudgetDialog, AddMeetingDialog, EditBudgetDialog } from './leads/dialogs'
+import type { AddMeetingFormData } from './leads/dialogs'
 import { InlineEdit } from './InlineEdit'
 import { useTranslation } from '@/lib/i18n'
 import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'

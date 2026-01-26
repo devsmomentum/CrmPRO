@@ -3,7 +3,7 @@
 > **Fecha de inicio**: Enero 2026  
 > **Última actualización**: 25 Enero 2026  
 > **Estado**: ✅ **Fase 1, 2 y 3 COMPLETADAS** | 🟡 Fase 4 Pendiente
-> **Versión del documento**: 3.1
+> **Versión del documento**: 3.2
 
 ---
 
@@ -47,6 +47,10 @@
 | Integración en PipelineView | ✅ Completado | Vista principal limpia |
 | `LeadDetailSheet.tsx` | ✅ Completado | 4 sub-componentes extraídos |
 | `lead-detail/ChatTab.tsx` | ✅ Completado | Scroll fix, responsive, clean channels |
+| `AddLeadDialog.tsx` | ✅ Completado | Refactorizado a ~280 líneas |
+| `leads/SingleLeadForm.tsx` | ✅ Completado | Formulario manual extraído |
+| `leads/BulkImportView.tsx` | ✅ Completado | Importación con hooks |
+| `leads/index.ts` | ✅ Completado | Barrel file |
 
 ### ✅ Fase 3.1 Completada: Hooks de Pipeline (25 Ene 2026)
 
@@ -1220,9 +1224,9 @@ quedamos en la última sesión.
 - [ ] Extraer `MeetingsTab.tsx`
 - [ ] Refactorizar `LeadDetailSheet.tsx` como contenedor
 
-#### 3.4 AddLeadDialog (58KB)
-- [ ] Dividir en secciones lógicas
-- [ ] Extraer subformularios
+#### 3.4 AddLeadDialog (58KB → ~8KB)
+- [x] Dividir en secciones lógicas
+- [x] Extraer subformularios (`SingleLeadForm`, `BulkImportView`) ✅
 
 ---
 
@@ -1286,8 +1290,8 @@ quedamos en la última sesión.
 |------|--------|-------------------|
 | Fase 0: Limpieza | ✅ Completada | 22/22 |
 | Fase 1: Preparación | ⚪ Pendiente | 0/25 |
-| Fase 2: Hooks | ⚪ Pendiente | 0/14 |
-| Fase 3: Componentes | ⚪ Pendiente | 0/22 |
+| Fase 2: Hooks | ✅ Completada | 14/14 |
+| Fase 3: Componentes | ✅ Completada | 22/22 |
 | Fase 4: Servicios | ⚪ Pendiente | 0/10 |
 | Fase 5: Webhook | ⚪ Pendiente | 0/12 |
 
