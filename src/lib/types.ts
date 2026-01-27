@@ -116,7 +116,7 @@ export interface Pipeline {
   stages: Stage[]
 }
 
-export type RolePermission = 
+export type RolePermission =
   | 'view_dashboard'
   | 'view_pipeline'
   | 'edit_leads'
@@ -157,6 +157,7 @@ export interface Appointment {
   startTime: Date
   endTime: Date
   status: 'scheduled' | 'completed' | 'cancelled'
+  attendees?: string[] // IDs of team members or external emails
 }
 
 export interface Notification {
@@ -188,4 +189,192 @@ export interface Note {
   content: string
   createdBy: string
   createdAt: Date
+}
+
+// ==========================================
+// DTOs para operaciones CRUD (Fase 1 Refactorización)
+// ==========================================
+
+// ----- Lead DTOs -----
+export interface CreateLeadDTO {
+  nombre_completo: string
+  telefono?: string
+  correo_electronico?: string
+  empresa_id: string
+  pipeline_id?: string
+  etapa_id?: string
+  asignado_a?: string
+  presupuesto?: number
+  prioridad?: Priority
+  ubicacion?: string
+  empresa?: string
+}
+
+export interface UpdateLeadDTO {
+  nombre_completo?: string
+  telefono?: string
+  correo_electronico?: string
+  presupuesto?: number
+  prioridad?: Priority
+  asignado_a?: string
+  etapa_id?: string
+  pipeline_id?: string
+  ubicacion?: string
+  empresa?: string
+  archived?: boolean
+  archived_at?: string | null
+}
+
+// Lead como viene de la BD (snake_case)
+export interface LeadDB {
+  id: string
+  nombre_completo: string
+  telefono?: string
+  correo_electronico?: string
+  empresa_id: string
+  pipeline_id?: string
+  etapa_id?: string
+  asignado_a?: string
+  presupuesto?: number
+  prioridad?: string
+  ubicacion?: string
+  empresa?: string
+  created_at: string
+  updated_at?: string
+  archived: boolean
+  archived_at?: string | null
+  last_message_at?: string
+  last_message_sender?: string
+  last_message_content?: string
+}
+
+// ----- Empresa DTOs -----
+export interface CreateEmpresaDTO {
+  nombre_empresa: string
+  usuario_id: string
+  logo_url?: string
+}
+
+export interface UpdateEmpresaDTO {
+  nombre_empresa?: string
+  logo_url?: string
+}
+
+export interface EmpresaDB {
+  id: string
+  nombre_empresa: string
+  logo_url?: string
+  created_at: string
+  created_by: string
+}
+
+// ----- Empresa Miembros -----
+export type MemberRole = 'owner' | 'admin' | 'viewer'
+
+export interface EmpresaMiembro {
+  id: string
+  empresa_id: string
+  usuario_id: string | null
+  email: string
+  role: MemberRole
+  created_at: string
+}
+
+export interface UpdateMemberRoleDTO {
+  usuario_id?: string
+  email: string
+  role: MemberRole
+}
+
+// ----- Pipeline DTOs -----
+export interface CreatePipelineDTO {
+  nombre: string
+  empresa_id: string
+  tipo?: string
+}
+
+export interface PipelineDB {
+  id: string
+  nombre: string
+  empresa_id: string
+  tipo?: string
+  created_at: string
+}
+
+// ----- Etapa/Stage DTOs -----
+export interface CreateEtapaDTO {
+  nombre: string
+  pipeline_id: string
+  orden: number
+  color?: string
+}
+
+export interface EtapaDB {
+  id: string
+  nombre: string
+  pipeline_id: string
+  orden: number
+  color?: string
+  created_at: string
+}
+
+// ----- Equipo DTOs -----
+export interface EquipoDB {
+  id: string
+  nombre_equipo: string
+  empresa_id: string
+  created_at: string
+}
+
+export interface CreateEquipoDTO {
+  nombre_equipo: string
+  empresa_id: string
+}
+
+// ----- Usuario/Persona DTOs -----
+export interface UsuarioDB {
+  id: string
+  email: string
+  nombre?: string
+  avatar_url?: string
+  created_at: string
+}
+
+export interface PersonaDB {
+  id: string
+  usuario_id: string
+  empresa_id: string
+  nombre?: string
+  email: string
+  titulo_trabajo?: string
+  equipo_id?: string
+  permisos?: string[]
+  created_at: string
+}
+
+// ----- Respuestas paginadas -----
+export interface PaginatedResponse<T> {
+  data: T[]
+  count: number | null
+}
+
+// ----- Opciones comunes para queries -----
+export interface GetLeadsPagedOptions {
+  empresaId: string
+  currentUserId?: string
+  isAdminOrOwner?: boolean
+  limit?: number
+  offset?: number
+  pipelineId?: string
+  stageId?: string
+  order?: 'asc' | 'desc'
+  archived?: boolean
+}
+
+export interface SearchLeadsOptions {
+  pipelineId?: string
+  stageId?: string
+  archived?: boolean
+  limit?: number
+  order?: 'asc' | 'desc'
 }

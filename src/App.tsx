@@ -24,7 +24,7 @@ function App() {
 
   // Debug tools
   useEffect(() => {
-    ; (window as any).empDiag = {
+    ; window.empDiag = {
       verifyEmpresaTable,
       testInsertEmpresa,
       listEmpresasCurrentUser,
@@ -63,10 +63,7 @@ function App() {
         <Route element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={
-            <Dashboard
-              companyId={currentCompanyId}
-              onShowNotifications={() => { }}
-            />
+            <DashboardWrapper />
           } />
           <Route path="/pipeline" element={
             <PipelineView
@@ -79,7 +76,7 @@ function App() {
             <ChatsViewWrapper />
           } />
           <Route path="/analytics" element={
-            <AnalyticsDashboard companyId={currentCompanyId} />
+            <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />
           } />
           <Route path="/calendar" element={
             <CalendarView companyId={currentCompanyId} />
@@ -104,10 +101,7 @@ function App() {
         <Route path="/guest" element={<ProtectedRoute><CRMLayout isGuestMode /></ProtectedRoute>}>
           <Route index element={<Navigate to="/guest/dashboard" replace />} />
           <Route path="dashboard" element={
-            <Dashboard
-              companyId={currentCompanyId}
-              onShowNotifications={() => { }}
-            />
+            <DashboardWrapper />
           } />
           <Route path="pipeline" element={
             <PipelineView
@@ -120,7 +114,7 @@ function App() {
             <ChatsViewWrapper />
           } />
           <Route path="analytics" element={
-            <AnalyticsDashboard companyId={currentCompanyId} />
+            <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />
           } />
           <Route path="calendar" element={
             <CalendarView companyId={currentCompanyId} />
@@ -265,3 +259,21 @@ function JoinTeamWrapper() {
 }
 
 export default App
+
+function DashboardWrapper() {
+  const { currentCompanyId, user, companies } = useAuth()
+  const navigate = useNavigate()
+
+  return (
+    <Dashboard
+      companyId={currentCompanyId}
+      onShowNotifications={() => { }}
+      onNavigateToLead={(leadId) => {
+        sessionStorage.setItem('openLeadId', leadId)
+        const currentCompany = companies.find(c => c.id === currentCompanyId)
+        const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
+        navigate(isGuestMode ? '/guest/pipeline' : '/pipeline')
+      }}
+    />
+  )
+}

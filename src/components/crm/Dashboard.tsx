@@ -1,27 +1,29 @@
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Task, Lead, Appointment, Notification as NotificationType } from '@/lib/types'
+import { Task, Lead, Meeting, Notification as NotificationType } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone, Users, CalendarBlank, Funnel } from '@phosphor-icons/react'
-import { format } from 'date-fns'
+import { format, isToday, isBefore, isAfter, startOfDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { getLeads, getLeadsCount } from '@/supabase/services/leads'
 import { getPipelines } from '@/supabase/helpers/pipeline'
+import { getCompanyMeetings } from '@/supabase/services/reuniones'
 
 interface DashboardProps {
   companyId?: string
   onShowNotifications: () => void
+  onNavigateToLead?: (leadId: string) => void
 }
 
-export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
+export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: DashboardProps) {
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
   // const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
   const [leadsCount, setLeadsCount] = useState(0)
-  const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
+  const [meetings, setMeetings] = useState<Meeting[]>([])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   const [pipelinesCount, setPipelinesCount] = useState(0)
@@ -41,6 +43,13 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           if (data) setPipelinesCount(data.length)
         })
         .catch(err => console.error('Error fetching pipelines in Dashboard:', err))
+
+      // Cargar reuniones de la empresa
+      getCompanyMeetings(companyId)
+        .then(data => {
+          setMeetings(data)
+        })
+        .catch(err => console.error('Error fetching meetings in Dashboard:', err))
     }
   }, [companyId])
 
@@ -55,11 +64,26 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
   })
   const overdueTasks = myTasks.filter(t => new Date(t.dueDate) < today)
 
-  const todayAppointments = (appointments || []).filter(a => {
-    const apptDate = new Date(a.startTime)
-    apptDate.setHours(0, 0, 0, 0)
-    return apptDate.getTime() === today.getTime()
+  // Filtrar reuniones
+  const todayStart = startOfDay(today)
+  const todayEnd = new Date(today)
+  todayEnd.setHours(23, 59, 59, 999)
+
+  const todayMeetings = meetings.filter(m => {
+    const mDate = new Date(m.date)
+    return isToday(mDate)
   })
+
+  const expiredMeetings = meetings.filter(m => {
+    const mDate = new Date(m.date)
+    return isBefore(mDate, todayStart)
+  })
+
+  // Ordenar reuniones de hoy por hora
+  todayMeetings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  // Ordenar reuniones vencidas (más recientes primero)
+  expiredMeetings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   const unreadNotifications = (notifications || []).filter(n => !n.read).length
 
@@ -69,6 +93,14 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
       case 'medium': return 'text-warning'
       case 'low': return 'text-muted-foreground'
       default: return 'text-foreground'
+    }
+  }
+
+  const formatTime = (dateStr: string | Date) => {
+    try {
+      return format(new Date(dateStr), 'h:mm a')
+    } catch {
+      return ''
     }
   }
 
@@ -174,8 +206,9 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card className="border-none shadow-sm rounded-2xl">
+      <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-rows-2 gap-8 h-auto">
+        {/* Tareas de Hoy */}
+        <Card className="border-none shadow-sm rounded-2xl min-h-[300px]">
           <CardHeader className="flex flex-row items-center justify-between">
             <div className="space-y-1">
               <CardTitle className="text-xl font-bold">Tareas de Hoy</CardTitle>
@@ -219,7 +252,8 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm rounded-2xl">
+        {/* Reuniones de Hoy */}
+        <Card className="border-none shadow-sm rounded-2xl min-h-[300px]">
           <CardHeader className="flex flex-row items-center justify-between">
             <div className="space-y-1">
               <CardTitle className="text-xl font-bold">Próximas Citas</CardTitle>
@@ -230,7 +264,7 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
             </div>
           </CardHeader>
           <CardContent className="space-y-4 pt-2">
-            {todayAppointments.length === 0 ? (
+            {todayMeetings.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 opacity-60">
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
                   <CalendarBlank size={32} className="text-muted-foreground" weight="thin" />
@@ -242,25 +276,108 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
               </div>
             ) : (
               <div className="space-y-3">
-                {todayAppointments.map(appt => (
-                  <div key={appt.id} className="flex items-center gap-4 p-4 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all">
-                    <div className="w-12 h-12 rounded-xl bg-background flex flex-col items-center justify-center shadow-sm border border-muted-foreground/10 shrink-0">
-                      <span className="text-[10px] font-bold text-primary uppercase leading-none">{format(new Date(appt.startTime), 'MMM')}</span>
-                      <span className="text-lg font-black leading-none mt-0.5">{format(new Date(appt.startTime), 'd')}</span>
+                {todayMeetings.map(meeting => (
+                  <div key={meeting.id} className="flex flex-col gap-2 p-4 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-background flex flex-col items-center justify-center shadow-sm border border-muted-foreground/10 shrink-0">
+                        <span className="text-[10px] font-bold text-primary uppercase leading-none">{format(new Date(meeting.date), 'MMM')}</span>
+                        <span className="text-lg font-black leading-none mt-0.5">{format(new Date(meeting.date), 'd')}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-[15px] truncate">{meeting.title}</p>
+                        <p className="text-[11px] text-primary font-bold mt-1 flex items-center gap-1.5">
+                          <Clock size={12} weight="bold" />
+                          {formatTime(meeting.date)} ({meeting.duration} min)
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[15px] truncate">{appt.title}</p>
-                      <p className="text-[11px] text-primary font-bold mt-1 flex items-center gap-1.5">
-                        <Clock size={12} weight="bold" />
-                        {format(new Date(appt.startTime), 'h:mm a')} - {format(new Date(appt.endTime), 'h:mm a')}
-                      </p>
-                    </div>
+                    {/* Sección de participantes / asignados */}
+                    {meeting.participants && meeting.participants.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1 pl-16">
+                        {meeting.participants.map(p => (
+                          <Badge key={p.id} variant="secondary" className="text-[10px] h-5 px-1.5 bg-background border border-border/50">
+                            <Users size={10} className="mr-1 opacity-70" /> {p.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+
+                    {onNavigateToLead && (
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary"
+                          onClick={() => onNavigateToLead(meeting.leadId)}
+                        >
+                          Ver Lead
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Reuniones Vencidas */}
+        {expiredMeetings.length > 0 && (
+          <Card className="border-none shadow-sm rounded-2xl min-h-[300px] lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle className="text-xl font-bold text-muted-foreground">Reuniones Anteriores</CardTitle>
+                <p className="text-xs text-muted-foreground">Historial reciente de citas pasadas</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-muted/20 flex items-center justify-center">
+                <Clock size={22} className="text-muted-foreground" weight="duotone" />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {expiredMeetings.slice(0, 6).map(meeting => (
+                  <div key={meeting.id} className="flex flex-col gap-2 p-3 rounded-xl border border-border/40 bg-background/40 opacity-70 hover:opacity-100 transition-all">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-bold text-sm truncate">{meeting.title}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {format(new Date(meeting.date), 'MMM d, h:mm a')}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[9px] uppercase tracking-wider">
+                        Finalizada
+                      </Badge>
+                    </div>
+                    {meeting.participants && meeting.participants.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {meeting.participants.slice(0, 2).map(p => (
+                          <div key={p.id} className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded-md">
+                            <Users size={10} /> {p.name}
+                          </div>
+                        ))}
+                        {meeting.participants.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground">+{meeting.participants.length - 2}</span>
+                        )}
+                        {onNavigateToLead && (
+                          <div className="mt-1 flex justify-end w-full">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 px-2 text-[9px] text-muted-foreground hover:text-primary"
+                              onClick={() => onNavigateToLead(meeting.leadId)}
+                            >
+                              Ir al lead
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog open={showVoiceRecorder} onOpenChange={setShowVoiceRecorder}>

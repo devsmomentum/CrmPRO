@@ -23,7 +23,7 @@ export function useLeadsRealtime({ companyId, onInsert, onUpdate, onDelete }: Us
     pipeline: dbLead.pipeline_id || 'sales',
     priority: dbLead.prioridad,
     assignedTo: dbLead.asignado_a,
-    tags: [], // Tags no vienen en el payload simple
+    tags: dbLead.tags || [],
     createdAt: new Date(dbLead.created_at),
     lastContact: new Date(dbLead.created_at)
   });
@@ -43,7 +43,7 @@ export function useLeadsRealtime({ companyId, onInsert, onUpdate, onDelete }: Us
         },
         (payload) => {
           console.log('[REALTIME] Event received:', payload);
-          
+
           if (payload.eventType === 'INSERT' && onInsert) {
             onInsert(mapDbLeadToLead(payload.new));
           }

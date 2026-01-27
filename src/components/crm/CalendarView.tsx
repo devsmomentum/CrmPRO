@@ -7,7 +7,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { format, isSameDay } from 'date-fns'
 import { Plus, Clock } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
-import { AddAppointmentDialog } from './AddAppointmentDialog'
+import { AddAppointmentDialog } from './leads/dialogs/AddAppointmentDialog'
 
 export function CalendarView({ companyId }: { companyId?: string }) {
   const [appointments, setAppointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])

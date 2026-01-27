@@ -1,4 +1,4 @@
-import { useState, Dispatch, SetStateAction } from 'react'
+import { useState, useEffect, Dispatch, SetStateAction } from 'react'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
@@ -12,10 +12,11 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AddPipelineDialog } from './AddPipelineDialog'
 import { RolesManagement } from './RolesManagement'
+import { TagsManagement } from './settings/TagsManagement'
 import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 import { IDsViewer } from './IDsViewer'
-import { updatePipeline } from '@/supabase/helpers/pipeline'
+import { updatePipeline, getPipelines } from '@/supabase/helpers/pipeline'
 import { toast } from 'sonner'
 
 interface SettingsViewProps {
@@ -37,6 +38,35 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
   const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null)
   const [editPipelineName, setEditPipelineName] = useState('')
+
+  /**
+   * Cargar pipelines desde la BD cuando cambia la empresa
+   * Esto soluciona el bug donde SettingsView mostraba pipelines de otra empresa
+   * porque solo leía del caché localStorage sin verificar con la BD.
+   */
+  useEffect(() => {
+    if (!currentCompanyId) return
+
+    getPipelines(currentCompanyId)
+      .then(({ data }) => {
+        if (data) {
+          const dbPipelines: Pipeline[] = data.map((p: any) => ({
+            id: p.id,
+            name: p.nombre,
+            type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+            stages: (p.etapas || []).map((s: any) => ({
+              id: s.id,
+              name: s.nombre,
+              order: s.orden,
+              color: s.color,
+              pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
+            })).sort((a: any, b: any) => a.order - b.order)
+          }))
+          setPipelines(dbPipelines)
+        }
+      })
+      .catch(err => console.error('[SettingsView] Error loading pipelines:', err))
+  }, [currentCompanyId])
 
   const toggleAutomation = (id: string) => {
     setAutomations((current) =>
@@ -89,6 +119,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
         <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar">
           <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
+          <TabsTrigger value="tags">Etiquetas</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
           {isAdminOrOwner && <TabsTrigger value="roles">Roles</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="automations">Automatizaciones</TabsTrigger>}
@@ -120,6 +151,10 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
               No tienes permisos para gestionar el catálogo.
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="tags" className="space-y-4 mt-6">
+          <TagsManagement empresaId={currentCompanyId || ''} />
         </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4 mt-6">
