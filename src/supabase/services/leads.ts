@@ -152,7 +152,7 @@ export async function searchLeads(
 
     query = query
         .or(
-            `nombre_completo.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%,correo_electronico.ilike.%${searchTerm}%,empresa.ilike.%${searchTerm}%,tags.ilike.%${searchTerm}%`
+            `nombre_completo.ilike.%${searchTerm}%,telefono.ilike.%${searchTerm}%,correo_electronico.ilike.%${searchTerm}%,empresa.ilike.%${searchTerm}%`
         )
         .order('created_at', { ascending: order === 'asc' })
         .limit(limit)

@@ -44,46 +44,93 @@ export function usePipelineLeadActions({
         }
 
         const currentPipeline = pipelines.find(p => p.type === activePipeline)
-        let stageToState = stage
+
+        // 1. Resolver o Crear Pipeline en BD
+        let pipelineId = currentPipeline?.id
+        let isNewPipeline = false
 
         // Validar si es un UUID real
-        const isPipelineUUID = currentPipeline?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentPipeline.id)
+        const isPipelineUUID = pipelineId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pipelineId)
 
-        // Si el pipeline existe en BD (tiene UUID), guardamos la etapa en BD
-        if (currentPipeline && isPipelineUUID) {
+        if (!pipelineId || !isPipelineUUID) {
+            // No existe en BD, lo creamos
             try {
-                const { data: newStage, error } = await createEtapa({
-                    nombre: stage.name,
-                    pipeline_id: currentPipeline.id,
-                    orden: stage.order,
-                    color: stage.color
+                const name = activePipeline === 'sales' ? 'Sales Pipeline' :
+                    activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline'
+
+                const { createPipeline } = await import('@/supabase/helpers/pipeline')
+                const { data: newPipeline, error } = await createPipeline({
+                    nombre: name,
+                    empresa_id: companyId
                 })
 
                 if (error) throw error
-
-                // Usamos el ID real de la BD
-                stageToState = { ...stage, id: newStage.id }
-                toast.success('Etapa guardada en BD')
+                pipelineId = newPipeline.id
+                isNewPipeline = true
             } catch (err: any) {
-                console.error('Error creating stage:', err)
-                toast.error(`Error al guardar etapa en BD: ${err.message}`)
-                return // No actualizamos estado local si falla BD
+                console.error('Error creating pipeline:', err)
+                toast.error('No se pudo crear el pipeline en BD')
+                return
             }
         }
 
+        // 2. Crear Etapa en BD
+        let stageToState = stage
+        try {
+            const { data: newStage, error } = await createEtapa({
+                nombre: stage.name,
+                pipeline_id: pipelineId!, // Seguro que existe
+                orden: stage.order,
+                color: stage.color
+            })
+
+            if (error) throw error
+
+            // Usamos el ID real de la BD
+            stageToState = { ...stage, id: newStage.id }
+            toast.success('Etapa guardada en BD')
+        } catch (err: any) {
+            console.error('Error creating stage:', err)
+            toast.error(`Error al guardar etapa en BD: ${err.message}`)
+            return
+        }
+
+        // 3. Actualizar Estado Local
         setPipelines((current) => {
             const pipelines = current || []
             const pipelineIndex = pipelines.findIndex(p => p.type === activePipeline)
 
-            if (pipelineIndex === -1) {
-                const newPipeline: Pipeline = {
-                    id: `${activePipeline}-pipeline`,
+            if (pipelineIndex === -1 || isNewPipeline) {
+                // Si acabamos de crear el pipeline en BD, o no existía localmente
+                // Necesitamos reconstruir el objeto pipeline con el ID real
+                const mapType = (name: string) => name.toLowerCase().trim().replace(/\s+/g, '-') as PipelineType
+
+                // Si ya existía localmente (pero sin UUID), preservamos sus etapas viejas? 
+                // Mejor no mezclar. Si es nuevo en BD, empezamos limpio o migramos etapas?
+                // Simplificación: Asumimos que si no tenía UUID era vacio o efímero.
+
+                const newPipelineObj: Pipeline = {
+                    id: pipelineId!,
                     name: activePipeline === 'sales' ? 'Sales Pipeline' :
                         activePipeline === 'support' ? 'Support Pipeline' : 'Administrative Pipeline',
                     type: activePipeline,
                     stages: [stageToState]
                 }
-                return [...pipelines, newPipeline]
+
+                // Si existía uno local 'fake', lo reemplazamos
+                if (pipelineIndex !== -1) {
+                    const updated = [...pipelines]
+                    // Mantener etapas anteriores?? Serían invalidas. 
+                    // Lo ideal es que el usuario empiece a agregar etapas y se arregle.
+                    updated[pipelineIndex] = {
+                        ...updated[pipelineIndex],
+                        id: pipelineId!,
+                        stages: [...updated[pipelineIndex].stages, stageToState]
+                    }
+                    return updated
+                }
+
+                return [...pipelines, newPipelineObj]
             }
 
             const updatedPipelines = [...pipelines]
