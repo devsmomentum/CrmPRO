@@ -1,5 +1,7 @@
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Lead, Task, Pipeline } from '@/lib/types'
+import { Task } from '@/lib/types'
+import { usePipelineData } from '@/hooks/usePipelineData'
+import { useAuth } from '@/hooks/useAuth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { useEffect, useState } from 'react'
@@ -17,18 +19,79 @@ import {
 import { cn } from '@/lib/utils'
 
 export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
-  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
-  const [leadsCount, setLeadsCount] = useState(0)
+  const { user } = useAuth()
+  const { leads, pipelines } = usePipelineData({
+    companyId: companyId || '',
+    userId: user?.id
+  })
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
-  const [pipelines] = usePersistentState<Pipeline[]>(`pipelines-${companyId}`, [])
+
+  const [dateRange, setDateRange] = useState<'30days' | 'quarter' | 'year'>('30days')
+  const [metrics, setMetrics] = useState({
+    totalRevenue: 0,
+    revenueTrend: 0,
+    avgDealSize: 0,
+    dealSizeTrend: 0,
+    activeLeads: 0,
+    leadsTrend: 0,
+    completionRate: 0,
+    tasksTrend: 0
+  })
 
   useEffect(() => {
-    if (companyId) {
-      getLeadsCount(companyId)
-        .then((count: any) => setLeadsCount(count || 0))
-        .catch(err => console.error('Error fetching leads count:', err))
+    if (!leads.length) return
+
+    const now = new Date()
+    let startDate = new Date()
+    let prevStartDate = new Date()
+
+    if (dateRange === '30days') {
+      startDate.setDate(now.getDate() - 30)
+      prevStartDate.setDate(now.getDate() - 60)
+    } else if (dateRange === 'quarter') {
+      startDate.setMonth(now.getMonth() - 3)
+      prevStartDate.setMonth(now.getMonth() - 6)
+    } else {
+      startDate.setFullYear(now.getFullYear() - 1)
+      prevStartDate.setFullYear(now.getFullYear() - 2)
     }
-  }, [companyId])
+
+    // Filter current period
+    const currentLeads = leads.filter(l => new Date(l.createdAt) >= startDate)
+    const prevLeads = leads.filter(l => {
+      const d = new Date(l.createdAt)
+      return d >= prevStartDate && d < startDate
+    })
+
+    // Calculate Metrics
+    const currentRevenue = currentLeads.reduce((acc, l) => acc + (l.budget || 0), 0)
+    const prevRevenue = prevLeads.reduce((acc, l) => acc + (l.budget || 0), 0)
+
+    const currentAvgDeal = currentLeads.length ? currentRevenue / currentLeads.length : 0
+    const prevAvgDeal = prevLeads.length ? prevRevenue / prevLeads.length : 0
+
+    const currentTasks = (tasks || []).filter(t => new Date(t.dueDate) >= startDate && t.completed).length
+    const totalCurrentTasks = (tasks || []).filter(t => new Date(t.dueDate) >= startDate).length
+    const taskRate = totalCurrentTasks ? Math.round((currentTasks / totalCurrentTasks) * 100) : 0
+
+    const calcTrend = (curr: number, prev: number) => {
+      if (!prev) return curr > 0 ? 100 : 0
+      return Math.round(((curr - prev) / prev) * 100)
+    }
+
+    setMetrics({
+      totalRevenue: currentRevenue,
+      revenueTrend: calcTrend(currentRevenue, prevRevenue),
+      avgDealSize: currentAvgDeal,
+      dealSizeTrend: calcTrend(currentAvgDeal, prevAvgDeal),
+      activeLeads: currentLeads.length,
+      leadsTrend: calcTrend(currentLeads.length, prevLeads.length),
+      completionRate: taskRate,
+      tasksTrend: 0 // Mock for now as tasks don't have prev data easily accessible here
+    })
+
+    // Update charts data based on filtered leads...
+  }, [leads, tasks, dateRange])
 
   const pipelineData = (pipelines || []).map(pipeline => ({
     name: pipeline.name,
@@ -78,8 +141,8 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2 bg-background border border-border/50 p-1.5 rounded-2xl shadow-sm">
-          <div className="px-4 py-1.5 bg-muted rounded-xl text-xs font-bold text-muted-foreground">Últimos 30 días</div>
-          <button className="px-4 py-1.5 hover:bg-muted rounded-xl text-xs font-bold text-muted-foreground transition-all">Este trimestre</button>
+          <div className="px-4 py-1.5 bg-muted rounded-xl text-xs font-bold text-muted-foreground transition-all cursor-pointer hover:bg-muted/80" onClick={() => setDateRange('30days')} data-active={dateRange === '30days'} style={dateRange === '30days' ? { backgroundColor: 'var(--primary)', color: 'white' } : {}}>Últimos 30 días</div>
+          <button className="px-4 py-1.5 hover:bg-muted rounded-xl text-xs font-bold text-muted-foreground transition-all" onClick={() => setDateRange('quarter')} style={dateRange === 'quarter' ? { backgroundColor: 'var(--primary)', color: 'white' } : {}}>Este trimestre</button>
         </div>
       </div>
 
@@ -87,39 +150,39 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <KpiCard
           title="Ingresos Totales"
-          value={`$${totalRevenue.toLocaleString()}`}
-          subtitle="En pipeline actual"
+          value={`$${metrics.totalRevenue.toLocaleString()}`}
+          subtitle="En periodo seleccionado"
           icon={<CurrencyDollar size={24} weight="duotone" />}
           gradient="from-emerald-500/20 to-emerald-500/5 text-emerald-600 dark:text-emerald-400"
-          trend="+12.5%"
-          trendUp={true}
+          trend={`${metrics.revenueTrend > 0 ? '+' : ''}${metrics.revenueTrend}%`}
+          trendUp={metrics.revenueTrend >= 0}
         />
         <KpiCard
           title="Promedio Oferta"
-          value={`$${Math.round(avgDealSize).toLocaleString()}`}
+          value={`$${Math.round(metrics.avgDealSize).toLocaleString()}`}
           subtitle="Valor medio por lead"
           icon={<TrendUp size={24} weight="duotone" />}
           gradient="from-blue-500/20 to-blue-500/5 text-blue-600 dark:text-blue-400"
-          trend="+5.2%"
-          trendUp={true}
+          trend={`${metrics.dealSizeTrend > 0 ? '+' : ''}${metrics.dealSizeTrend}%`}
+          trendUp={metrics.dealSizeTrend >= 0}
         />
         <KpiCard
-          title="Leads Activos"
-          value={leadsCount.toString()}
-          subtitle="En todos los pipelines"
+          title="Leads Nuevos"
+          value={metrics.activeLeads.toString()}
+          subtitle="En periodo seleccionado"
           icon={<Users size={24} weight="duotone" />}
           gradient="from-indigo-500/20 to-indigo-500/5 text-indigo-600 dark:text-indigo-400"
-          trend="+8"
-          trendUp={true}
+          trend={`${metrics.leadsTrend > 0 ? '+' : ''}${metrics.leadsTrend}%`}
+          trendUp={metrics.leadsTrend >= 0}
         />
         <KpiCard
-          title="Tareas Completadas"
-          value={`${completionRate}%`}
-          subtitle={`${completedTasks} de ${totalTasks} tareas`}
+          title="Tasa Completitud"
+          value={`${metrics.completionRate}%`}
+          subtitle="Tareas completadas"
           icon={<CheckCircle size={24} weight="duotone" />}
           gradient="from-violet-500/20 to-violet-500/5 text-violet-600 dark:text-violet-400"
-          trend="-2%"
-          trendUp={false}
+          trend="0%"
+          trendUp={true}
         />
       </div>
 

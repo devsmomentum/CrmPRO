@@ -23,6 +23,7 @@ interface PipelineColumnProps {
     stagePages: Record<string, { offset: number; hasMore: boolean }>
     unreadLeads: Set<string>
     notasCounts: Record<string, number>
+    meetingsCounts: Record<string, number>
     highlightedLeadId: string | null
 
     // Permissions & Context
@@ -64,6 +65,7 @@ export function PipelineColumn({
     stagePages,
     unreadLeads,
     notasCounts,
+    meetingsCounts,
     highlightedLeadId,
     isAdminOrOwner,
     canEditLeads,
@@ -178,6 +180,7 @@ export function PipelineColumn({
                         isHighlighted={highlightedLeadId === lead.id}
                         hasUnreadMessages={unreadLeads.has(lead.id)}
                         notesCount={notasCounts[lead.id] || 0}
+                        meetingsCount={meetingsCounts[lead.id] || 0}
                         isAdminOrOwner={isAdminOrOwner}
                         canEditLeads={canEditLeads}
                         isMobile={isMobile}

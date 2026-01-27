@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { DotsThree, Note } from '@phosphor-icons/react'
+import { DotsThree, Note, CalendarBlank, CurrencyDollar } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 import { Lead, Pipeline, PipelineType, TeamMember, Stage } from '@/lib/types'
 import { Company } from '@/components/crm/CompanyManagement'
@@ -21,6 +21,7 @@ interface LeadCardProps {
     isHighlighted: boolean
     hasUnreadMessages: boolean
     notesCount: number
+    meetingsCount: number
     isAdminOrOwner: boolean
     canEditLeads: boolean
     isMobile: boolean
@@ -46,6 +47,7 @@ function LeadCardComponent({
     isHighlighted,
     hasUnreadMessages,
     notesCount,
+    meetingsCount,
     isAdminOrOwner,
     canEditLeads,
     isMobile,
@@ -182,12 +184,28 @@ function LeadCardComponent({
                         </Tooltip>
                     </TooltipProvider>
                 )}
+                {meetingsCount > 0 && (
+                    <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <div className="flex items-center gap-0.5 ml-1 text-purple-600">
+                                    <CalendarBlank size={12} weight="fill" />
+                                    <span className="text-[10px] font-medium">{meetingsCount}</span>
+                                </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="text-xs">
+                                {meetingsCount} reunión{meetingsCount > 1 ? 'es' : ''}
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                )}
             </div>
 
             {lead.budget > 0 && (
-                <p className="text-sm font-medium text-primary mb-1">
-                    ${lead.budget.toLocaleString()}
-                </p>
+                <div className="flex items-center gap-1 text-sm font-medium text-emerald-600 dark:text-emerald-500 mb-1">
+                    <CurrencyDollar size={14} weight="bold" />
+                    <span>${lead.budget.toLocaleString()}</span>
+                </div>
             )}
 
             <div className="flex flex-wrap gap-1 mb-1">

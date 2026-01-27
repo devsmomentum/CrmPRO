@@ -79,6 +79,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     stagePages,
     unreadLeads,
     notasCounts,
+    meetingsCounts,
     isLoadingMore: isLoadingMoreAll,
     hasMore: pipelineHasMore,
     loadMoreStage: handleLoadMoreStage,
@@ -701,6 +702,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         stagePages={stagePages}
         unreadLeads={unreadLeads}
         notasCounts={notasCounts}
+        meetingsCounts={meetingsCounts}
         highlightedLeadId={highlightedLeadId}
         isAdminOrOwner={isAdminOrOwner}
         canEditLeads={canEditLeads}
@@ -760,8 +762,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 ubicacion: updated.location,
                 prioridad: updated.priority,
                 presupuesto: updated.budget,
-                asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID,
-                tags: updated.tags || []
+                asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
               })
 
               // Si cambió la asignación y aplica, enviar notificación

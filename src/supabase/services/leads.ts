@@ -33,7 +33,25 @@ export async function getLeads(
     const { data, error } = await query
 
     if (error) throw error
+    if (error) throw error
     return data ?? []
+}
+
+/**
+ * Obtiene un lead por su ID
+ */
+export async function getLeadById(id: string): Promise<LeadDB | null> {
+    const { data, error } = await supabase
+        .from('lead')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+    if (error) {
+        console.error('[getLeadById] Error:', error)
+        return null
+    }
+    return data
 }
 
 /**

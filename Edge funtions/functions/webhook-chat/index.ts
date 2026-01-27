@@ -1,6 +1,11 @@
+// @deno-types="https://deno.land/std@0.168.0/http/server.ts"
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @deno-types="https://esm.sh/@supabase/supabase-js@2"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// @deno-types="https://deno.land/std@0.177.0/crypto/mod.ts"
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
+// @ts-ignore
+declare const Deno: any;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -165,19 +170,21 @@ async function getEmpresaKeywords(
 }
 
 // Decidir si mantener no leídos los mensajes del lead según palabras clave
-async function shouldKeepUnreadForLead(
+// Decidir si marcar como leídos los mensajes del lead según palabras clave
+async function shouldMarkAsReadForLead(
   supabase: ReturnType<typeof createClient>,
   empresaId: string,
   leadId: string
 ): Promise<boolean> {
   const keywords = await getEmpresaKeywords(supabase, empresaId);
+  // Si no hay keywords configuradas, no hacemos nada (false)
   if (!keywords || keywords.length === 0) return false;
 
   try {
-    // Buscar en los últimos 10 mensajes del lead, sin importar si ya están leídos
+    // Buscar en los últimos 10 mensajes del lead
     const { data: recentMsgs, error } = await supabase
       .from('mensajes')
-      .select('id, content, read')
+      .select('content')
       .eq('lead_id', leadId)
       .eq('sender', 'lead')
       .order('created_at', { ascending: false })
@@ -189,28 +196,18 @@ async function shouldKeepUnreadForLead(
     }
 
     const normalizedKeywords = keywords.map(k => k.trim().toLowerCase()).filter(Boolean);
-    let keywordFound = false;
 
     for (const m of recentMsgs || []) {
       const text = (m.content || '').toString().toLowerCase();
       if (!text) continue;
 
       if (normalizedKeywords.some(kw => text.includes(kw))) {
-        keywordFound = true;
-        console.log(`[read-rule] Coincidencia de palabra clave en mensaje ${m.id} para lead ${leadId}.`);
-
-        // Si el mensaje ya estaba leído, lo marcamos como NO LEÍDO para priorizarlo
-        if (m.read) {
-          await supabase
-            .from('mensajes')
-            .update({ read: false })
-            .eq('id', m.id);
-          console.log(`[read-rule] Mensaje ${m.id} marcado como NO LEÍDO por prioridad de palabra clave.`);
-        }
+        console.log(`[read-rule] Coincidencia de palabra clave encontrada. Marcando como LEÍDO.`);
+        return true;
       }
     }
 
-    return keywordFound;
+    return false;
   } catch (e) {
     console.warn(`[read-rule] Excepción evaluando palabras clave para lead ${leadId}:`, e);
   }
@@ -637,8 +634,8 @@ serve(async (req) => {
                   console.log(`✅ Archivo multimedia guardado en Storage: ${storedMediaUrl}`);
                 }
                 if (payload.event === "ai_response") {
-                  const keepUnread = await shouldKeepUnreadForLead(supabase, lead.empresa_id, lead.id);
-                  if (!keepUnread) {
+                  const shouldMark = await shouldMarkAsReadForLead(supabase, lead.empresa_id, lead.id);
+                  if (shouldMark) {
                     await markLeadMessagesAsRead(supabase, lead.id);
                   } else {
                     console.log(`[read-status] Saltando auto-leído por palabras clave para lead ${lead.id}`);
@@ -867,8 +864,8 @@ serve(async (req) => {
 
                 // Auto-read si es AI response
                 if (payload.event === "ai_response") {
-                  const keepUnread = await shouldKeepUnreadForLead(supabase, empresa_id, newLead.id);
-                  if (!keepUnread) await markLeadMessagesAsRead(supabase, newLead.id);
+                  const shouldMark = await shouldMarkAsReadForLead(supabase, empresa_id, newLead.id);
+                  if (shouldMark) await markLeadMessagesAsRead(supabase, newLead.id);
                 }
 
                 // Notificación al Owner (solo si es lead nuevo, no si se encontró por race condition)
@@ -899,17 +896,17 @@ serve(async (req) => {
           status: 200,
         });
       }
-
-      return new Response("Method not allowed", {
-        headers: corsHeaders,
-        status: 405,
-      });
-
-    } catch (error: any) {
-      console.error("Error processing webhook:", error);
-      return new Response(JSON.stringify({ error: error.message }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      });
     }
-  });
+    return new Response("Method not allowed", {
+      headers: corsHeaders,
+      status: 405,
+    });
+
+  } catch (error: any) {
+    console.error("Error processing webhook:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 400,
+    });
+  }
+});

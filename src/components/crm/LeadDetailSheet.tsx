@@ -621,7 +621,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
   return (
     <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:max-w-2xl p-0 flex h-full max-h-[100dvh] flex-col overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-2xl p-0 flex h-full max-h-[100dvh] flex-col overflow-hidden">
         <SheetHeader className="p-5 sm:p-6 border-b border-border">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex-1 min-w-0">
@@ -779,7 +779,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </AlertDialog>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <TabsList className="mx-4 sm:mx-6 mt-3 sm:mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/60 p-1">
             <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
             <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger>
@@ -788,7 +788,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             <TabsTrigger value="notes">{t.tabs.notes}</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="flex-1">
+          <TabsContent value="overview" className="flex-1 overflow-y-auto">
             <OverviewTab
               lead={lead}
               teamMembers={teamMembers}
@@ -808,7 +808,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             />
           </TabsContent>
 
-          <TabsContent value="chat" className="flex-1 flex flex-col min-h-0">
+          <TabsContent value="chat" className="flex-1 flex flex-col overflow-hidden">
             <ChatTab
               leadId={lead.id}
               messages={leadMessages}
@@ -980,7 +980,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="meetings" className="flex-1">
+          <TabsContent value="meetings" className="flex-1 overflow-y-auto">
             <MeetingsTab
               meetings={leadMeetings}
               onShowMeetingDialog={() => setShowMeetingDialog(true)}
@@ -996,7 +996,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             />
           </TabsContent>
 
-          <TabsContent value="notes" className="flex-1 flex flex-col">
+          <TabsContent value="notes" className="flex-1 overflow-y-auto">
             <NotesTab
               notes={leadNotes}
               noteInput={noteInput}

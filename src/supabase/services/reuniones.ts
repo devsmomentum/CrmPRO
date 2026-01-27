@@ -157,7 +157,6 @@ export async function createLeadMeeting(input: CreateLeadMeetingInput): Promise<
     participantes: participantRows
   })
 }
-
 export async function deleteLeadMeeting(meetingId: string): Promise<void> {
   const { error } = await supabase
     .from('lead_reuniones')
@@ -165,4 +164,55 @@ export async function deleteLeadMeeting(meetingId: string): Promise<void> {
     .eq('id', meetingId)
 
   if (error) throw error
+}
+
+export async function getCompanyMeetings(empresaId: string): Promise<Meeting[]> {
+  const { data, error } = await supabase
+    .from('lead_reuniones')
+    .select(`
+      id,
+      lead_id,
+      empresa_id,
+      created_by,
+      titulo,
+      fecha,
+      duracion_minutos,
+      notas,
+      created_at,
+      updated_at,
+      participantes:lead_reunion_participantes (
+        id,
+        reunion_id,
+        nombre,
+        tipo,
+        created_at,
+        updated_at
+      )
+    `)
+    .eq('empresa_id', empresaId)
+    .order('fecha', { ascending: true })
+
+  if (error) throw error
+  return (data || []).map(mapLeadMeeting)
+}
+
+export async function getReunionesCountByLeads(leadIds: string[]): Promise<Record<string, number>> {
+  if (!leadIds.length) return {}
+
+  const { data, error } = await supabase
+    .from('lead_reuniones')
+    .select('lead_id')
+    .in('lead_id', leadIds)
+
+  if (error) {
+    console.error('Error fetching meetings count:', error)
+    return {}
+  }
+
+  const counts: Record<string, number> = {}
+  data?.forEach((row: any) => {
+    counts[row.lead_id] = (counts[row.lead_id] || 0) + 1
+  })
+
+  return counts
 }

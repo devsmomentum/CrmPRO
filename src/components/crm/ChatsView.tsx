@@ -33,7 +33,8 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
     toggleArchive,
     removeLead,
     updateLeadOrder: updateLeadListOrder,
-    updateUnreadCount
+    updateUnreadCount,
+    addLead
   } = useLeadsList({ companyId })
 
   // Estados UI locales (no relacionados con datos de leads)
@@ -54,17 +55,57 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
 
 
   // Suscripción global a mensajes para actualizar lista
+  // Suscripción global a mensajes para actualizar lista
   useEffect(() => {
-    if (leads.length === 0) return
-    const ch = subscribeToAllMessages((msg) => {
-      updateLeadListOrder(msg.lead_id, msg)
-      if (msg.sender === 'lead') {
-        if (selectedLeadId !== msg.lead_id) {
-          // Incrementar contador de no leídos
-          const currentCount = unreadCounts[msg.lead_id] || 0
-          updateUnreadCount(msg.lead_id, currentCount + 1)
+    // Escuchar mensajes incluso si la lista está vacía (para recibir el primer lead)
+    const ch = subscribeToAllMessages(async (msg) => {
+      // 1. Verificar si el lead ya está en la lista
+      const leadExists = leads.some(l => l.id === msg.lead_id)
+
+      if (leadExists) {
+        updateLeadListOrder(msg.lead_id, msg)
+        if (msg.sender === 'lead') {
+          if (selectedLeadId !== msg.lead_id) {
+            const currentCount = unreadCounts[msg.lead_id] || 0
+            updateUnreadCount(msg.lead_id, currentCount + 1)
+          }
         }
       } else {
+        // 2. Si no existe, es un lead NUEVO (o archivado que no tenemos cargado).
+        // Intentar buscarlo y agregarlo a la lista.
+        // Solo si el scope es 'active' (no queremos resucitar leads archivados en la vista de activos automáticamente
+        // a menos que la lógica de negocio lo dicte, pero por ahora solo nuevos).
+        if (chatScope === 'active') {
+          try {
+            // Import dinámico para evitar dependencias circulares si las hubiera, 
+            // o simplemente usar la función importada arriba si ya la tenemos.
+            // Necesitamos importar getLeadById de services/leads
+            const { getLeadById } = await import('@/supabase/services/leads')
+            const newLeadDB = await getLeadById(msg.lead_id)
+
+            if (newLeadDB && newLeadDB.empresa_id === companyId && !newLeadDB.archived) {
+              // Mapear y agregar
+              const { mapDBToLead } = await import('@/hooks/useLeadsList')
+              const newLead = mapDBToLead(newLeadDB)
+
+              // Asegurar que el último mensaje esté sincronizado con el que acabamos de recibir
+              newLead.lastMessage = msg.content || ''
+              newLead.lastMessageAt = new Date(msg.created_at)
+              newLead.lastMessageSender = msg.sender as any
+
+              addLead(newLead)
+
+              if (msg.sender === 'lead') {
+                updateUnreadCount(newLead.id, 1)
+              }
+            }
+          } catch (err) {
+            console.error('Error fetching new lead:', err)
+          }
+        }
+      }
+
+      if (msg.sender !== 'lead') {
         // Respuesta del equipo/IA: actualizar desde servidor
         setTimeout(async () => {
           try {
@@ -75,7 +116,7 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
       }
     })
     return () => { try { ch.unsubscribe() } catch { } }
-  }, [leads.length, selectedLeadId, updateLeadListOrder, updateUnreadCount, unreadCounts])
+  }, [leads, selectedLeadId, updateLeadListOrder, updateUnreadCount, unreadCounts, companyId, chatScope, addLead])
 
   // Handlers para archivar/eliminar leads (ahora usan funciones del hook)
   async function handleArchiveToggle(lead: Lead | undefined, nextState: boolean) {

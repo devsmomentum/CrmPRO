@@ -69,6 +69,8 @@ interface UseLeadsListReturn {
     loadMore: () => Promise<void>
     /** Actualizar un lead en la lista */
     updateLead: (lead: Lead) => void
+    /** Agregar un nuevo lead al inicio de la lista */
+    addLead: (lead: Lead) => void
     /** Archivar/Desarchivar un lead */
     toggleArchive: (lead: Lead, archive: boolean) => Promise<void>
     /** Eliminar un lead */
@@ -81,10 +83,8 @@ interface UseLeadsListReturn {
     invalidateCache: () => void
 }
 
-/**
- * Detecta el canal del lead basado en el teléfono y metadata
- */
-function detectChannel(lead: Lead): ChannelType {
+// Detecta el canal del lead basado en el teléfono y metadata
+export function detectChannel(lead: Lead): ChannelType {
     const phone = (lead.phone || '').replace(/\D/g, '')
 
     // Instagram tiene IDs más largos
@@ -100,7 +100,7 @@ function detectChannel(lead: Lead): ChannelType {
 /**
  * Mapea datos de BD a Lead
  */
-function mapDBToLead(d: any): Lead {
+export function mapDBToLead(d: any): Lead {
     return {
         ...d,
         id: d.id,
@@ -348,6 +348,26 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
     }, [])
 
     /**
+     * Agregar un nuevo lead al inicio de la lista
+     */
+    const addLead = useCallback((lead: Lead) => {
+        setLeads(prev => {
+            // Evitar duplicados
+            if (prev.some(l => l.id === lead.id)) return prev
+            return [lead, ...prev]
+        })
+
+        // También actualizar caché si estamos en activos
+        if (chatScope === 'active' && !lead.archived) {
+            const cached = getCachedLeads(companyId)
+            if (cached) {
+                const newLeads = [lead, ...cached.leads.filter((l: any) => l.id !== lead.id)]
+                updateCachedLeads(companyId, { leads: newLeads })
+            }
+        }
+    }, [companyId, chatScope])
+
+    /**
      * Actualizar orden del lead cuando llega mensaje
      */
     const updateLeadOrder = useCallback((leadId: string, msg: DbMessage) => {
@@ -473,6 +493,7 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
         refresh: loadLeads,
         loadMore,
         updateLead,
+        addLead,
         toggleArchive,
         removeLead,
         updateLeadOrder,

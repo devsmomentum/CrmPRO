@@ -13,6 +13,7 @@ import {
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { safeFormatDate } from '@/hooks/useDateFormat'
+import { detectChannel } from '@/hooks/useLeadsList'
 import { getMessages, subscribeToMessages, markMessagesAsRead } from '@/supabase/services/mensajes'
 import type { Message as DbMessage } from '@/supabase/services/mensajes'
 import { MessageInput } from './MessageInput'
@@ -412,7 +413,7 @@ export function ChatWindow({
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto scrollbar-none">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-muted-foreground/20">
                         <div className="flex flex-col items-center p-8 pb-8 bg-gradient-to-b from-muted/20 to-transparent border-b border-border/40">
                             <div className="relative mb-6 group">
                                 <Avatar className="w-32 h-32 shadow-2xl ring-4 ring-background group-hover:scale-105 transition-transform duration-500">
@@ -421,10 +422,15 @@ export function ChatWindow({
                                         {(lead.name || '?').substring(0, 2).toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
-                                {/* Icono de canal (hardcoded a whatsapp/instagram según lógica, aquí simplificado o pasado por prop) */}
-                                <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
-                                    <WhatsappLogo weight="fill" className="h-6 w-6 text-[#25D366]" />
-                                </div>
+                                {detectChannel(lead) === 'instagram' ? (
+                                    <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
+                                        <InstagramLogo weight="fill" className="h-6 w-6 text-[#E1306C]" />
+                                    </div>
+                                ) : (
+                                    <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
+                                        <WhatsappLogo weight="fill" className="h-6 w-6 text-[#25D366]" />
+                                    </div>
+                                )}
                             </div>
 
                             <h2 className="text-2xl font-black text-center text-foreground tracking-tight px-4 line-clamp-2">{lead.name}</h2>

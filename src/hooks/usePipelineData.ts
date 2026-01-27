@@ -26,6 +26,7 @@ import { getPipelines } from '@/supabase/helpers/pipeline'
 import { getLeadsPaged } from '@/supabase/services/leads'
 import { getUnreadMessagesCount, subscribeToAllMessages } from '@/supabase/services/mensajes'
 import { getNotasCountByLeads } from '@/supabase/services/notas'
+import { getReunionesCountByLeads } from '@/supabase/services/reuniones'
 
 // ============================================
 // TIPOS ESTRICTOS
@@ -55,6 +56,7 @@ export interface UsePipelineDataReturn {
     stagePages: Record<string, StagePagination>
     unreadLeads: Set<string>
     notasCounts: Record<string, number>
+    meetingsCounts: Record<string, number>
 
     // Loading states
     isLoadingMore: boolean
@@ -122,6 +124,7 @@ export function usePipelineData(options: UsePipelineDataOptions): UsePipelineDat
     // Estados auxiliares
     const [unreadLeads, setUnreadLeads] = useState<Set<string>>(new Set())
     const [notasCounts, setNotasCounts] = useState<Record<string, number>>({})
+    const [meetingsCounts, setMeetingsCounts] = useState<Record<string, number>>({})
 
     // Ref para acceso síncrono a leads
     const leadsRef = useRef(leads)
@@ -233,11 +236,20 @@ export function usePipelineData(options: UsePipelineDataOptions): UsePipelineDat
                 const unique = Array.from(byId.values())
                 setLeads(unique)
 
-                // Cargar conteos de notas en background
+                // Cargar conteos de notas y reuniones en background
                 if (unique.length > 0) {
-                    getNotasCountByLeads(unique.map(l => l.id))
-                        .then(counts => { if (!cancelled) setNotasCounts(counts) })
-                        .catch(err => console.warn('[usePipelineData] Error cargando notas:', err))
+                    const ids = unique.map(l => l.id)
+                    Promise.all([
+                        getNotasCountByLeads(ids),
+                        getReunionesCountByLeads(ids)
+                    ])
+                        .then(([nCounts, mCounts]) => {
+                            if (!cancelled) {
+                                setNotasCounts(nCounts)
+                                setMeetingsCounts(mCounts)
+                            }
+                        })
+                        .catch(err => console.warn('[usePipelineData] Error cargando metadata:', err))
                 }
 
                 // Actualizar paginación por stage
@@ -431,6 +443,7 @@ export function usePipelineData(options: UsePipelineDataOptions): UsePipelineDat
         stagePages,
         unreadLeads,
         notasCounts,
+        meetingsCounts,
 
         // Loading
         isLoadingMore,

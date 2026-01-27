@@ -20,6 +20,7 @@ interface PipelineBoardProps {
     stagePages: Record<string, { offset: number; hasMore: boolean }>
     unreadLeads: Set<string>
     notasCounts: Record<string, number>
+    meetingsCounts: Record<string, number>
     highlightedLeadId: string | null
 
     // Permissions & Context
@@ -62,6 +63,7 @@ export function PipelineBoard({
     stagePages,
     unreadLeads,
     notasCounts,
+    meetingsCounts,
     highlightedLeadId,
     isAdminOrOwner,
     canEditLeads,
@@ -107,6 +109,7 @@ export function PipelineBoard({
                             stagePages={stagePages}
                             unreadLeads={unreadLeads}
                             notasCounts={notasCounts}
+                            meetingsCounts={meetingsCounts}
                             highlightedLeadId={highlightedLeadId}
                             isAdminOrOwner={isAdminOrOwner}
                             canEditLeads={canEditLeads}

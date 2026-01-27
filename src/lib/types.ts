@@ -157,6 +157,7 @@ export interface Appointment {
   startTime: Date
   endTime: Date
   status: 'scheduled' | 'completed' | 'cancelled'
+  attendees?: string[] // IDs of team members or external emails
 }
 
 export interface Notification {
