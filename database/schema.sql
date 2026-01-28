@@ -919,3 +919,157 @@ CREATE POLICY nota_lead_rw ON nota_lead
 ) tablespace pg_default;
 
 create index idx_presupuesto_pdf_lead_id on public.presupuesto_pdf using btree (lead_id) tablespace pg_default;
+
+
+-- ============================================================
+-- INTEGRACIONES MULTI-TENANT + FEATURE FLAGS
+-- ============================================================
+
+-- Tabla de integraciones por empresa (un único esquema para todos los clientes)
+create table if not exists integraciones (
+  id uuid primary key default gen_random_uuid(),
+  empresa_id uuid not null references empresa(id) on delete cascade,
+  provider text not null, -- p.ej. "superapi", "ferrer", "whatsapp", etc.
+  status text not null default 'active', -- active | disabled
+  metadata jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  constraint uq_integraciones_empresa_provider unique (empresa_id, provider)
+);
+
+alter table integraciones enable row level security;
+
+-- RLS: owner o miembros de la empresa pueden ver/gestionar integraciones
+create policy integraciones_select on integraciones
+  for select to authenticated
+  using (
+    empresa_id in (select id from empresa where usuario_id = auth.uid())
+    or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+  );
+
+create policy integraciones_mutation on integraciones
+  for all to authenticated
+  using (
+    empresa_id in (select id from empresa where usuario_id = auth.uid())
+    or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+  )
+  with check (
+    empresa_id in (select id from empresa where usuario_id = auth.uid())
+    or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+  );
+
+
+-- Credenciales asociadas a una integración
+create table if not exists integracion_credenciales (
+  id uuid primary key default gen_random_uuid(),
+  integracion_id uuid not null references integraciones(id) on delete cascade,
+  key text not null,  -- api_key | secret | webhook_secret | etc
+  value text not null, -- almacenar cifrado/rotado fuera de alcance de clientes (edge usa service role)
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  constraint uq_integracion_credencial unique (integracion_id, key)
+);
+
+alter table integracion_credenciales enable row level security;
+
+-- RLS vía la integración -> empresa
+create policy integracion_credenciales_rw on integracion_credenciales
+  for all to authenticated
+  using (
+    integracion_id in (
+      select i.id from integraciones i
+      where i.empresa_id in (select id from empresa where usuario_id = auth.uid())
+         or i.empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+    )
+  )
+  with check (
+    integracion_id in (
+      select i.id from integraciones i
+      where i.empresa_id in (select id from empresa where usuario_id = auth.uid())
+         or i.empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+    )
+  );
+
+
+-- Registro de webhooks entrantes (auditoría + deduplicación)
+create table if not exists webhooks_entrantes (
+  id uuid primary key default gen_random_uuid(),
+  integracion_id uuid references integraciones(id) on delete set null,
+  empresa_id uuid not null references empresa(id) on delete cascade,
+  provider text,
+  event text,
+  payload jsonb,
+  signature_valid boolean,
+  dedupe_key text,
+  received_at timestamptz default now()
+);
+
+alter table webhooks_entrantes enable row level security;
+
+create index if not exists idx_webhooks_entrantes_empresa_created on webhooks_entrantes(empresa_id, received_at desc);
+create index if not exists idx_webhooks_entrantes_dedupe on webhooks_entrantes(dedupe_key);
+
+create policy webhooks_entrantes_select on webhooks_entrantes
+  for select to authenticated
+  using (
+    empresa_id in (select id from empresa where usuario_id = auth.uid())
+    or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+  );
+
+-- Inserciones de webhooks suelen venir desde Edge con service role (bypassa RLS).
+
+
+-- Feature Flags (globales o por empresa)
+create table if not exists feature_flags (
+  id uuid primary key default gen_random_uuid(),
+  key text not null,
+  enabled boolean not null default false,
+  scope text not null default 'global', -- 'global' | 'empresa'
+  empresa_id uuid references empresa(id) on delete cascade,
+  metadata jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table feature_flags enable row level security;
+
+-- Únicos: una fila global por clave y/o una por empresa+clave
+create unique index if not exists uq_feature_flags_global
+  on feature_flags(key) where scope = 'global' and empresa_id is null;
+
+create unique index if not exists uq_feature_flags_empresa
+  on feature_flags(empresa_id, key) where scope = 'empresa' and empresa_id is not null;
+
+-- SELECT: todos pueden leer flags globales; flags por empresa: owner o miembro
+create policy feature_flags_select on feature_flags
+  for select to authenticated
+  using (
+    (scope = 'global' and empresa_id is null)
+    or (scope = 'empresa' and (
+      empresa_id in (select id from empresa where usuario_id = auth.uid())
+      or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+    ))
+  );
+
+-- INSERT/UPDATE/DELETE: solo dueños/miembros pueden gestionar flags de su empresa
+create policy feature_flags_empresa_mutation on feature_flags
+  for all to authenticated
+  using (
+    scope = 'empresa' and (
+      empresa_id in (select id from empresa where usuario_id = auth.uid())
+      or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+    )
+  )
+  with check (
+    scope = 'empresa' and (
+      empresa_id in (select id from empresa where usuario_id = auth.uid())
+      or empresa_id in (select empresa_id from empresa_miembros where usuario_id = auth.uid())
+    )
+  );
+
+-- Semilla: habilitar GPT-5.2-Codex de forma GLOBAL para todos los clientes
+insert into feature_flags(key, enabled, scope)
+select 'gpt_5_2_codex', true, 'global'
+where not exists (
+  select 1 from feature_flags where key = 'gpt_5_2_codex' and scope = 'global' and empresa_id is null
+);

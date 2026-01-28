@@ -16,6 +16,7 @@ import { TagsManagement } from './settings/TagsManagement'
 import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 import { IDsViewer } from './IDsViewer'
+import { IntegrationsManager } from './settings/IntegrationsManager'
 import { updatePipeline, getPipelines } from '@/supabase/helpers/pipeline'
 import { toast } from 'sonner'
 
@@ -140,6 +141,16 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
             <p className="text-center text-muted-foreground py-12">
               Inicia sesión para gestionar tus empresas
             </p>
+          )}
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-4 mt-6">
+          {isAdminOrOwner ? (
+            <IntegrationsManager empresaId={currentCompanyId || ''} />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              No tienes permisos para gestionar integraciones.
+            </div>
           )}
         </TabsContent>
 
@@ -297,60 +308,6 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           )}
         </TabsContent>
 
-        <TabsContent value="integrations" className="space-y-4 mt-6">
-          <h2 className="text-xl font-semibold">Integraciones API</h2>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Servicio de Email</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>API Key</Label>
-                <Input type="password" placeholder="Ingrese la clave API" />
-              </div>
-              <div>
-                <Label>Correo del Remitente</Label>
-                <Input type="email" placeholder="noreply@company.com" />
-              </div>
-              <Button>Guardar Configuración</Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Servicio de SMS</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Account SID</Label>
-                <Input placeholder="Enter account SID" />
-              </div>
-              <div>
-                <Label>Auth Token</Label>
-                <Input type="password" placeholder="Enter auth token" />
-              </div>
-              <Button>Guardar Configuración</Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>WhatsApp Business</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>ID de Cuenta Empresarial</Label>
-                <Input placeholder="Enter business account ID" />
-              </div>
-              <div>
-                <Label>Access Token</Label>
-                <Input type="password" placeholder="Enter access token" />
-              </div>
-              <Button>Guardar Configuración</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="ids" className="space-y-4 mt-6">
           <h2 className="text-xl font-semibold">IDs del Sistema</h2>

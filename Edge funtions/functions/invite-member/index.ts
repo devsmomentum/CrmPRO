@@ -3,21 +3,85 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-supabase-authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    const { email, teamId, companyId, name, role, pipelineIds, permissionRole } = await req.json();
+    const authHeader = req.headers.get("x-supabase-authorization") ?? req.headers.get("Authorization") ?? req.headers.get("authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Missing auth header (x-supabase-authorization or Authorization)' }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch (_) {
+      return new Response(JSON.stringify({ error: 'Invalid or missing JSON body' }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { email, teamId, companyId, name, role, pipelineIds, permissionRole } = body || {};
+    if (!email || !companyId) {
+      return new Response(JSON.stringify({ error: 'Missing email or companyId' }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const normalizedEmail = (email || '').trim().toLowerCase();
 
+    // Identify requester user from JWT
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    const { data: requesterData, error: requesterError } = await supabaseClient.auth.getUser();
+    const requester = requesterData?.user;
+    if (requesterError || !requester) {
+      return new Response(JSON.stringify({ error: 'Invalid token' }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Authorize: only Owner/Admin of the company can invite
+    const { data: memberData, error: memberError } = await supabaseAdmin
+      .from('empresa_miembros')
+      .select('role, empresa(usuario_id)')
+      .eq('empresa_id', companyId)
+      .eq('usuario_id', requester.id)
+      .single();
+
+    if (memberError || !memberData) {
+      return new Response(JSON.stringify({ error: 'Requester is not a member of this company' }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const isOwner = memberData.empresa.usuario_id === requester.id;
+    const isAdmin = memberData.role === 'admin';
+    if (!isOwner && !isAdmin) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: Only Admins or Owners can invite members' }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // 1. Buscar si el usuario existe en la tabla usuarios (o auth.users)
     // Usamos maybeSingle para no lanzar error si no existe
@@ -95,7 +159,7 @@ serve(async (req) => {
         invited_nombre: name,
         invited_titulo_trabajo: role,
         permission_role: permissionRole || 'viewer',
-        pipeline_ids: pipelineIds
+        pipeline_ids: Array.isArray(pipelineIds) ? pipelineIds : []
       });
 
     if (dbError) throw dbError;

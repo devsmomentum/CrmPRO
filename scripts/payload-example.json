@@ -1,0 +1,11 @@
+{
+  "event": "message",
+  "data": {
+    "id": "test-msg-001",
+    "to": "584123456789@c.us",
+    "from": "584987654321@c.us",
+    "body": "Hola desde sandbox",
+    "type": "text",
+    "sender": { "client": "whatsapp" }
+  }
+}

@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
@@ -108,19 +111,52 @@ async function markLeadMessagesAsRead(
     }
 }
 
-// Función helper para obtener detalles del perfil de WhatsApp/SuperApi
-async function fetchChatDetails(client: string, chatId: string): Promise<{ name: string; image?: string } | null> {
-    try {
-        console.log(`🔍 [PROFILE] Buscando nombre para ${chatId} usando client ${client}...`);
+// Resolver integración y empresa por secreto de webhook
+async function resolveIntegrationBySecret(
+    supabase: ReturnType<typeof createClient>,
+    secret: string,
+    provider: string
+): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string } | null> {
+    if (!secret) return null;
+    const { data, error } = await supabase
+        .from('integracion_credenciales')
+        .select('integracion_id, key, value, integraciones:integracion_id ( id, empresa_id, provider, metadata )')
+        .eq('value', secret)
+        .eq('key', 'webhook_secret')
+        .maybeSingle();
 
-        // Realizamos el fetch incluyendo el token en los headers (PROPORCIONADO POR EL USUARIO)
-        const response = await fetch(`https://v4.iasuperapi.com/api/v1/${client}/chats/${chatId}/details`, {
-            method: "GET",
-            headers: {
-                "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OTAyNjQ3OGFjYjczZThkMDhiYzliZDkiLCJpYXQiOjE3Njc5ODI5MjYsImV4cCI6MzMyMzE4MjkyNn0.cntUjsGIFpOs5X7jABQcAXpoiHUmV2ASxO7bzHkAlCs",
-                "Content-Type": "application/json"
-            }
-        });
+    if (error || !data) return null;
+    const integ = (data as any)?.integraciones;
+    if (!integ || integ.provider !== provider) return null;
+
+    // Buscar api_token para esa integración
+    const { data: creds } = await supabase
+        .from('integracion_credenciales')
+        .select('key, value')
+        .eq('integracion_id', integ.id);
+
+    const apiToken = (creds || [])
+        .find((c: any) => c.key === 'api_token' || c.key === 'token')?.value;
+
+    return { empresa_id: integ.empresa_id, integracion_id: integ.id, metadata: integ.metadata, apiToken };
+}
+
+// Función helper para obtener detalles del perfil de WhatsApp/SuperApi con token por empresa
+async function fetchChatDetails(client: string, chatId: string, apiToken?: string): Promise<{ name: string; image?: string } | null> {
+    try {
+                console.log(`🔍 [PROFILE] Buscando nombre para ${chatId} usando client ${client}...`);
+                if (!apiToken) {
+                    console.warn('[PROFILE] Falta apiToken para el cliente, se omite lookup de perfil');
+                    return null;
+                }
+
+                const response = await fetch(`https://v4.iasuperapi.com/api/v1/${client}/chats/${chatId}/details`, {
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${apiToken}`,
+                        "Content-Type": "application/json"
+                    }
+                });
 
         if (!response.ok) {
             const errorBody = await response.text();
@@ -222,14 +258,22 @@ serve(async (req) => {
         return new Response("ok", { headers: corsHeaders });
     }
 
-    const secretToken = Deno.env.get("SUPER_API_SECRET_TOKEN") ?? "";
+    const provider = 'ferrer';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const secretTokenEnv = Deno.env.get("SUPER_API_SECRET_TOKEN") ?? ""; // fallback
     const url = new URL(req.url);
-    console.log("AQUI PARA PROBAR", secretToken);
+    const secretParam = url.searchParams.get("x-webhook-secret") || url.searchParams.get("secret") || url.searchParams.get("hub.verify_token") || url.searchParams.get("x-webhook-verify-token") || "";
+    // Intentar resolver integración/empresa por secreto
+    const resolved = await resolveIntegrationBySecret(supabase, secretParam, provider);
+    const empresaFromSecret = resolved?.empresa_id || null;
+    const integracionId = resolved?.integracion_id || null;
+    const integrationMetadata = resolved?.metadata || {};
+    const apiToken = resolved?.apiToken;
+    // Modo prueba: permite auditar y previsualizar sin efectos externos ni escrituras
+    const testMode = integrationMetadata?.test_mode === true || url.searchParams.get("test") === "true";
     try {
         if (req.method === "GET") {
-            const verifyToken =
-                url.searchParams.get("hub.verify_token") ||
-                url.searchParams.get("x-webhook-verify-token");
+            const verifyToken = secretParam;
             const challenge = url.searchParams.get("hub.challenge");
             const mode = url.searchParams.get("hub.mode");
             console.log(verifyToken);
@@ -241,7 +285,18 @@ serve(async (req) => {
                 });
             }
 
-            if (verifyToken === secretToken) {
+            // Verificación: existe una integración con ese webhook_secret
+            if (empresaFromSecret) {
+                // Registrar auditoría del webhook de verificación
+                await supabase.from('webhooks_entrantes').insert({
+                  integracion_id: integracionId,
+                  empresa_id: empresaFromSecret,
+                  provider,
+                  event: 'subscribe',
+                  payload: { query: Object.fromEntries(url.searchParams.entries()) },
+                  signature_valid: true,
+                  dedupe_key: null,
+                });
                 return new Response(challenge, {
                     headers: { ...corsHeaders, "Content-Type": "text/plain" },
                     status: 200,
@@ -279,10 +334,12 @@ serve(async (req) => {
                 });
             }
 
+            // Determinar secreto a usar: por integración resuelta o fallback env
+            const hmacSecret = secretParam || secretTokenEnv;
             const encoder = new TextEncoder();
             const key = await crypto.subtle.importKey(
                 "raw",
-                encoder.encode(secretToken),
+                encoder.encode(hmacSecret),
                 { name: "HMAC", hash: "SHA-256" },
                 false,
                 ["sign"]
@@ -302,7 +359,8 @@ serve(async (req) => {
             const payload = JSON.parse(bodyText);
 
             // Obtener el número de WhatsApp configurado para producción
-            const configuredPhone = "584241663502";
+            // Configuración: teléfono permitido por metadata de integración (si está definido)
+            const configuredPhone = integrationMetadata?.allowed_phone || Deno.env.get("WHATSAPP_PHONE_NUMBER") || "";
             const cleanConfiguredPhone = configuredPhone.replace(/[\s\-\+]/g, "").trim();
 
             if (hashHex !== receivedSignature) {
@@ -345,10 +403,7 @@ serve(async (req) => {
             }
             console.log("📦 [WEBHOOK] Webhook payload completo:", JSON.stringify(payload, null, 2));
 
-            const supabase = createClient(
-                Deno.env.get("SUPABASE_URL") ?? "",
-                Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-            );
+            // supabase ya creado arriba con service role
 
             // Normalizar eventData (puede venir como string o objeto)
             const eventDataRaw = payload.data ?? {};
@@ -363,7 +418,22 @@ serve(async (req) => {
                     })()
                     : eventDataRaw;
 
-            console.log("📦 [WEBHOOK] Event Data Keys:", Object.keys(eventData));
+                        console.log("📦 [WEBHOOK] Event Data Keys:", Object.keys(eventData));
+
+                        // Registrar auditoría de webhook entrante
+                        try {
+                            await supabase.from('webhooks_entrantes').insert({
+                                integracion_id: integracionId,
+                                empresa_id: empresaFromSecret || null as any, // si no se resolvió, se completará más adelante
+                                provider,
+                                event: payload.event || eventData.event || 'message',
+                                payload,
+                                signature_valid: !!receivedSignature,
+                                dedupe_key: eventData.id || payload.id || null,
+                            });
+                        } catch (auditErr) {
+                            console.warn('[webhook audit] No se pudo registrar auditoría:', auditErr);
+                        }
 
             // 1. Intentamos sacar el texto normal
             let content = eventData.body ?? payload.body ?? eventData.text ?? payload.text;
@@ -523,6 +593,10 @@ serve(async (req) => {
                     pipeline_id: urlPipelineId || undefined,
                     etapa_id: urlEtapaId || undefined
                 }];
+            } else if (empresaFromSecret) {
+                // Si resolvimos por secreto, priorizamos esa empresa
+                empresasConfig = [{ empresa_id: empresaFromSecret }];
+                console.log(`Usando empresa resuelta por secreto: ${empresaFromSecret}`);
             }
             // Prioridad 2: WEBHOOK_EMPRESAS JSON
             else {
@@ -561,6 +635,23 @@ serve(async (req) => {
                     empresasConfig = [{ empresa_id: company.id }];
                     console.log(`Usando empresa fallback: ${company.id}`);
                 }
+            }
+
+            // Si está en modo prueba, no realizar escrituras; devolver previsualización
+            if (testMode) {
+                console.log("🧪 Modo prueba activo: se evita crear leads/mensajes y subir storage.");
+                return new Response(
+                    JSON.stringify({
+                        success: true,
+                        mode: 'dry-run',
+                        preview: {
+                            content,
+                            phoneCandidates,
+                            empresasConfig
+                        }
+                    }),
+                    { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+                );
             }
 
             // ============================================================
@@ -699,7 +790,7 @@ serve(async (req) => {
                             // Solo ejecutamos esto si es un mensaje de usuario real y (el lead no existe o tiene nombre generico)
                             if (apiClient && payload.event !== "ai_response" && (!existingLead || finalName.startsWith("Nuevo Lead"))) {
                                 console.log('Final name and client -->', apiClient, finalName, payload.event, existingLead);
-                                const profileData = await fetchChatDetails(apiClient, cleanPhone);
+                                const profileData = await fetchChatDetails(apiClient, cleanPhone, apiToken);
                                 console.log('Profile data -->', profileData);
                                 if (profileData && profileData.name) {
                                     finalName = profileData.name;
