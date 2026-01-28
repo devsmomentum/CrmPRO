@@ -33,6 +33,7 @@ interface AuthContextType {
     logout: () => Promise<void>
     fetchCompanies: () => Promise<Company[]>
     leaveCompanyHandler: (companyId: string) => Promise<void>
+    resetPassword: (email: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -172,12 +173,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try {
                 row = await getUsuarioById(authUser.id)
             } catch (err: any) {
-                console.log('[LOGIN] usuario no existe en tabla usuarios, creando...')
-                row = await createUsuario({
-                    id: authUser.id,
-                    email: authUser.email || email,
-                    nombre: authUser.email?.split('@')[0] || 'Usuario'
-                })
+                console.log('[LOGIN] usuario no encontrado en tabla usuarios, intentando crear...')
+                
+                try {
+                     row = await createUsuario({
+                        id: authUser.id,
+                        email: authUser.email || email,
+                        nombre: authUser.email?.split('@')[0] || 'Usuario'
+                    })
+                } catch (createErr: any) {
+                    console.error('[LOGIN] Error creando usuario:', createErr)
+                    
+                    // Manejo de duplicados (email o ID)
+                    if (createErr.message?.includes('duplicate key') || createErr.code === '23505') {
+                        // Caso: Conflicto de Email (Usuario borrado de Auth pero no de base de datos)
+                        if (createErr.message?.includes('email')) {
+                            console.log('[LOGIN] Email duplicado detectado. Intentando vincular usuario existente...')
+                            try {
+                                // 1. Buscar el usuario antiguo por email
+                                const { data: existingUser } = await supabase
+                                    .from('usuarios').select('*').eq('email', email).single()
+                                
+                                if (existingUser) {
+                                    // 2. Actualizar su ID al nuevo ID de Auth
+                                    console.log(`[LOGIN] Actualizando ID de ${existingUser.id} a ${authUser.id}`)
+                                    const { data: updatedUser, error: updateError } = await supabase
+                                        .from('usuarios')
+                                        .update({ id: authUser.id }) // Actualizamos la PK
+                                        .eq('email', email)
+                                        .select()
+                                        .single()
+                                    
+                                    if (updateError) throw updateError
+                                    row = updatedUser
+                                } else {
+                                    throw new Error('Conflicto de email pero no se encuentra el registro.')
+                                }
+                            } catch (migrationError) {
+                                console.error('[LOGIN] Falló la migración del usuario:', migrationError)
+                                throw new Error('Error de integridad: El email ya existe y no se pudo recuperar la cuenta. Contacte soporte.')
+                            }
+                        } else {
+                            // Caso: Race condition (ya se creó el ID)
+                            console.log('[LOGIN] Usuario ya existe (race condition), leyendo...')
+                            row = await getUsuarioById(authUser.id)
+                        }
+                    } else {
+                        throw createErr
+                    }
+                }
             }
 
             console.log('[LOGIN] fila usuarios', row)
@@ -275,6 +319,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 toast.info('Por favor confirma tu email antes de iniciar sesión. Revisa tu bandeja de entrada.', {
                     duration: 6000
                 })
+            } else if (e.message?.toLowerCase().includes('ya está registrado')) {
+                toast.error('Este correo ya está registrado. Intenta iniciar sesión.', {
+                    duration: 5000
+                })
             } else {
                 toast.error(e.message || 'Error registrando usuario')
             }
@@ -283,11 +331,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const logout = async () => {
-        await authLogout()
-        setUser(null)
-        setCompanies([])
-        setCurrentCompanyIdState('')
-        toast.success('¡Sesión cerrada!')
+        try {
+            await authLogout()
+        } catch (error) {
+            console.warn('[AUTH] Error en logout (posiblemente sesión ya expirada)', error)
+        } finally {
+            // Siempre limpiamos el estado local, falle o no el logout de supabase
+            setUser(null)
+            setCompanies([])
+            setCurrentCompanyIdState('')
+            
+            // Limpiar localStorage explícitamente para evitar estados zombies
+            localStorage.removeItem('supabase.auth.token')
+            localStorage.removeItem('current-user')
+            
+            toast.success('¡Sesión cerrada!')
+        }
     }
 
     const leaveCompanyHandler = async (companyId: string) => {
@@ -311,6 +370,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const resetPassword = async (email: string) => {
+        setIsLoading(true)
+        // Obtenemos la URL actual para asegurar que la redirección vuelva a este mismo entorno (local o prod)
+        const redirectUrl = `${window.location.origin}/update-password`
+        console.log('[AUTH] Intentando enviar correo de recuperación con redirección a:', redirectUrl)
+        
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo: redirectUrl
+            })
+            if (error) throw error
+            toast.success('Correo de recuperación enviado. Revisa tu bandeja de entrada.')
+        } catch (error: any) {
+            console.error('Error resetting password:', error)
+            toast.error(error.message || 'Error al enviar correo de recuperación')
+            throw error
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const value: AuthContextType = {
         user,
         companies,
@@ -323,7 +403,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         fetchCompanies,
-        leaveCompanyHandler
+        leaveCompanyHandler,
+        resetPassword
     }
 
     return (

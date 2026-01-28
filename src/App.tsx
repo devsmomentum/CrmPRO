@@ -12,6 +12,7 @@ import LoginView from '@/components/crm/LoginView'
 import { RegisterView } from '@/components/crm/RegisterView'
 import { JoinTeam } from '@/components/crm/JoinTeam'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { UpdatePasswordView } from '@/components/auth/UpdatePasswordView'
 import { CRMLayout } from '@/components/layout/CRMLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -20,7 +21,7 @@ import { toast } from 'sonner'
 import { verifyEmpresaTable, testInsertEmpresa, listEmpresasCurrentUser, testRLSViolation } from '@/supabase/diagnostics/empresaDebug'
 
 function App() {
-  const { user, isLoading, login, register, companies, currentCompanyId, setCurrentCompanyId, fetchCompanies } = useAuth()
+  const { user, isLoading, login, register, companies, currentCompanyId, setCurrentCompanyId, fetchCompanies, resetPassword } = useAuth()
 
   // Debug tools
   useEffect(() => {
@@ -45,6 +46,7 @@ function App() {
           user ? <Navigate to="/dashboard" replace /> : (
             <LoginView
               onLogin={login}
+              onForgotPassword={resetPassword}
             />
           )
         } />
@@ -55,6 +57,9 @@ function App() {
             />
           )
         } />
+
+        {/* Password Recovery Route */}
+        <Route path="/update-password" element={<UpdatePasswordView />} />
 
         {/* Join Team Route */}
         <Route path="/join" element={<JoinTeamWrapper />} />
