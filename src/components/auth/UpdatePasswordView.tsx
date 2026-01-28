@@ -58,15 +58,15 @@ export function UpdatePasswordView() {
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-background p-4">
-            <Card className="w-full max-w-md animate-in fade-in zoom-in-95 slide-in-from-bottom-8 duration-500">
+            <Card className="w-full max-w-md animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300">
                 <CardHeader className="text-center">
-                    <CardTitle className="text-2xl font-bold animate-in fade-in slide-in-from-top-4 duration-700 delay-150">Nueva Contraseña</CardTitle>
-                    <CardDescription className="animate-in fade-in duration-700 delay-200">
+                    <CardTitle className="text-2xl font-bold animate-in fade-in slide-in-from-top-2 duration-300 delay-75">Nueva Contraseña</CardTitle>
+                    <CardDescription className="animate-in fade-in duration-300 delay-100">
                         Introduce tu nueva contraseña para recuperar el acceso a tu cuenta.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleUpdate} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+                    <form onSubmit={handleUpdate} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 delay-75">
                         <div className="space-y-2">
                             <Label htmlFor="password">Nueva Contraseña</Label>
                             <div className="relative">

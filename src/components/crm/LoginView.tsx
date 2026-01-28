@@ -98,16 +98,16 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md animate-in fade-in zoom-in-95 slide-in-from-bottom-8 duration-500">
+      <Card className="w-full max-w-md animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold text-primary animate-in fade-in slide-in-from-top-4 duration-700 delay-150">CRM Pro</CardTitle>
-          <CardDescription className="text-lg mt-2 animate-in fade-in duration-700 delay-200">
+          <CardTitle className="text-3xl font-bold text-primary animate-in fade-in slide-in-from-top-2 duration-300 delay-75">CRM Pro</CardTitle>
+          <CardDescription className="text-lg mt-2 animate-in fade-in duration-300 delay-100">
             {isResetting ? 'Recuperar Contraseña' : t.auth.welcome}
           </CardDescription>
         </CardHeader>
 
         <CardContent>
-          <div key={isResetting ? 'reset' : 'login'} className="animate-in fade-in slide-in-from-right-4 duration-300">
+          <div key={isResetting ? 'reset' : 'login'} className="animate-in fade-in slide-in-from-right-4 duration-200">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="login-email">{t.auth.email}</Label>
@@ -122,7 +122,7 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
               </div>
 
               {!isResetting && (
-                <div className="animate-in fade-in slide-in-from-left-2 duration-300 delay-75">
+                <div className="animate-in fade-in slide-in-from-left-2 duration-200">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="login-password">{t.auth.password}</Label>
                     <button

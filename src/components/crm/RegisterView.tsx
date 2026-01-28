@@ -95,13 +95,13 @@ export function RegisterView({ onRegister, onSwitchToLogin }: RegisterViewProps)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md animate-in fade-in zoom-in-95 slide-in-from-bottom-8 duration-500">
+      <Card className="w-full max-w-md animate-in fade-in zoom-in-95 slide-in-from-bottom-4 duration-300">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold text-primary animate-in fade-in slide-in-from-top-4 duration-700 delay-150">CRM Pro</CardTitle>
-          <CardDescription className="text-lg mt-2 animate-in fade-in duration-700 delay-200">{t.auth.createAccount}</CardDescription>
+          <CardTitle className="text-3xl font-bold text-primary animate-in fade-in slide-in-from-top-2 duration-300 delay-75">CRM Pro</CardTitle>
+          <CardDescription className="text-lg mt-2 animate-in fade-in duration-300 delay-100">{t.auth.createAccount}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+          <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300 delay-75">
             <div>
               <Label htmlFor="register-business">Nombre</Label>
               <Input
