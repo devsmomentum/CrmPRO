@@ -490,6 +490,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             {/* Search Button */}
             <LeadSearchDialog
               leads={leads}
+              pipelines={pipelines} // Pass pipelines for context
               onSelectLead={(lead) => setSelectedLead(lead)}
               canDelete={isAdminOrOwner}
               onDeleteLeads={handleDeleteMultipleLeads}
@@ -498,7 +499,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 const currentPipelineId = currentPipelineObj?.id
                 try {
                   const results = await searchLeads(companyId!, term, {
-                    pipelineId: currentPipelineId,
+                    // pipelineId: currentPipelineId, // COMENTADO PARA BÚSQUEDA GLOBAL
                     archived: false,
                     limit: 100,
                     order: 'desc'

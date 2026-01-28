@@ -352,7 +352,7 @@ export function ChatWindow({
                                                             </div>
                                                             <div className="flex-1 min-w-0">
                                                                 <p className="text-sm font-bold truncate" title={fileName}>{fileName}</p>
-                                                                <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={cn("text-[10px] font-black uppercase tracking-tight hover:underline flex items-center gap-1 mt-1 opacity-80", isTeam ? "text-white" : "text-primary")}>Descargar</a>
+                                                                <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={cn("text-[10px] font-black uppercase tracking-tight hover:underline flex items-center gap-1 mt-1 opacity-80", isTeam ? "text-white" : "text-primary")}>Abrir enlace</a>
                                                             </div>
                                                         </div>
                                                     )
@@ -382,7 +382,7 @@ export function ChatWindow({
 
                 <MessageInput
                     leadId={lead.id}
-                    channel={'whatsapp'} // TODO: Pasar canal real si está disponible
+                    channel={detectChannel(lead) === 'instagram' ? 'instagram' : 'whatsapp'}
                     disabled={isLoadingMessages}
                     onMessageSent={() => {
                         const newMsg = {

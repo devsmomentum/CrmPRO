@@ -272,7 +272,11 @@ function DashboardWrapper() {
   return (
     <Dashboard
       companyId={currentCompanyId}
-      onShowNotifications={() => { }}
+      onShowNotifications={() => {
+        const currentCompany = companies.find(c => c.id === currentCompanyId)
+        const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
+        navigate(isGuestMode ? '/guest/notifications' : '/notifications')
+      }}
       onNavigateToLead={(leadId) => {
         sessionStorage.setItem('openLeadId', leadId)
         const currentCompany = companies.find(c => c.id === currentCompanyId)
