@@ -111,43 +111,107 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     leadsRef.current = leads
   }, [leads])
 
-  // Leer leadId de sessionStorage para navegar a él (viene de ChatsView "Ver en Leads")
+  // Estado para gestionar la navegación pendiente a un lead (Global Search)
+  // Stages: 'init' -> 'switching_pipeline' -> 'waiting_load' -> 'checking_lead' -> 'scrolling'
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    leadId: string,
+    leadData: Lead, // Guardamos copia del lead para re-inyección
+    pipelineType: string,
+    stage: 'init' | 'switching_pipeline' | 'waiting_load' | 'checking_lead' | 'scrolling',
+    attempt: number
+  } | null>(null)
+
+  // EFECTO: Máquina de estados para la navegación robusta
   useEffect(() => {
-    if (leads.length === 0) return
+    if (!pendingNavigation) return
 
-    const openLeadId = sessionStorage.getItem('openLeadId')
-    if (!openLeadId) return
+    const { stage, leadId, leadData, pipelineType, attempt } = pendingNavigation
 
-    // Limpiar sessionStorage inmediatamente
-    sessionStorage.removeItem('openLeadId')
-
-    // Buscar el lead
-    const targetLead = leads.find(l => l.id === openLeadId)
-    if (!targetLead) {
-      console.log('[PipelineView] Lead no encontrado:', openLeadId)
+    // 1. INICIO: Cambiar pipeline si es necesario
+    if (stage === 'init') {
+      if (activePipeline !== pipelineType) {
+        console.log('[PipelineView] Cambiando pipeline a:', pipelineType)
+        setActivePipeline(pipelineType as PipelineType)
+        setPendingNavigation(prev => prev ? { ...prev, stage: 'switching_pipeline' } : null)
+      } else {
+        // Ya estamos en el pipeline, pasamos directo a verificar
+        setPendingNavigation(prev => prev ? { ...prev, stage: 'checking_lead' } : null)
+      }
       return
     }
 
-    // Cambiar al pipeline correcto si es necesario
-    const leadPipeline = pipelines.find(p => p.id === targetLead.pipeline || p.type === targetLead.pipeline)
-    if (leadPipeline && leadPipeline.type !== activePipeline) {
-      setActivePipeline(leadPipeline.type)
+    // 2. SWITCHING: Dar tiempo a que decante el cambio de estado del tab
+    if (stage === 'switching_pipeline') {
+      const timer = setTimeout(() => {
+        setPendingNavigation(prev => prev ? { ...prev, stage: 'waiting_load' } : null)
+      }, 500) // Pequeña pausa inicial
+      return () => clearTimeout(timer)
     }
 
-    // Destacar el lead
-    setHighlightedLeadId(openLeadId)
+    // 3. WAITING LOAD: Esperar a que el fetch traiga datos (segundos explícitos)
+    if (stage === 'waiting_load') {
+      // El usuario pidió esperar unos segundos.
+      const timer = setTimeout(() => {
+        setPendingNavigation(prev => prev ? { ...prev, stage: 'checking_lead' } : null)
+      }, 1500)
+      return () => clearTimeout(timer)
+    }
 
-    // Hacer scroll al lead después de un delay para que el DOM se actualice
-    setTimeout(() => {
-      const leadCard = document.getElementById(`lead-card-${openLeadId}`)
-      if (leadCard) {
-        leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+    // 4. CHECKING LEAD: Verificar si existe y re-inyectar si falta
+    if (stage === 'checking_lead') {
+      const exists = leads.some(l => l.id === leadId)
+
+      if (!exists) {
+        console.warn('[PipelineView] Lead no visible tras carga. Re-inyectando:', leadId)
+        setLeads(current => {
+          const alreadyThere = current.some(l => l.id === leadId)
+          if (alreadyThere) return current
+          return [...current, leadData]
+        })
+        // Dar tiempo al render
+        const timer = setTimeout(() => {
+          setPendingNavigation(prev => prev ? { ...prev, stage: 'scrolling' } : null)
+        }, 200)
+        return () => clearTimeout(timer)
+      } else {
+        // Ya existe, scrollear
+        setPendingNavigation(prev => prev ? { ...prev, stage: 'scrolling' } : null)
       }
-    }, 500)
+      return
+    }
 
-    // Quitar highlight después de 4 segundos
-    setTimeout(() => setHighlightedLeadId(null), 4000)
-  }, [leads, pipelines])
+    // 5. SCROLLING: Realizar el scroll final
+    if (stage === 'scrolling') {
+      const leadCard = document.getElementById(`lead-card-${leadId}`)
+
+      if (leadCard) {
+        console.log('[PipelineView] Scroll final al lead:', leadId)
+        leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
+        setHighlightedLeadId(leadId)
+
+        // IMPORTANTE: Quitar el overlay DE INMEDIATO para que el usuario vea el lead resaltado
+        setPendingNavigation(null)
+
+        // Mantener el highlight visible por 4 segundos para llamar la atención
+        setTimeout(() => {
+          setHighlightedLeadId(null)
+        }, 4000)
+      } else {
+        // Reintentos cortos por si el DOM aun no pinta
+        if (attempt < 20) {
+          const timer = setTimeout(() => {
+            setPendingNavigation(prev => prev ? { ...prev, attempt: prev.attempt + 1 } : null)
+          }, 200)
+          return () => clearTimeout(timer)
+        } else {
+          console.error('[PipelineView] Falló scroll visual al lead:', leadId)
+          setPendingNavigation(null)
+          toast.error('No se pudo ubicar el lead visualmente')
+        }
+      }
+    }
+
+  }, [pendingNavigation, leads, activePipeline])
 
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
@@ -478,6 +542,20 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="p-4 md:p-6 border-b border-border bg-gradient-to-r from-background via-background to-muted/20">
+
+        {/* Loading Overlay for Global Navigation */}
+        {pendingNavigation && (
+          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center animate-in fade-in duration-300">
+            <div className="flex flex-col items-center gap-4 p-8 bg-card rounded-xl shadow-2xl border border-border">
+              <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <div className="flex flex-col items-center gap-1">
+                <p className="text-base font-semibold">Navegando al lead...</p>
+                <p className="text-xs text-muted-foreground">Cargando pipeline {pendingNavigation.pipelineType}...</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header Row - Title and Actions */}
         <div className="flex items-center justify-between mb-4 gap-3">
           <div className="flex items-center gap-3 shrink-0">
@@ -526,30 +604,16 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 }
               }}
               onNavigateToLead={(lead) => {
-                // Cambiar al pipeline correcto
+                // Iniciar máquina de estados para navegación
                 const leadPipeline = pipelines.find(p => p.id === lead.pipeline || p.type === lead.pipeline)
-                if (leadPipeline) {
-                  setActivePipeline(leadPipeline.type)
-                }
-                // Insertar el lead temporalmente si no está en memoria para poder navegar
-                setLeads((current) => {
-                  const exists = (current || []).some(l => l.id === lead.id)
-                  if (exists) return current
-                  return [...(current || []), lead]
+
+                setPendingNavigation({
+                  leadId: lead.id,
+                  leadData: lead,
+                  pipelineType: leadPipeline?.type || 'sales',
+                  stage: 'init',
+                  attempt: 0
                 })
-                // Destacar el lead temporalmente
-                setHighlightedLeadId(lead.id)
-
-                // Hacer scroll al lead después de un pequeño delay para que el pipeline cambie
-                setTimeout(() => {
-                  const leadCard = document.getElementById(`lead-card-${lead.id}`)
-                  if (leadCard) {
-                    leadCard.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' })
-                  }
-                }, 300)
-
-                // Quitar highlight después de 4 segundos
-                setTimeout(() => setHighlightedLeadId(null), 4000)
               }}
             />
 
