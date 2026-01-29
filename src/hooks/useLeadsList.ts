@@ -345,6 +345,12 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
      */
     const updateLead = useCallback((lead: Lead) => {
         setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, ...lead } : l))
+
+        // Actualizar canal también por si cambió teléfono o nombre
+        setChannelByLead(prev => ({
+            ...prev,
+            [lead.id]: detectChannel(lead)
+        }))
     }, [])
 
     /**
@@ -357,12 +363,25 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
             return [lead, ...prev]
         })
 
+        // Registrar canal del nuevo lead
+        setChannelByLead(prev => ({
+            ...prev,
+            [lead.id]: detectChannel(lead)
+        }))
+
         // También actualizar caché si estamos en activos
         if (chatScope === 'active' && !lead.archived) {
             const cached = getCachedLeads(companyId)
             if (cached) {
                 const newLeads = [lead, ...cached.leads.filter((l: any) => l.id !== lead.id)]
-                updateCachedLeads(companyId, { leads: newLeads })
+
+                // Actualizar map de canales en caché
+                const newChannelMap = { ...cached.lastChannelByLead, [lead.id]: detectChannel(lead) }
+
+                updateCachedLeads(companyId, {
+                    leads: newLeads,
+                    lastChannelByLead: newChannelMap
+                })
             }
         }
     }, [companyId, chatScope])
