@@ -54,6 +54,11 @@ interface ChatListProps {
     onLoadMore: () => void
     onRefresh: (forceRefresh?: boolean) => void
     onOpenSettings?: () => void
+
+    // Búsqueda server-side
+    searchTerm: string
+    onSearchChange: (term: string) => void
+    isSearching: boolean
 }
 
 export const ChatList = memo(function ChatList({
@@ -70,37 +75,38 @@ export const ChatList = memo(function ChatList({
     onScopeChange,
     onLoadMore,
     onRefresh,
-    onOpenSettings
+    onOpenSettings,
+    searchTerm,
+    onSearchChange,
+    isSearching
 }: ChatListProps) {
     // Estados de filtros LOCALES (solo afectan la vista, no la query)
     const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'instagram'>('all')
     const [unreadFilter, setUnreadFilter] = useState(false)
-    const [searchTerm, setSearchTerm] = useState('')
+    // El searchTerm ahora viene del padre (hook)
 
     // Refs
     const listParentRef = useRef<HTMLDivElement | null>(null)
     const filterScrollRef = useRef<HTMLDivElement | null>(null)
 
-    // Filtrar y ordenar leads (filtros locales aplicados aquí)
+    // Filtrar y ordenar leads
     const sortedLeads = useMemo(() => {
         let filtered = leads
-        if (searchTerm.trim()) {
-            const q = searchTerm.toLowerCase()
-            filtered = filtered.filter(l =>
-                (l.name || '').toLowerCase().includes(q) ||
-                (l.phone || '').toLowerCase().includes(q) ||
-                (l.tags && l.tags.some((t: any) => t.name.toLowerCase().includes(q)))
-            )
+
+        // El hook ya filtra por searchTerm si hay búsqueda server-side.
+        // Pero si estamos buscando, NO aplicamos filtros locales de canal/leídos para no confundir resultados.
+        if (!searchTerm) {
+            if (unreadFilter) filtered = filtered.filter(l => (unreadCounts[l.id] || 0) > 0)
+            if (channelFilter !== 'all') filtered = filtered.filter(l => (channelByLead[l.id] || 'whatsapp') === channelFilter)
         }
-        if (unreadFilter) filtered = filtered.filter(l => (unreadCounts[l.id] || 0) > 0)
-        if (channelFilter !== 'all') filtered = filtered.filter(l => (channelByLead[l.id] || 'whatsapp') === channelFilter)
+
         return filtered.sort((a, b) => {
-            // Priorizar chats con mensajes no leídos
+            // 1. Prioridad ABSOLUTA: No leídos primero
             const unreadA = (unreadCounts[a.id] || 0) > 0 ? 1 : 0
             const unreadB = (unreadCounts[b.id] || 0) > 0 ? 1 : 0
             if (unreadA !== unreadB) return unreadB - unreadA
 
-            // Luego ordenar por fecha del último mensaje
+            // 2. Secundario: Fecha más reciente (lastMessageAt o createdAt)
             const dateA = (a.lastMessageAt ? new Date(a.lastMessageAt) : a.createdAt || new Date(0)).getTime()
             const dateB = (b.lastMessageAt ? new Date(b.lastMessageAt) : b.createdAt || new Date(0)).getTime()
             return dateB - dateA
@@ -151,12 +157,16 @@ export const ChatList = memo(function ChatList({
 
                 {/* Barra de búsqueda */}
                 <div className="relative group">
-                    <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    {isSearching ? (
+                        <Spinner className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary animate-spin" />
+                    ) : (
+                        <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                    )}
                     <Input
                         placeholder="Buscar conversación..."
                         className="pl-9 h-10 bg-muted/40 border-none rounded-xl focus-visible:ring-1 focus-visible:ring-primary/30 transition-all"
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => onSearchChange(e.target.value)}
                     />
                 </div>
 
@@ -190,7 +200,7 @@ export const ChatList = memo(function ChatList({
                         </button>
                         <div className="w-px h-4 bg-border mx-1 shrink-0" />
                         <button
-                            onClick={() => { setUnreadFilter(false); setChannelFilter('all'); setSearchTerm(''); onScopeChange('active') }}
+                            onClick={() => { setUnreadFilter(false); setChannelFilter('all'); onSearchChange(''); onScopeChange('active') }}
                             className={cn(
                                 "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap border shrink-0",
                                 !unreadFilter && channelFilter === 'all'

@@ -24,7 +24,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { Lead } from '@/lib/types'
-import { getLeadsPaged, setLeadArchived, deleteLead } from '@/supabase/services/leads'
+import { getLeadsPaged, setLeadArchived, deleteLead, searchLeads } from '@/supabase/services/leads'
 import { getLastMessagesForLeadIds, getUnreadMessagesCount } from '@/supabase/services/mensajes'
 import type { Message as DbMessage } from '@/supabase/services/mensajes'
 import { getCachedLeads, setCachedLeads, updateCachedLeads, invalidateLeadsCache } from '@/lib/chatsCache'
@@ -81,6 +81,12 @@ interface UseLeadsListReturn {
     updateUnreadCount: (leadId: string, count: number) => void
     /** Invalidar caché */
     invalidateCache: () => void
+    /** Término de búsqueda actual */
+    searchTerm: string
+    /** Setter para búsqueda */
+    setSearchTerm: (term: string) => void
+    /** Si está buscando activamente */
+    isSearching: boolean
 }
 
 // Detecta el canal del lead basado en el teléfono y metadata
@@ -133,6 +139,11 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
     const [hasMore, setHasMore] = useState(true)
     const [offset, setOffset] = useState(0)
     const [chatScope, setChatScope] = useState<ChatScope>('active')
+
+    // Búsqueda server-side
+    const [searchTerm, setSearchTerm] = useState('')
+    const [isSearching, setIsSearching] = useState(false)
+    const [searchResults, setSearchResults] = useState<Lead[] | null>(null)
 
     // Datos adicionales
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
@@ -458,7 +469,61 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
         invalidateLeadsCache(companyId)
     }, [companyId])
 
-    // Carga inicial
+    // ==========================================
+    // EFECTO: Búsqueda Server-Side (Debounced)
+    // ==========================================
+    useEffect(() => {
+        if (!searchTerm) {
+            setSearchResults(null)
+            return
+        }
+
+        const timer = setTimeout(async () => {
+            if (searchTerm.length < 2) return
+
+            setIsSearching(true)
+            try {
+                // Si estamos en archivados, buscar en archivados. Si no, default (activos).
+                const results = await searchLeads(companyId, searchTerm, {
+                    archived: chatScope === 'archived',
+                    limit: 20
+                })
+
+                const mapped = (results || []).map(mapDBToLead)
+
+                // Detectar canales para resultados
+                setChannelByLead(prev => {
+                    const next = { ...prev }
+                    mapped.forEach(l => {
+                        if (!next[l.id]) next[l.id] = detectChannel(l)
+                    })
+                    return next
+                })
+
+                setSearchResults(mapped)
+            } catch (err) {
+                console.error('[useLeadsList] Error buscando:', err)
+                toast.error('Error al buscar chats')
+            } finally {
+                setIsSearching(false)
+            }
+        }, 500) // Debounce 500ms
+
+        return () => clearTimeout(timer)
+    }, [searchTerm, companyId, chatScope])
+
+
+    // ==========================================
+    // Carga inicial y lógica de visualización
+    // ==========================================
+
+    // Memoizar leads a mostrar: Resultados de búsqueda O Lista normal
+    const displayedLeads = useMemo(() => {
+        if (searchTerm && searchResults) return searchResults
+        return leads
+    }, [searchTerm, searchResults, leads])
+
+    // Carga inicial (solo si NO hay búsqueda)
     useEffect(() => {
         if (!companyId || !autoLoad) return
 
@@ -488,9 +553,9 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
             // Refrescar conteos en background
             loadUnreadCountsInBatches(cached.leads.map((l: any) => l.id), 'active')
         } else {
-            void loadLeads()
+            if (!searchTerm) void loadLeads()
         }
-    }, [companyId, chatScope, autoLoad])
+    }, [companyId, chatScope, autoLoad, searchTerm])
 
     // Recargar cuando cambia el scope
     useEffect(() => {
@@ -500,7 +565,7 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
     }, [chatScope])
 
     return {
-        leads,
+        leads: displayedLeads, // Retornamos la lista filtrada o completa según estado
         isInitialLoading,
         isFetchingMore,
         loadError,
@@ -517,6 +582,9 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
         removeLead,
         updateLeadOrder,
         updateUnreadCount,
-        invalidateCache
+        invalidateCache,
+        searchTerm,
+        setSearchTerm,
+        isSearching
     }
 }

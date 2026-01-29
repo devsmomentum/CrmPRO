@@ -35,7 +35,10 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
     removeLead,
     updateLeadOrder: updateLeadListOrder,
     updateUnreadCount,
-    addLead
+    addLead,
+    searchTerm,
+    setSearchTerm,
+    isSearching
   } = useLeadsList({ companyId })
 
   // Estados UI locales (no relacionados con datos de leads)
@@ -187,6 +190,9 @@ export function ChatsView({ companyId, onNavigateToPipeline, canDeleteLead = fal
         onLoadMore={fetchMoreLeads}
         onRefresh={loadLeads}
         onOpenSettings={() => setShowChatSettings(true)}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        isSearching={isSearching}
       />
       <ChatWindow
         lead={selectedLead || null}
