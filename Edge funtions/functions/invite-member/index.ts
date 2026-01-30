@@ -2,12 +2,24 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY")!;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-supabase-authorization, x-client-info, apikey, content-type",
+  // Incluir variantes en mayúsculas para mayor compatibilidad con navegadores/proxies
+  "Access-Control-Allow-Headers": [
+    "authorization",
+    "Authorization",
+    "x-supabase-authorization",
+    "X-Supabase-Authorization",
+    "x-client-info",
+    "X-Client-Info",
+    "apikey",
+    "Apikey",
+    "content-type",
+    "Content-Type"
+  ].join(", "),
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -17,6 +29,12 @@ serve(async (req) => {
   try {
     const authHeader = req.headers.get("x-supabase-authorization") ?? req.headers.get("Authorization") ?? req.headers.get("authorization");
     if (!authHeader) {
+      try {
+        const headersObj = Object.fromEntries(Array.from(req.headers.entries()));
+        console.warn('[invite-member][missing-auth-header] Headers received:', headersObj);
+      } catch (_) {
+        console.warn('[invite-member][missing-auth-header] Could not stringify headers');
+      }
       return new Response(JSON.stringify({ error: 'Missing auth header (x-supabase-authorization or Authorization)' }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -43,14 +61,17 @@ serve(async (req) => {
 
     const normalizedEmail = (email || '').trim().toLowerCase();
 
-    // Identify requester user from JWT
-    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      global: { headers: { Authorization: authHeader } },
-    });
-
-    const { data: requesterData, error: requesterError } = await supabaseClient.auth.getUser();
-    const requester = requesterData?.user;
-    if (requesterError || !requester) {
+    // Identify requester user from JWT (decode locally to avoid external dependency)
+    const tokenJwt = authHeader.replace(/^Bearer\s+/i, '');
+    let requester: { id: string; email?: string | null } | null = null;
+    try {
+      const parts = tokenJwt.split('.');
+      if (parts.length !== 3) throw new Error('Malformed JWT');
+      const payloadJson = atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'));
+      const payload = JSON.parse(payloadJson);
+      requester = { id: payload.sub, email: payload.email };
+      if (!requester.id) throw new Error('Missing sub in JWT');
+    } catch (_) {
       return new Response(JSON.stringify({ error: 'Invalid token' }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -59,23 +80,70 @@ serve(async (req) => {
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Authorize: only Owner/Admin of the company can invite
-    const { data: memberData, error: memberError } = await supabaseAdmin
-      .from('empresa_miembros')
-      .select('role, empresa(usuario_id)')
-      .eq('empresa_id', companyId)
-      .eq('usuario_id', requester.id)
-      .single();
+    // Obtener el id de la tabla interna "usuarios" para el mismo email del requester (diagnóstico)
+    let requesterUsuariosId: string | null = null;
+    if (requester.email) {
+      const { data: requesterUsuariosRow, error: requesterUsuariosErr } = await supabaseAdmin
+        .from('usuarios')
+        .select('id')
+        .eq('email', requester.email)
+        .maybeSingle();
+      if (!requesterUsuariosErr && requesterUsuariosRow?.id) {
+        requesterUsuariosId = requesterUsuariosRow.id;
+      }
+      console.log('[invite-member][requester]', { requesterIdAuth: requester.id, requesterEmail: requester.email, requesterUsuariosId });
+    }
 
-    if (memberError || !memberData) {
-      return new Response(JSON.stringify({ error: 'Requester is not a member of this company' }), {
-        status: 403,
+    // Authorize: Owner of the company or Admin member can invite
+    const { data: empresaRow, error: empresaError } = await supabaseAdmin
+      .from('empresa')
+      .select('usuario_id')
+      .eq('id', companyId)
+      .maybeSingle();
+
+    if (empresaError || !empresaRow) {
+      return new Response(JSON.stringify({ error: 'Invalid companyId or company not found' }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const isOwner = memberData.empresa.usuario_id === requester.id;
-    const isAdmin = memberData.role === 'admin';
+    const isOwner = empresaRow.usuario_id === requester.id;
+    const matchesUsuariosId = requesterUsuariosId ? (empresaRow.usuario_id === requesterUsuariosId) : false;
+    console.log('[invite-member][owner-check]', {
+      companyId,
+      ownerIdAuth: empresaRow.usuario_id,
+      requesterIdAuth: requester.id,
+      requesterEmail: requester.email,
+      requesterUsuariosId,
+      isOwner,
+      ownerMatchesRequesterUsuarios: matchesUsuariosId
+    });
+    let isAdmin = false;
+
+    if (!isOwner) {
+      const { data: memberRow, error: memberCheckError } = await supabaseAdmin
+        .from('empresa_miembros')
+        .select('role')
+        .eq('empresa_id', companyId)
+        .eq('usuario_id', requester.id)
+        .maybeSingle();
+
+      console.log('[invite-member][auth-check]', {
+        companyId,
+        requesterId: requester.id,
+        ownerId: empresaRow.usuario_id,
+        memberRowRole: memberRow?.role,
+        memberCheckError: memberCheckError?.message
+      });
+
+      if (!memberCheckError && memberRow) {
+        isAdmin = memberRow.role === 'admin';
+      }
+    }
+
+    console.log('[invite-member][auth-result]', { isOwner, isAdmin, companyId });
+
     if (!isOwner && !isAdmin) {
       return new Response(JSON.stringify({ error: 'Unauthorized: Only Admins or Owners can invite members' }), {
         status: 403,
@@ -158,17 +226,72 @@ serve(async (req) => {
         token: token,
         invited_nombre: name,
         invited_titulo_trabajo: role,
-        permission_role: permissionRole || 'viewer',
         pipeline_ids: Array.isArray(pipelineIds) ? pipelineIds : []
       });
 
     if (dbError) throw dbError;
 
-    // 3. Enviar correo vía Resend si está configurado, y reportar estado
-    const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
-    const RESEND_DOMAIN = Deno.env.get('RESEND_DOMAIN');
-    const RESEND_FROM = Deno.env.get('RESEND_FROM') || (RESEND_DOMAIN ? `no-reply@${RESEND_DOMAIN}` : undefined);
+    // 3. Enviar correo vía proveedor (Resend) con soporte multicliente
+    // Precedencia de configuración:
+    //   a) Overrides de prueba vía headers (solo Owner/Admin)
+    //   b) Integración guardada por empresa (tabla integraciones + integracion_credenciales)
+    //   c) Variables de entorno globales
     const ENABLE_EMAILS = (Deno.env.get('ENABLE_EMAILS') || 'true').toLowerCase();
+
+    // Intentar resolver configuración por empresa desde base de datos
+    async function resolveEmailConfig() {
+      try {
+        const { data: integration } = await supabaseAdmin
+          .from('integraciones')
+          .select('*')
+          .eq('empresa_id', companyId)
+          .eq('provider', 'resend')
+          .maybeSingle();
+
+        let credsMap: Record<string, string> = {};
+        if (integration?.id) {
+          const { data: creds } = await supabaseAdmin
+            .from('integracion_credenciales')
+            .select('key, value')
+            .eq('integracion_id', integration.id);
+          for (const c of (creds || []) as Array<{ key: string; value: string }>) {
+            credsMap[c.key] = c.value;
+          }
+        }
+
+        const envDomain = Deno.env.get('RESEND_DOMAIN');
+        const envFrom = Deno.env.get('RESEND_FROM') || (envDomain ? `no-reply@${envDomain}` : undefined);
+        return {
+          apiKey: credsMap['api_key'] || Deno.env.get('RESEND_API_KEY'),
+          from: credsMap['from'] || envFrom,
+          domain: credsMap['domain'] || envDomain,
+        } as { apiKey?: string; from?: string; domain?: string };
+      } catch (e) {
+        console.warn('[invite-member] Error resolviendo integración de correo:', e);
+        const envDomain = Deno.env.get('RESEND_DOMAIN');
+        return {
+          apiKey: Deno.env.get('RESEND_API_KEY'),
+          from: Deno.env.get('RESEND_FROM') || (envDomain ? `no-reply@${envDomain}` : undefined),
+          domain: envDomain
+        };
+      }
+    }
+
+    // Overrides de prueba desde headers (no persistentes). Solo se aplican si es Owner/Admin.
+    const overrideProvider = req.headers.get('x-email-provider') || req.headers.get('X-Email-Provider');
+    const overrideApiKey = req.headers.get('x-email-api-key') || req.headers.get('X-Email-Api-Key');
+    const overrideFrom = req.headers.get('x-email-from') || req.headers.get('X-Email-From');
+    const overrideDomain = req.headers.get('x-email-domain') || req.headers.get('X-Email-Domain');
+
+    let emailCfg = await resolveEmailConfig();
+    if ((isOwner || isAdmin) && (overrideProvider === 'resend')) {
+      emailCfg = {
+        apiKey: overrideApiKey || emailCfg.apiKey,
+        from: overrideFrom || emailCfg.from,
+        domain: overrideDomain || emailCfg.domain,
+      };
+      console.log('[invite-member] Aplicando overrides de correo via headers para pruebas');
+    }
 
     // Usar el origen de la petición (navegador) para construir el link correcto, 
     // útil para desarrollo local en puertos dinámicos.
@@ -181,10 +304,10 @@ serve(async (req) => {
     if (ENABLE_EMAILS === 'false' || ENABLE_EMAILS === '0' || ENABLE_EMAILS === 'off') {
       console.warn('[invite-member] Emails deshabilitados por ENABLE_EMAILS');
       emailResult = { sent: false, reason: 'Emails disabled by ENABLE_EMAILS' };
-    } else if (!RESEND_API_KEY) {
+    } else if (!emailCfg.apiKey) {
       console.warn('[invite-member] Falta RESEND_API_KEY, se omite envío de correo');
       emailResult = { sent: false, reason: 'Missing RESEND_API_KEY' };
-    } else if (!RESEND_FROM) {
+    } else if (!emailCfg.from) {
       console.warn('[invite-member] Falta RESEND_FROM o RESEND_DOMAIN para construir el remitente verificado');
       emailResult = { sent: false, reason: 'Missing RESEND_FROM/RESEND_DOMAIN' };
     } else {
@@ -305,18 +428,19 @@ serve(async (req) => {
 
       // Log remitente y destinatario para diagnóstico
       console.log('[invite-member] Sending email via Resend', {
-        from: `Invitaciones <${RESEND_FROM}>`,
+        from: `Invitaciones <${emailCfg.from}>`,
         to: normalizedEmail,
+        tenantDomain: emailCfg.domain || null,
       });
 
       const sendRes = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${RESEND_API_KEY}`,
+          'Authorization': `Bearer ${emailCfg.apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: `CRM Pro <${RESEND_FROM}>`,
+          from: `CRM Pro <${emailCfg.from}>`,
           to: normalizedEmail,
           subject: 'Invitación a un equipo',
           html
@@ -333,7 +457,7 @@ serve(async (req) => {
         const validationHint = (statusCode === 403 && /testing emails|verify a domain/i.test(baseReason))
           ? 'El dominio/remitente todavía no está verificado en Resend o estás usando un FROM distinto al dominio verificado.'
           : undefined;
-        console.error('[invite-member] Error enviando correo Resend', { statusCode, baseReason, from: RESEND_FROM, to: normalizedEmail });
+        console.error('[invite-member] Error enviando correo Resend', { statusCode, baseReason, from: emailCfg.from, to: normalizedEmail });
         emailResult = { sent: false, reason: `Resend ${statusCode}: ${baseReason}${validationHint ? ' - ' + validationHint : ''}` };
       } else {
         emailResult = { sent: true };

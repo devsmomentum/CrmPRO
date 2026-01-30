@@ -60,21 +60,58 @@ export async function sendMessage(
 ) {
   // Si es un mensaje del equipo, usamos la Edge Function para que también se envíe a la Super API
   if (sender === 'team') {
-    const { data, error } = await supabase.functions.invoke('send-message', {
-      body: {
-        lead_id: leadId,
-        content: content || undefined,
-        channel,
-        media
-      }
-    })
-    // Debug: superficie la respuesta completa de la Edge Function
-    if (error) {
-      console.error('[sendMessage] Edge error send-message:', error)
-      throw error
+    // Enviar con esquema de fallback de autenticación como en invitations
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError) throw sessionError
+    const session = sessionData.session
+    if (!session) throw new Error('Debes iniciar sesión para enviar mensajes')
+
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+    if (!anonKey || !supabaseUrl) throw new Error('Faltan variables: VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY')
+
+    const url = `${supabaseUrl}/functions/v1/send-message`
+    const body = {
+      lead_id: leadId,
+      content: content || undefined,
+      channel,
+      media
     }
-    console.log('[sendMessage] Edge response send-message:', data)
-    return data as Message
+
+    const call = async (headers: Record<string, string>) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: anonKey,
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      })
+      const rawText = await res.text()
+      let data: any = {}
+      try { data = rawText ? JSON.parse(rawText) : {} } catch { data = { raw: rawText } }
+      return { res, data, rawText }
+    }
+
+    // Intento 1: Authorization = JWT del usuario
+    const first = await call({ Authorization: `Bearer ${session.access_token}` })
+    if (first.res.ok) return first.data as Message
+
+    // Si no es 401, propagar el error
+    if (first.res.status !== 401) {
+      const sbRequestId = first.res.headers.get('sb-request-id') || first.res.headers.get('x-sb-request-id')
+      const detail = first.data?.error || first.data?.message || first.rawText || ''
+      throw new Error(`Edge Function send-message devolvió ${first.res.status}` + (sbRequestId ? ` (sb-request-id: ${sbRequestId})` : '') + (detail ? `: ${detail}` : ''))
+    }
+
+    // Intento 2: Authorization = anonKey; JWT del usuario en x-supabase-authorization
+    const second = await call({ Authorization: `Bearer ${anonKey}`, 'x-supabase-authorization': `Bearer ${session.access_token}` })
+    if (second.res.ok) return second.data as Message
+
+    const sbRequestId = second.res.headers.get('sb-request-id') || second.res.headers.get('x-sb-request-id')
+    const detail = second.data?.error || second.data?.message || second.rawText || ''
+    throw new Error(`Edge Function send-message devolvió ${second.res.status}` + (sbRequestId ? ` (sb-request-id: ${sbRequestId})` : '') + (detail ? `: ${detail}` : ''))
   }
 
   // Si por alguna razón insertamos un mensaje manual como 'lead' (simulación), va directo a la BD
