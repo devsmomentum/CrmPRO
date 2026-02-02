@@ -7,7 +7,7 @@ import { Lead, Pipeline, PipelineType, TeamMember, Stage } from '@/lib/types'
 // import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Plus, Funnel, Trash, CaretLeft, CaretRight } from '@phosphor-icons/react'
+import { Plus, Funnel, Trash, CaretLeft, CaretRight, Download } from '@phosphor-icons/react'
 import { LeadDetailSheet } from './LeadDetailSheet'
 import { AddStageDialog } from './AddStageDialog'
 import { AddLeadDialog } from './AddLeadDialog'
@@ -41,6 +41,7 @@ import { Building } from '@phosphor-icons/react'
 import { PipelineBoard } from './pipeline/PipelineBoard'
 import { Company } from './CompanyManagement'
 import { LeadSearchDialog } from './LeadSearchDialog'
+import { ExportLeadsDialog } from './leads/ExportLeadsDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 interface User {
@@ -615,6 +616,25 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                   attempt: 0
                 })
               }}
+            />
+
+            {/* Export Button */}
+            <ExportLeadsDialog
+              leads={pipelineLeads}
+              stages={currentPipeline?.stages || []}
+              teamMembers={teamMembers}
+              companyName={currentCompany?.name}
+              trigger={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2.5 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                  title="Exportar Leads"
+                >
+                  <Download size={16} />
+                  <span className="hidden lg:inline ml-1.5 text-xs">Exportar</span>
+                </Button>
+              }
             />
 
             {currentPipeline && (
