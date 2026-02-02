@@ -7,7 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-// Interface para el objeto media según Super API
 interface MediaPayload {
   downloadUrl: string
   fileName: string
@@ -16,153 +15,161 @@ interface MediaPayload {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  let currentStep = 'Inicio';
+
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-    console.log(supabaseClient)
-    // Ahora también aceptamos 'media' para archivos multimedia
-    const { lead_id, content, channel, media } = await req.json() as {
+    currentStep = 'Validar Entorno';
+    // SUPABASE_URL y KEY son obligatorias para el cliente
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    console.log(`[Debug] SUPABASE_URL: '${supabaseUrl}'`);
+
+    if (!supabaseUrl || !supabaseServiceKey) throw new Error("Faltan variables de entorno de Supabase");
+    if (supabaseUrl === '.') throw new Error("SUPABASE_URL es '.' (inválido)");
+
+    currentStep = 'Crear Cliente Supabase';
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+
+    currentStep = 'Parsear JSON';
+    const body = await req.json();
+    const { lead_id, content, channel, media } = body as {
       lead_id: string
       content?: string
       channel?: string
       media?: MediaPayload
-    }
+    };
 
-    // 1. Obtener datos del Lead (necesitamos el teléfono)
+    currentStep = 'Buscar Lead';
+    console.log(`[Debug] Buscando lead: ${lead_id}`);
     const { data: lead, error: leadError } = await supabaseClient
       .from('lead')
-      .select('telefono')
+      .select('telefono, empresa_id')
       .eq('id', lead_id)
-      .single()
+      .single();
 
-    if (leadError || !lead || !lead.telefono) {
-      throw new Error('No se encontró el lead o no tiene teléfono')
+    if (leadError || !lead || !lead.telefono) throw new Error("Lead no encontrado o sin teléfono");
+
+    currentStep = 'Preparar Super API';
+    // Valores por defecto de entorno
+    let SUPER_API_KEY = Deno.env.get('SUPER_API_SECRET_TOKEN');
+    let CLIENT_ID = Deno.env.get('SUPER_API_CLIENT');
+
+    // URL base por defecto
+    let BASE_URL = "https://v4.iasuperapi.com/api/v1";
+
+    const envUrl = Deno.env.get('SUPER_API_URL');
+    if (envUrl && envUrl.length > 5 && envUrl !== '.') {
+      BASE_URL = envUrl.replace(/\/$/, "");
     }
 
-    // 2. Enviar a Super API
-    const SUPER_API_URL = Deno.env.get('SUPER_API_URL')
-    const SUPER_API_KEY = Deno.env.get('SUPER_API_SECRET_TOKEN')
+    // Intentar obtener credenciales específicas de la empresa (Multitenant)
+    if (lead.empresa_id) {
+      const { data: integration } = await supabaseClient
+        .from('integraciones')
+        .select('id')
+        .eq('empresa_id', lead.empresa_id)
+        .eq('provider', 'chat')
+        .eq('status', 'active')
+        .maybeSingle();
 
-  console.log("SUPER_API_URL:",SUPER_API_URL)
-  console.log("SUPER_API_KEY:",SUPER_API_KEY)
+      if (integration) {
+        const { data: creds } = await supabaseClient
+          .from('integracion_credenciales')
+          .select('key, value')
+          .eq('integracion_id', integration.id);
 
+        if (creds) {
+          const apiToken = creds.find((c: any) => c.key === 'api_token' || c.key === 'token')?.value;
+          if (apiToken) SUPER_API_KEY = apiToken;
 
-    if (SUPER_API_URL && SUPER_API_KEY) {
-      // Determinar plataforma y chatId
-      let platform = 'wws'; // Por defecto whatsapp
-      
-      if (channel === 'instagram') {
-        platform = 'instagram';
-      } else if (channel === 'whatsapp') {
-        platform = 'wws';
-      } else if (channel) {
-        platform = channel;
+          const client = creds.find((c: any) => c.key === 'client')?.value;
+          if (client) CLIENT_ID = client;
+
+          const customUrl = creds.find((c: any) => c.key === 'api_url')?.value;
+          if (customUrl && customUrl.length > 5 && customUrl !== '.') {
+            BASE_URL = customUrl.replace(/\/$/, "");
+          }
+        }
+      }
+    }
+
+    if (SUPER_API_KEY) {
+      currentStep = 'Fetch Super API';
+
+      let targetUrl = BASE_URL;
+
+      // Validar CLIENT_ID si estamos usando la URL por defecto v4
+      if (BASE_URL.includes("v4.iasuperapi.com") && !CLIENT_ID) {
+        throw new Error("Falta configurar SUPER_API_CLIENT (Client ID) para usar la API v4");
       }
 
-      let chatId = '';
-      const rawPhone = String(lead.telefono || '');
+      // Lógica de construcción de URL: BASE_URL / CLIENT_ID / messages
+      if (CLIENT_ID && !targetUrl.includes(CLIENT_ID)) {
+        targetUrl = `${BASE_URL}/${CLIENT_ID}/messages`;
+      } else {
+        // Fallback: Si no hay cliente, intentamos asumir que BASE_URL ya incluía el path
+        if (!targetUrl.endsWith('/messages')) {
+          targetUrl = `${targetUrl}/messages`;
+        }
+      }
 
+      console.log(`[Debug] Target URL calculada: ${targetUrl}`);
+
+      let platform = 'wws';
+      if (channel === 'instagram') platform = 'instagram';
+      else if (channel) platform = channel;
+
+      let chatId = String(lead.telefono || '');
       if (platform === 'wws') {
-        // Lógica para WhatsApp
-        const cleanPhone = rawPhone.replace(/\D/g, '')
-        chatId = cleanPhone.includes('@c.us') ? cleanPhone : `${cleanPhone}@c.us`
-      } else {
-        // Lógica para Instagram (u otros)
-        // Usamos el valor tal cual, asumiendo que es el ID correcto
-        chatId = rawPhone.trim()
+        chatId = chatId.replace(/\D/g, '');
+        chatId = chatId.includes('@c.us') ? chatId : `${chatId}@c.us`;
       }
 
-      // Construir payload según Super API
-      const apiPayload: Record<string, unknown> = {
-        chatId: chatId,
-        platform: platform
-      }
+      const apiPayload: any = { chatId, platform, message: content };
+      if (media?.downloadUrl) apiPayload.media = { downloadUrl: media.downloadUrl, fileName: media.fileName || 'file' };
 
-      // Si hay mensaje de texto, agregarlo
-      if (content) {
-        apiPayload.message = content
-      }
-
-      // Si hay media, agregarlo según formato Super API
-      if (media && media.downloadUrl) {
-        apiPayload.media = {
-          downloadUrl: media.downloadUrl,
-          fileName: media.fileName || 'attachment'
-        }
-      }
-
-      console.log(`[DEBUG] Lead Phone Original: '${lead.telefono}'`);
-      console.log(`[DEBUG] Final ChatId: '${chatId}'`);
-      console.log(`[DEBUG] Platform: '${platform}'`);
-      console.log(`[DEBUG] Has Media: ${!!media}`);
-      if (media) {
-        console.log(`[DEBUG] Media URL: ${media.downloadUrl}`);
-        console.log(`[DEBUG] Media FileName: ${media.fileName}`);
-      }
-      console.log(`[DEBUG] Payload:`, JSON.stringify(apiPayload));
-
-      const response = await fetch(SUPER_API_URL, {
+      const response = await fetch(targetUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPER_API_KEY}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPER_API_KEY}` },
         body: JSON.stringify(apiPayload)
-      })
+      });
 
-      const respText = await response.text()
       if (!response.ok) {
-        console.error('Error enviando a Super API:', response.status, respText)
-        throw new Error(`Error de Super API: ${response.status} ${respText}`)
-      } else {
-        console.log('Envío a Super API OK:', response.status, respText)
+        const txt = await response.text();
+        throw new Error(`Super API Error ${response.status} en ${targetUrl}: ${txt}`);
       }
-    } else {
-      console.warn('Variables de entorno SUPER_API_URL o SUPER_API_KEY no configuradas. Simulando envío.')
     }
 
-    // 3. Guardar en nuestra base de datos (Historial)
-    // Si hay media, guardamos la URL junto con el contenido
-    const finalContent = media
-      ? (content ? `${content}\n${media.downloadUrl}` : media.downloadUrl)
-      : content
-
-    // Metadata para archivos multimedia
-    const metadata = media
-      ? {
-        type: 'media',
-        data: {
-          mediaUrl: media.downloadUrl,
-          fileName: media.fileName
-        }
-      }
-      : null
+    currentStep = 'Guardar en DB';
+    const finalContent = media ? (content ? `${content}\n${media.downloadUrl}` : media.downloadUrl) : content;
+    const metadata = media ? { type: 'media', data: { mediaUrl: media.downloadUrl, fileName: media.fileName } } : null;
 
     const { data: message, error: insertError } = await supabaseClient
       .from('mensajes')
       .insert({
-        lead_id: lead_id,
+        lead_id,
         content: finalContent,
         sender: 'team',
         channel: channel || 'whatsapp',
         read: true,
-        metadata: metadata
+        metadata
       })
       .select()
-      .single()
+      .single();
 
-    if (insertError) throw insertError
+    if (insertError) throw insertError;
 
     return new Response(JSON.stringify(message), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
-    })
+    });
 
-  } catch (error) {
-    console.error(error)
-    return new Response(JSON.stringify({ error: error.message }), {
+  } catch (error: any) {
+    console.error(`[Error Fatal] Paso: ${currentStep}. Detalle:`, error);
+    return new Response(JSON.stringify({
+      error: `[${currentStep}] ${error.message}`
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     })

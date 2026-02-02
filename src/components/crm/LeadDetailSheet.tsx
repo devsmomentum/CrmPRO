@@ -347,9 +347,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
       setMessageInput('')
       toast.success(t.messages.messageSent)
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
-      toast.error('Error enviando mensaje')
+      toast.error(`Error: ${e.message || 'No se pudo enviar el mensaje'}`)
     }
   }
 

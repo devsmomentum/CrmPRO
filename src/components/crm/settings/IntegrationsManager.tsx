@@ -14,6 +14,8 @@ interface Props {
 export function IntegrationsManager({ empresaId }: Props) {
   const [webhookSecret, setWebhookSecret] = useState('')
   const [apiToken, setApiToken] = useState('')
+  const [apiUrl, setApiUrl] = useState('')
+  const [client, setClient] = useState('')
   const [allowedPhone, setAllowedPhone] = useState('')
   const [testMode, setTestMode] = useState(false)
 
@@ -38,8 +40,12 @@ export function IntegrationsManager({ empresaId }: Props) {
           .eq('integracion_id', integration.id)
         const secret = (creds || []).find(c => c.key === 'webhook_secret')?.value || ''
         const token = (creds || []).find(c => c.key === 'api_token')?.value || ''
+        const url = (creds || []).find(c => c.key === 'api_url')?.value || ''
+        const cli = (creds || []).find(c => c.key === 'client')?.value || ''
         setWebhookSecret(secret)
         setApiToken(token)
+        setApiUrl(url)
+        setClient(cli)
       }
     }
     load()
@@ -53,17 +59,20 @@ export function IntegrationsManager({ empresaId }: Props) {
     try {
       const integration = await upsertIntegration(empresaId, 'chat', { allowed_phone: allowedPhone || null, test_mode: testMode })
       // Guardar credenciales
-      if (webhookSecret) {
-        const { error } = await supabase
-          .from('integracion_credenciales')
-          .upsert({ integracion_id: integration.id, key: 'webhook_secret', value: webhookSecret }, { onConflict: 'integracion_id,key' })
-        if (error) throw error
-      }
-      if (apiToken) {
-        const { error } = await supabase
-          .from('integracion_credenciales')
-          .upsert({ integracion_id: integration.id, key: 'api_token', value: apiToken }, { onConflict: 'integracion_id,key' })
-        if (error) throw error
+      const credentials = [
+        { key: 'webhook_secret', value: webhookSecret },
+        { key: 'api_token', value: apiToken },
+        { key: 'api_url', value: apiUrl },
+        { key: 'client', value: client }
+      ]
+
+      for (const cred of credentials) {
+        if (cred.value) {
+          const { error } = await supabase
+            .from('integracion_credenciales')
+            .upsert({ integracion_id: integration.id, key: cred.key, value: cred.value }, { onConflict: 'integracion_id,key' })
+          if (error) throw error
+        }
       }
       toast.success('Integración guardada')
     } catch (e: any) {
@@ -95,6 +104,22 @@ export function IntegrationsManager({ empresaId }: Props) {
               onChange={(e) => setApiToken(e.target.value)}
               type="password"
               placeholder="token de acceso para consultas de perfil"
+            />
+          </div>
+          <div>
+            <Label>API URL (Opcional)</Label>
+            <Input
+              value={apiUrl}
+              onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="https://v4.iasuperapi.com/api/v1 (por defecto)"
+            />
+          </div>
+          <div>
+            <Label>Client ID (Opcional)</Label>
+            <Input
+              value={client}
+              onChange={(e) => setClient(e.target.value)}
+              placeholder="Identificador de cliente en SuperAPI"
             />
           </div>
           <div>
