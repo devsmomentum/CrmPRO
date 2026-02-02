@@ -540,6 +540,25 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   // Se eliminaron ~110 líneas de código duplicado.
   // ==========================================
 
+  // ... existing code ...
+
+  // Optimistic UI update helper (to avoid double creation)
+  const handleLeadAddedToState = (lead: Lead) => {
+    let added = false
+    setLeads((current) => {
+      if (current.some(l => l.id === lead.id)) return current
+      added = true
+      return [...current, lead]
+    })
+
+    if (added) {
+      setStageCounts(prev => ({
+        ...prev,
+        [lead.stage]: (prev[lead.stage] || 0) + 1
+      }))
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="p-4 md:p-6 border-b border-border bg-gradient-to-r from-background via-background to-muted/20">
@@ -695,7 +714,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                     pipelineId={currentPipeline?.id}
                     stages={currentPipeline?.stages || []}
                     teamMembers={teamMembers}
-                    onAdd={handleAddLead}
+                    onAdd={handleLeadAddedToState}
                     onImport={handleImportLeads}
                     companies={companies}
                     currentUser={user}
@@ -802,7 +821,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onDeleteStage={handleDeleteStage}
-        onAddLead={handleAddLead}
+        onAddLead={handleLeadAddedToState}
         onImportLeads={handleImportLeads}
         onLoadMore={handleLoadMoreStage}
         onDragStart={handleDragStart}
@@ -815,6 +834,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         }}
         t={t}
       />
+
 
       {/* Botón inferior eliminado: ahora hay botones arriba y por etapa */}
 

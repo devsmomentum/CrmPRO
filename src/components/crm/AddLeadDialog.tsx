@@ -305,10 +305,10 @@ export function AddLeadDialog({
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
               placeholder={`Cliente: [Nombre del Cliente]
-Vendedor: [Nombre Vendedor]
-Costo: 100
-Contacto: email@cliente.com
-...`}
+                            Vendedor: [Nombre Vendedor]
+                            Costo: 100
+                            Contacto: email@cliente.com
+                            ...`}
               className="min-h-[200px] font-mono text-sm"
             />
             <Button onClick={processPasteText} className="w-full">

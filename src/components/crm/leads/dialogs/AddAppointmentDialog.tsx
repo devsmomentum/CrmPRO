@@ -4,31 +4,30 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Appointment, Lead, TeamMember } from '@/lib/types'
+import { Lead } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
-import { useKV } from '@github/spark/hooks'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { CreateAppointmentDTO } from '@/supabase/services/appointments'
 
 interface AddAppointmentDialogProps {
   open: boolean
   onClose: () => void
-  onAdd: (appointment: Appointment) => void
+  onAdd: (appointment: CreateAppointmentDTO) => Promise<void>
+  leads: Lead[]
 }
 
-export function AddAppointmentDialog({ open, onClose, onAdd }: AddAppointmentDialogProps) {
+export function AddAppointmentDialog({ open, onClose, onAdd, leads }: AddAppointmentDialogProps) {
   const t = useTranslation('es')
-  const [leads] = useKV<Lead[]>('leads', [])
-  const [teamMembers] = useKV<TeamMember[]>('team-members', [])
-  
+
   const [leadId, setLeadId] = useState('')
-  const [teamMemberId, setTeamMemberId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!leadId || !title.trim() || !startTime || !endTime) {
       toast.error('Completa todos los campos requeridos')
       return
@@ -42,26 +41,28 @@ export function AddAppointmentDialog({ open, onClose, onAdd }: AddAppointmentDia
       return
     }
 
-    const newAppointment: Appointment = {
-      id: Date.now().toString(),
-      leadId,
-      teamMemberId: teamMemberId || 'default',
-      title: title.trim(),
-      description: description.trim(),
-      startTime: start,
-      endTime: end,
-      status: 'scheduled'
+    setIsSubmitting(true)
+    try {
+      await onAdd({
+        lead_id: leadId,
+        title: title.trim(),
+        description: description.trim(),
+        start_time: start,
+        end_time: end,
+        status: 'scheduled',
+        empresa_id: '' // Parent will override this
+      })
+      resetForm()
+      onClose()
+    } catch (e) {
+      // Error handled in parent/hook usually
+    } finally {
+      setIsSubmitting(false)
     }
-
-    onAdd(newAppointment)
-    resetForm()
-    onClose()
-    toast.success('Cita creada exitosamente')
   }
 
   const resetForm = () => {
     setLeadId('')
-    setTeamMemberId('')
     setTitle('')
     setDescription('')
     setStartTime('')
@@ -85,22 +86,6 @@ export function AddAppointmentDialog({ open, onClose, onAdd }: AddAppointmentDia
                 {(leads || []).map(lead => (
                   <SelectItem key={lead.id} value={lead.id}>
                     {lead.name} - {lead.company}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="appointment-team">Asignado a</Label>
-            <Select value={teamMemberId} onValueChange={setTeamMemberId}>
-              <SelectTrigger id="appointment-team">
-                <SelectValue placeholder="Selecciona un miembro" />
-              </SelectTrigger>
-              <SelectContent>
-                {(teamMembers || []).map(member => (
-                  <SelectItem key={member.id} value={member.id}>
-                    {member.name} - {member.role}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -149,8 +134,10 @@ export function AddAppointmentDialog({ open, onClose, onAdd }: AddAppointmentDia
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={handleSubmit} className="flex-1">Crear Cita</Button>
-            <Button onClick={onClose} variant="outline">Cancelar</Button>
+            <Button onClick={handleSubmit} className="flex-1" disabled={isSubmitting}>
+              {isSubmitting ? 'Creando...' : 'Crear Cita'}
+            </Button>
+            <Button onClick={onClose} variant="outline" disabled={isSubmitting}>Cancelar</Button>
           </div>
         </div>
       </DialogContent>

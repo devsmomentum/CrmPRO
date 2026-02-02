@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const login = async (email: string, password: string) => {
-        setIsLoading(true)
+        // No activamos isLoading global para evitar desmontar la vista de Login
         try {
             console.log('[LOGIN] iniciando login para', email)
             const authUser = await authLogin(email, password)
@@ -174,16 +174,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 row = await getUsuarioById(authUser.id)
             } catch (err: any) {
                 console.log('[LOGIN] usuario no encontrado en tabla usuarios, intentando crear...')
-                
+
                 try {
-                     row = await createUsuario({
+                    row = await createUsuario({
                         id: authUser.id,
                         email: authUser.email || email,
                         nombre: authUser.email?.split('@')[0] || 'Usuario'
                     })
                 } catch (createErr: any) {
                     console.error('[LOGIN] Error creando usuario:', createErr)
-                    
+
                     // Manejo de duplicados (email o ID)
                     if (createErr.message?.includes('duplicate key') || createErr.code === '23505') {
                         // Caso: Conflicto de Email (Usuario borrado de Auth pero no de base de datos)
@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                                 // 1. Buscar el usuario antiguo por email
                                 const { data: existingUser } = await supabase
                                     .from('usuarios').select('*').eq('email', email).single()
-                                
+
                                 if (existingUser) {
                                     // 2. Actualizar su ID al nuevo ID de Auth
                                     console.log(`[LOGIN] Actualizando ID de ${existingUser.id} a ${authUser.id}`)
@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                                         .eq('email', email)
                                         .select()
                                         .single()
-                                    
+
                                     if (updateError) throw updateError
                                     row = updatedUser
                                 } else {
@@ -272,8 +272,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 toast.error(e.message || 'Error iniciando sesión')
             }
             throw e
-        } finally {
-            setIsLoading(false)
         }
     }
 
@@ -340,11 +338,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setUser(null)
             setCompanies([])
             setCurrentCompanyIdState('')
-            
+
             // Limpiar localStorage explícitamente para evitar estados zombies
             localStorage.removeItem('supabase.auth.token')
             localStorage.removeItem('current-user')
-            
+
             toast.success('¡Sesión cerrada!')
         }
     }
@@ -371,11 +369,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const resetPassword = async (email: string) => {
-        setIsLoading(true)
+        // No activamos isLoading global
         // Obtenemos la URL actual para asegurar que la redirección vuelva a este mismo entorno (local o prod)
         const redirectUrl = `${window.location.origin}/update-password`
         console.log('[AUTH] Intentando enviar correo de recuperación con redirección a:', redirectUrl)
-        
+
         try {
             const { error } = await supabase.auth.resetPasswordForEmail(email, {
                 redirectTo: redirectUrl
@@ -386,8 +384,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Error resetting password:', error)
             toast.error(error.message || 'Error al enviar correo de recuperación')
             throw error
-        } finally {
-            setIsLoading(false)
         }
     }
 

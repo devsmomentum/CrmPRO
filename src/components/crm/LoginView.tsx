@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { CircleNotch, CheckCircle } from '@phosphor-icons/react'
+import { LoadingScreen } from '@/components/ui/LoadingScreen'
 
 interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<void>
@@ -47,7 +48,9 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
       }
     } catch (error: any) {
       console.error('Login/Reset error:', error)
-      setErrorMessage(error.message || 'Ha ocurrido un error. Inténtalo de nuevo.')
+      const msg = error.message || 'Ha ocurrido un error. Inténtalo de nuevo.'
+      setErrorMessage(msg)
+      toast.error(msg)
     } finally {
       setIsLoading(false)
     }
@@ -59,6 +62,10 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
     } else {
       navigate('/register')
     }
+  }
+
+  if (isLoading) {
+    return <LoadingScreen />
   }
 
   if (isResetting && isSuccess) {
@@ -157,7 +164,7 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
               </Button>
 
               {errorMessage && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-md text-center animate-in fade-in slide-in-from-top-2">
+                <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-md text-center font-medium">
                   {errorMessage}
                 </div>
               )}

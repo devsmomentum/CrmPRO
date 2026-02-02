@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { usePersistentState } from '@/hooks/usePersistentState'
 import { Appointment, Lead } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -8,10 +7,14 @@ import { format, isSameDay } from 'date-fns'
 import { Plus, Clock } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { AddAppointmentDialog } from './leads/dialogs/AddAppointmentDialog'
+import { useAppointments } from '@/hooks/useAppointments'
+import { useLeadsList } from '@/hooks/useLeadsList'
+import { CreateAppointmentDTO } from '@/supabase/services/appointments'
 
 export function CalendarView({ companyId }: { companyId?: string }) {
-  const [appointments, setAppointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
-  const [leads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const { appointments, addAppointment, isLoading: isLoadingAppointments } = useAppointments(companyId || '')
+  const { leads } = useLeadsList({ companyId: companyId || '', autoLoad: true })
+
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [showAddDialog, setShowAddDialog] = useState(false)
 
@@ -23,8 +26,13 @@ export function CalendarView({ companyId }: { companyId?: string }) {
     return (leads || []).find(l => l.id === leadId)?.name || 'Unknown'
   }
 
-  const handleAddAppointment = (appointment: Appointment) => {
-    setAppointments((current) => [...(current || []), appointment])
+  const handleAddAppointment = async (apptData: CreateAppointmentDTO) => {
+    if (!companyId) return
+    await addAppointment({ ...apptData, empresa_id: companyId })
+  }
+
+  if (!companyId) {
+    return <div className="p-8">Please select a company</div>
   }
 
   return (
@@ -123,6 +131,7 @@ export function CalendarView({ companyId }: { companyId?: string }) {
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
         onAdd={handleAddAppointment}
+        leads={leads}
       />
     </div>
   )
