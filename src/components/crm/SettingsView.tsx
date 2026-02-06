@@ -17,6 +17,7 @@ import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 import { IDsViewer } from './IDsViewer'
 import { IntegrationsManager } from './settings/IntegrationsManager'
+import { InstancesManager } from './settings/InstancesManager'
 import { updatePipeline, getPipelines } from '@/supabase/helpers/pipeline'
 import { toast } from 'sonner'
 
@@ -125,6 +126,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           {isAdminOrOwner && <TabsTrigger value="roles">Roles</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="automations">Automatizaciones</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="integrations">Integraciones</TabsTrigger>}
+          {isAdminOrOwner && <TabsTrigger value="instances">Instancias</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="ids">IDs</TabsTrigger>}
         </TabsList>
 
@@ -150,6 +152,16 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           ) : (
             <div className="text-center py-12 text-muted-foreground">
               No tienes permisos para gestionar integraciones.
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="instances" className="space-y-4 mt-6">
+          {isAdminOrOwner ? (
+            <InstancesManager empresaId={currentCompanyId || ''} />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              No tienes permisos para gestionar instancias.
             </div>
           )}
         </TabsContent>

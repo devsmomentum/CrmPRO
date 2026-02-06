@@ -21,6 +21,7 @@ import {
     MagnifyingGlass,
     WhatsappLogo,
     InstagramLogo,
+    FacebookLogo,
     Check,
     ChatCircleDots,
     Spinner,
@@ -41,7 +42,7 @@ interface ChatListProps {
     isFetchingMore: boolean
     loadError: string | null
     unreadCounts: Record<string, number>
-    channelByLead: Record<string, 'whatsapp' | 'instagram'>
+    channelByLead: Record<string, 'whatsapp' | 'instagram' | 'facebook'>
     chatScope: ChatScope
     companyId: string
 
@@ -81,7 +82,7 @@ export const ChatList = memo(function ChatList({
     isSearching
 }: ChatListProps) {
     // Estados de filtros LOCALES (solo afectan la vista, no la query)
-    const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'instagram'>('all')
+    const [channelFilter, setChannelFilter] = useState<'all' | 'whatsapp' | 'instagram' | 'facebook'>('all')
     const [unreadFilter, setUnreadFilter] = useState(false)
     // El searchTerm ahora viene del padre (hook)
 
@@ -245,6 +246,18 @@ export const ChatList = memo(function ChatList({
                             <InstagramLogo weight="fill" className="h-3.5 w-3.5" />
                             Instagram
                         </button>
+                        <button
+                            onClick={() => { setChannelFilter(channelFilter === 'facebook' ? 'all' : 'facebook'); onScopeChange('active') }}
+                            className={cn(
+                                "px-4 py-1.5 rounded-full text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 border shrink-0",
+                                channelFilter === 'facebook'
+                                    ? "bg-[#1877F2] text-white border-[#1877F2] shadow-md shadow-[#1877F2]/20"
+                                    : "bg-background text-muted-foreground border-border hover:bg-muted hover:border-muted-foreground/30"
+                            )}
+                        >
+                            <FacebookLogo weight="fill" className="h-3.5 w-3.5" />
+                            Facebook
+                        </button>
                     </div>
                     <div className="hidden md:flex absolute inset-y-0 right-1 items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
@@ -321,7 +334,13 @@ export const ChatList = memo(function ChatList({
                                                 <AvatarFallback className="bg-muted text-muted-foreground font-bold">{(lead.name || 'Unknown').substring(0, 2).toUpperCase()}</AvatarFallback>
                                             </Avatar>
                                             <div className="absolute -bottom-1 -right-1 bg-background rounded-full p-0.5 shadow-sm border border-background">
-                                                {channelByLead[lead.id] === 'instagram' ? (<InstagramLogo weight="fill" className="h-3.5 w-3.5 text-[#E1306C]" />) : (<WhatsappLogo weight="fill" className="h-3.5 w-3.5 text-[#25D366]" />)}
+                                                {channelByLead[lead.id] === 'instagram' ? (
+                                                    <InstagramLogo weight="fill" className="h-3.5 w-3.5 text-[#E1306C]" />
+                                                ) : channelByLead[lead.id] === 'facebook' ? (
+                                                    <FacebookLogo weight="fill" className="h-3.5 w-3.5 text-[#1877F2]" />
+                                                ) : (
+                                                    <WhatsappLogo weight="fill" className="h-3.5 w-3.5 text-[#25D366]" />
+                                                )}
                                             </div>
                                         </div>
 

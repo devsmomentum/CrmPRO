@@ -35,7 +35,7 @@ const PAGE_SIZE = 500
 const BATCH_SIZE = 100
 
 export type ChatScope = 'active' | 'archived'
-export type ChannelType = 'whatsapp' | 'instagram'
+export type ChannelType = 'whatsapp' | 'instagram' | 'facebook'
 
 interface UseLeadsListOptions {
     /** ID de la empresa */
@@ -91,16 +91,32 @@ interface UseLeadsListReturn {
 
 // Detecta el canal del lead basado en el teléfono y metadata
 export function detectChannel(lead: Lead): ChannelType {
+    const company = (lead.company || '').toLowerCase()
+    const name = (lead.name || '').toLowerCase()
+    const email = (lead.email || '').toLowerCase()
     const phone = (lead.phone || '').replace(/\D/g, '')
 
-    // Instagram tiene IDs más largos
-    let isInstagram = phone.length >= 15
+    // 1. Prioridad: Revisar campo empresa/company (donde el webhook guarda "[Plataforma] Contact")
+    if (company.includes('facebook')) return 'facebook'
+    if (company.includes('instagram')) return 'instagram'
+    if (company.includes('whatsapp')) return 'whatsapp'
 
-    // También detectar por nombre o empresa
-    if ((lead.company || '').toLowerCase().includes('instagram')) isInstagram = true
-    if ((lead.name || '').toLowerCase().includes('instagram')) isInstagram = true
+    // 2. Revisar por email (el webhook genera @facebook.com o @instagram.com)
+    if (email.includes('@facebook.com')) return 'facebook'
+    if (email.includes('@instagram.com')) return 'instagram'
 
-    return isInstagram ? 'instagram' : 'whatsapp'
+    // 3. Revisar por nombre (el webhook usa "Nuevo Lead [Platform] ...")
+    if (name.includes('facebook')) return 'facebook'
+    if (name.includes('instagram')) return 'instagram'
+
+    // 4. Fallback: Longitud del ID (Instagram y Facebook suelen tener IDs largos, pero WhatsApp no)
+    // Si llegamos aquí y no detectamos plataforma por nombre/email, 
+    // y el ID es muy largo, es probable que sea Instagram/Facebook.
+    // Como default para IDs largos sin keywords, mantenemos instagram pero es el último recurso.
+    if (phone.length >= 15) return 'instagram'
+
+    // default
+    return 'whatsapp'
 }
 
 /**

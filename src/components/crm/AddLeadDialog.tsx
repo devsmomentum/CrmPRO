@@ -20,6 +20,8 @@ import { Company } from './CompanyManagement'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { createLead, createLeadsBulk } from '@/supabase/services/leads'
 import { SingleLeadForm, BulkImportView } from './leads'
+import { listWhatsappInstancias } from '@/supabase/services/instances'
+import type { EmpresaInstanciaDB } from '@/lib/types'
 import type { SingleLeadFormData } from './leads/SingleLeadForm'
 import type { PreviewRow } from '@/hooks/useExcelImport'
 
@@ -70,6 +72,25 @@ export function AddLeadDialog({
   const [pasteText, setPasteText] = useState('')
   const [stageId, setStageId] = useState(defaultStageId || stages[0]?.id || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [waInstances, setWaInstances] = useState<Pick<EmpresaInstanciaDB, 'id' | 'label'>[]>([])
+
+  // Cargar instancias WA activas de la empresa
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      try {
+        if (!companyId) return
+        const list = await listWhatsappInstancias(companyId)
+        if (mounted) {
+          setWaInstances(list.map(i => ({ id: i.id, label: i.label || 'WhatsApp' })))
+        }
+      } catch (e) {
+        console.warn('[AddLeadDialog] No se pudieron cargar instancias WA', e)
+      }
+    }
+    load()
+    return () => { mounted = false }
+  }, [companyId])
 
   // Eligible team members for this pipeline
   const eligibleMembers = useMemo(() => {
@@ -128,7 +149,8 @@ export function AddLeadDialog({
         pipeline_id: pipelineId || '',
         empresa_id: companyId || '',
         asignado_a: data.assignedTo === 'todos' ? '00000000-0000-0000-0000-000000000000' : data.assignedTo,
-        prioridad: data.priority
+        prioridad: data.priority,
+        preferred_instance_id: data.preferredInstanceId || null
       })
 
       if (dbLead) {
@@ -289,6 +311,7 @@ export function AddLeadDialog({
               defaultAssignedTo={eligibleMembers[0]?.id}
               onSubmit={handleManualSubmit}
               isSubmitting={isSubmitting}
+              whatsappInstances={waInstances}
             />
           </TabsContent>
 

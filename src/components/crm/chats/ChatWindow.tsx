@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import {
     ArrowLeft, X, VideoCamera, Check, WarningCircle,
-    File as FileIcon, Microphone, WhatsappLogo, InstagramLogo,
+    File as FileIcon, Microphone, WhatsappLogo, InstagramLogo, FacebookLogo,
     Archive, Trash, PencilSimple, ArrowSquareOut, CaretRight,
     ChatCircleDots, Spinner, Info
 } from '@phosphor-icons/react'
@@ -174,16 +174,20 @@ export function ChatWindow({
                 <h3 className="text-3xl font-black mb-4 tracking-tight">Centro de Mensajería</h3>
                 <p className="max-w-md text-muted-foreground font-medium leading-relaxed">
                     Selecciona una conversación de la izquierda para comenzar a chatear.
-                    Gestiona <span className="text-[#25D366] font-bold">WhatsApp</span> e <span className="text-[#E1306C] font-bold">Instagram</span> en un solo lugar con una experiencia premium.
+                    Gestiona <span className="text-[#25D366] font-bold">WhatsApp</span>, <span className="text-[#E1306C] font-bold">Instagram</span> y <span className="text-[#1877F2] font-bold">Facebook</span> en un solo lugar con una experiencia premium.
                 </p>
                 <div className="mt-10 flex gap-4 opacity-40 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-700">
                     <div className="flex items-center gap-2 bg-muted p-3 rounded-2xl border border-border/40">
                         <WhatsappLogo weight="fill" className="w-5 h-5 text-[#25D366]" />
-                        <span className="text-xs font-black uppercase tracking-widest">WhatsApp Business</span>
+                        <span className="text-xs font-black uppercase tracking-widest">WhatsApp</span>
                     </div>
                     <div className="flex items-center gap-2 bg-muted p-3 rounded-2xl border border-border/40">
                         <InstagramLogo weight="fill" className="w-5 h-5 text-[#E1306C]" />
-                        <span className="text-xs font-black uppercase tracking-widest">Instagram Direct</span>
+                        <span className="text-xs font-black uppercase tracking-widest">Instagram</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-muted p-3 rounded-2xl border border-border/40">
+                        <FacebookLogo weight="fill" className="w-5 h-5 text-[#1877F2]" />
+                        <span className="text-xs font-black uppercase tracking-widest">Facebook</span>
                     </div>
                 </div>
             </div>
@@ -382,7 +386,7 @@ export function ChatWindow({
 
                 <MessageInput
                     leadId={lead.id}
-                    channel={detectChannel(lead) === 'instagram' ? 'instagram' : 'whatsapp'}
+                    channel={detectChannel(lead)}
                     disabled={isLoadingMessages}
                     onMessageSent={() => {
                         const newMsg = {
@@ -423,15 +427,24 @@ export function ChatWindow({
                                         {(lead.name || '?').substring(0, 2).toUpperCase()}
                                     </AvatarFallback>
                                 </Avatar>
-                                {detectChannel(lead) === 'instagram' ? (
-                                    <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
-                                        <InstagramLogo weight="fill" className="h-6 w-6 text-[#E1306C]" />
-                                    </div>
-                                ) : (
-                                    <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
-                                        <WhatsappLogo weight="fill" className="h-6 w-6 text-[#25D366]" />
-                                    </div>
-                                )}
+                                {(() => {
+                                    const channel = detectChannel(lead)
+                                    if (channel === 'instagram') return (
+                                        <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
+                                            <InstagramLogo weight="fill" className="h-6 w-6 text-[#E1306C]" />
+                                        </div>
+                                    )
+                                    if (channel === 'facebook') return (
+                                        <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
+                                            <FacebookLogo weight="fill" className="h-6 w-6 text-[#1877F2]" />
+                                        </div>
+                                    )
+                                    return (
+                                        <div className="absolute -bottom-2 -right-2 bg-background rounded-full p-2 shadow-xl border border-border/20">
+                                            <WhatsappLogo weight="fill" className="h-6 w-6 text-[#25D366]" />
+                                        </div>
+                                    )
+                                })()}
                             </div>
 
                             <h2 className="text-2xl font-black text-center text-foreground tracking-tight px-4 line-clamp-2">{lead.name}</h2>

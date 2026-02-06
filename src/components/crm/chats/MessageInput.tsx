@@ -25,9 +25,11 @@ import { toast } from 'sonner'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { sendMessage, uploadChatAttachment } from '@/supabase/services/mensajes'
 
+import { Channel } from '@/lib/types'
+
 interface MessageInputProps {
     leadId: string
-    channel: 'whatsapp' | 'instagram'
+    channel: 'whatsapp' | 'instagram' | 'facebook'
     disabled?: boolean
     onMessageSent?: () => void
 }

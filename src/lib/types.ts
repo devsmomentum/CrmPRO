@@ -208,6 +208,7 @@ export interface CreateLeadDTO {
   prioridad?: Priority
   ubicacion?: string
   empresa?: string
+  preferred_instance_id?: string | null
 }
 
 export interface UpdateLeadDTO {
@@ -246,6 +247,20 @@ export interface LeadDB {
   last_message_at?: string
   last_message_sender?: string
   last_message_content?: string
+  preferred_instance_id?: string | null
+}
+
+// ----- Empresa Instancias -----
+export interface EmpresaInstanciaDB {
+  id: string
+  empresa_id: string
+  plataforma: 'whatsapp' | 'instagram' | 'facebook' | string
+  client_id: string
+  api_url?: string | null
+  label?: string | null
+  active: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 // ----- Empresa DTOs -----

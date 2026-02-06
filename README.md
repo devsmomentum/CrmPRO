@@ -1,32 +1,59 @@
-# ✨ Welcome to Your Spark Template!
-You've just launched your brand-new Spark Template Codespace — everything’s fired up and ready for you to explore, build, and create with Spark!
+# CRM Multi-Tenant con Integración SuperAPI
 
-This template is your blank canvas. It comes with a minimal setup to help you get started quickly with Spark development.
+Sistema CRM multi-tenant con soporte para múltiples instancias de WhatsApp, Instagram y Facebook a través de SuperAPI.
 
-🚀 What's Inside?
-- A clean, minimal Spark environment
-- Pre-configured for local development
-- Ready to scale with your ideas
-  
-🧠 What Can You Do?
+## 🔗 Configuración de Webhook SuperAPI
 
-Right now, this is just a starting point — the perfect place to begin building and testing your Spark applications.
+### URL del Webhook
 
-🧹 Just Exploring?
-No problem! If you were just checking things out and don’t need to keep this code:
+**IMPORTANTE**: La URL del webhook DEBE incluir el parámetro `secret` para identificar la empresa.
 
-- Simply delete your Spark.
-- Everything will be cleaned up — no traces left behind.
+**Formato correcto:**
+```
+https://[TU-PROYECTO].supabase.co/functions/v1/webhook-chat?secret=[WEBHOOK_SECRET]
+```
 
-📄 License For Spark Template Resources 
+**Ejemplo:**
+```
+https://bjdqjxrwvktfqienbzop.supabase.co/functions/v1/webhook-chat?secret=perdomo_secret_crm
+```
 
-The Spark Template files and resources from GitHub are licensed under the terms of the MIT license, Copyright GitHub, Inc.
+### Configuración en SuperAPI
+
+1. **Callback URL**: `https://[TU-PROYECTO].supabase.co/functions/v1/webhook-chat?secret=[WEBHOOK_SECRET]&x=1`
+2. **Identificador de verificación**: `[WEBHOOK_SECRET]` (el mismo valor)
+
+**Ejemplo real:**
+```
+Callback URL: https://bjdqjxrwvktfqienbzop.supabase.co/functions/v1/webhook-chat?secret=perdomo_secret_crm&x=1
+Identificador: perdomo_secret_crm
+```
+
+> **Nota**: El parámetro `&x=1` es un parámetro dummy necesario para que SuperAPI pueda agregar sus parámetros de verificación (`hub.verify_token`, `hub.challenge`, `hub.mode`) correctamente usando `&` en lugar de `?`. SuperAPI NO agrega el `secret` en las peticiones POST de mensajes, por eso debe estar en la URL base.
+
+### Eventos a Configurar
+
+Asegúrate de activar estos eventos en SuperAPI:
+- ✅ `message` o `messages.received`
+- ✅ `message_create`
+- ✅ Todos los eventos relacionados con mensajes entrantes
+
+---
+
+## 📚 Documentación Completa
+
+Para instrucciones detalladas de configuración y pruebas, consulta:
+- **Walkthrough**: `.gemini/antigravity/brain/[conversation-id]/walkthrough.md`
+- **Plan de Implementación**: `.gemini/antigravity/brain/[conversation-id]/implementation_plan.md`
+
+---
+
+📄 **License**: MIT
 
 
 
 .
 ..
-...
 ....
 .....
 ......

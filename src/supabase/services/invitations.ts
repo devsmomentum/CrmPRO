@@ -11,81 +11,9 @@ interface CreateInvitationPayload {
   permission_role?: string
 }
 
-async function invokeEdgeFunctionWithAuthFallback<T>(
-  functionName: string,
-  body: unknown,
-  anonKey: string,
-  accessToken: string,
-  supabaseUrl: string
-): Promise<T> {
-  const url = `${supabaseUrl}/functions/v1/${functionName}`
-
-  const call = async (headers: Record<string, string>) => {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: anonKey,
-        ...headers
-      },
-      body: JSON.stringify(body)
-    })
-
-    const rawText = await res.text()
-    let data: any = {}
-    try {
-      data = rawText ? JSON.parse(rawText) : {}
-    } catch {
-      data = { raw: rawText }
-    }
-
-    return { res, data, rawText }
-  }
-
-  // Intento 1 (Verify JWT ON): Authorization = JWT del usuario
-  const first = await call({ Authorization: `Bearer ${accessToken}` })
-  if (first.res.ok) return first.data as T
-
-  // Si no fue 401, no tiene sentido reintentar con otro esquema
-  if (first.res.status !== 401) {
-    const sbRequestId = first.res.headers.get('sb-request-id') || first.res.headers.get('x-sb-request-id')
-    const detail = first.data?.error || first.data?.message || first.rawText || ''
-    throw new Error(
-      `Edge Function ${functionName} devolvió ${first.res.status}` +
-        (sbRequestId ? ` (sb-request-id: ${sbRequestId})` : '') +
-        (detail ? `: ${detail}` : '')
-    )
-  }
-
-  // Intento 2 (Verify JWT OFF / gateway): Authorization = anonKey, user JWT en x-supabase-authorization
-  const second = await call({
-    Authorization: `Bearer ${anonKey}`,
-    'x-supabase-authorization': `Bearer ${accessToken}`
-  })
-  if (second.res.ok) return second.data as T
-
-  const sbRequestId = second.res.headers.get('sb-request-id') || second.res.headers.get('x-sb-request-id')
-  const detail = second.data?.error || second.data?.message || second.rawText || ''
-  throw new Error(
-    `Edge Function ${functionName} devolvió ${second.res.status}` +
-      (sbRequestId ? ` (sb-request-id: ${sbRequestId})` : '') +
-      (detail ? `: ${detail}` : '')
-  )
-}
-
 export async function createInvitation(payload: CreateInvitationPayload) {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-  if (sessionError) throw sessionError
-  const session = sessionData.session
-  if (!session) throw new Error('Debes iniciar sesión para invitar miembros')
-
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-  if (!anonKey || !supabaseUrl) throw new Error('Faltan variables: VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY')
-
-  return await invokeEdgeFunctionWithAuthFallback(
-    'invite-member',
-    {
+  const { data, error } = await supabase.functions.invoke('invite-member', {
+    body: {
       email: payload.invited_email,
       teamId: payload.equipo_id,
       companyId: payload.empresa_id,
@@ -93,11 +21,11 @@ export async function createInvitation(payload: CreateInvitationPayload) {
       role: payload.invited_titulo_trabajo,
       pipelineIds: Array.from(payload.pipeline_ids),
       permissionRole: payload.permission_role || 'viewer'
-    },
-    anonKey,
-    session.access_token,
-    supabaseUrl
-  )
+    }
+  })
+
+  if (error) throw error
+  return data
 }
 
 export async function getPendingInvitations(email: string) {
@@ -132,22 +60,15 @@ export async function getPendingInvitationsByCompany(companyId: string) {
 }
 
 export async function acceptInvitation(token: string, userId: string) {
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-  if (sessionError) throw sessionError
-  const session = sessionData.session
-  if (!session) throw new Error('Debes iniciar sesión para aceptar invitaciones')
+  const { data, error } = await supabase.functions.invoke('accept-invite', {
+    body: {
+      token,
+      userId
+    }
+  })
 
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-  if (!anonKey || !supabaseUrl) throw new Error('Faltan variables: VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY')
-
-  return await invokeEdgeFunctionWithAuthFallback(
-    'accept-invite',
-    { token, userId },
-    anonKey,
-    session.access_token,
-    supabaseUrl
-  )
+  if (error) throw error
+  return data
 }
 
 export async function rejectInvitation(invitationId: string) {

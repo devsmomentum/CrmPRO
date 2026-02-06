@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { TeamMember, Stage } from '@/lib/types'
+import { TeamMember, Stage, EmpresaInstanciaDB } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 
@@ -27,6 +27,7 @@ export interface SingleLeadFormData {
     priority: 'low' | 'medium' | 'high'
     stageId: string
     assignedTo: string
+    preferredInstanceId?: string
 }
 
 interface SingleLeadFormProps {
@@ -36,6 +37,7 @@ interface SingleLeadFormProps {
     defaultAssignedTo?: string
     onSubmit: (data: SingleLeadFormData) => void | Promise<void>
     isSubmitting?: boolean
+    whatsappInstances?: Pick<EmpresaInstanciaDB, 'id' | 'label'>[]
 }
 
 export function SingleLeadForm({
@@ -44,7 +46,8 @@ export function SingleLeadForm({
     defaultStageId,
     defaultAssignedTo,
     onSubmit,
-    isSubmitting = false
+    isSubmitting = false,
+    whatsappInstances = []
 }: SingleLeadFormProps) {
     const t = useTranslation('es')
 
@@ -58,6 +61,9 @@ export function SingleLeadForm({
     const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
     const [stageId, setStageId] = useState(defaultStageId || stages[0]?.id || '')
     const [assignedTo, setAssignedTo] = useState(defaultAssignedTo || eligibleMembers[0]?.id || '')
+    const [preferredInstanceId, setPreferredInstanceId] = useState<string | undefined>(
+        whatsappInstances.length === 1 ? whatsappInstances[0].id : undefined
+    )
 
     // Update defaults when they change
     useEffect(() => {
@@ -76,6 +82,12 @@ export function SingleLeadForm({
 
         const budgetValue = parseFloat(budget) || 0
 
+        // Si hay múltiples instancias WA y el usuario no seleccionó una, advertir (opcional)
+        if (whatsappInstances.length > 1 && !preferredInstanceId) {
+            toast.error('Selecciona la instancia de WhatsApp para el primer contacto')
+            return
+        }
+
         await onSubmit({
             name: name.trim(),
             email: email.trim(),
@@ -85,7 +97,8 @@ export function SingleLeadForm({
             budget: budgetValue,
             priority,
             stageId,
-            assignedTo
+            assignedTo,
+            preferredInstanceId
         })
 
         // Reset form after successful submit
@@ -117,6 +130,27 @@ export function SingleLeadForm({
 
     return (
         <div className="space-y-4">
+            {/* WhatsApp Instance Selector (solo si hay instancias disponibles) */}
+            {whatsappInstances.length > 0 && (
+                <div>
+                    <Label htmlFor="lead-wa-instance">Instancia WhatsApp para primer contacto</Label>
+                    <Select
+                        value={preferredInstanceId || ''}
+                        onValueChange={(v) => setPreferredInstanceId(v)}
+                    >
+                        <SelectTrigger id="lead-wa-instance">
+                            <SelectValue placeholder={
+                                whatsappInstances.length === 1 ? 'Única instancia disponible' : 'Selecciona una instancia'
+                            } />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {whatsappInstances.map(inst => (
+                                <SelectItem key={inst.id} value={inst.id}>{inst.label || 'WhatsApp'}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
             {/* Name - Required */}
             <div>
                 <Label htmlFor="lead-name">{t.lead.name} *</Label>

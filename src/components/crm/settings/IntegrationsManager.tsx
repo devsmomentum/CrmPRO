@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { upsertIntegration } from '@/supabase/services/integrations'
 import { supabase } from '@/supabase/client'
+import { InstancesManager } from './InstancesManager'
 
 interface Props {
   empresaId: string
@@ -15,7 +16,6 @@ export function IntegrationsManager({ empresaId }: Props) {
   const [webhookSecret, setWebhookSecret] = useState('')
   const [apiToken, setApiToken] = useState('')
   const [apiUrl, setApiUrl] = useState('')
-  const [client, setClient] = useState('')
   const [allowedPhone, setAllowedPhone] = useState('')
   const [testMode, setTestMode] = useState(false)
 
@@ -41,11 +41,9 @@ export function IntegrationsManager({ empresaId }: Props) {
         const secret = (creds || []).find(c => c.key === 'webhook_secret')?.value || ''
         const token = (creds || []).find(c => c.key === 'api_token')?.value || ''
         const url = (creds || []).find(c => c.key === 'api_url')?.value || ''
-        const cli = (creds || []).find(c => c.key === 'client')?.value || ''
         setWebhookSecret(secret)
         setApiToken(token)
         setApiUrl(url)
-        setClient(cli)
       }
     }
     load()
@@ -58,12 +56,11 @@ export function IntegrationsManager({ empresaId }: Props) {
     }
     try {
       const integration = await upsertIntegration(empresaId, 'chat', { allowed_phone: allowedPhone || null, test_mode: testMode })
-      // Guardar credenciales
+      // Guardar credenciales (sin client, ahora se maneja por instancia)
       const credentials = [
         { key: 'webhook_secret', value: webhookSecret },
         { key: 'api_token', value: apiToken },
-        { key: 'api_url', value: apiUrl },
-        { key: 'client', value: client }
+        { key: 'api_url', value: apiUrl }
       ]
 
       for (const cred of credentials) {
@@ -113,14 +110,9 @@ export function IntegrationsManager({ empresaId }: Props) {
               onChange={(e) => setApiUrl(e.target.value)}
               placeholder="https://v4.iasuperapi.com/api/v1 (por defecto)"
             />
-          </div>
-          <div>
-            <Label>Client ID (Opcional)</Label>
-            <Input
-              value={client}
-              onChange={(e) => setClient(e.target.value)}
-              placeholder="Identificador de cliente en SuperAPI"
-            />
+            <p className="text-xs text-muted-foreground mt-1">
+              URL base global. Cada instancia puede tener su propia URL personalizada.
+            </p>
           </div>
           <div>
             <Label>Teléfono permitido (opcional)</Label>
@@ -144,6 +136,10 @@ export function IntegrationsManager({ empresaId }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Gestión de Instancias Multi-Plataforma */}
+      <InstancesManager empresaId={empresaId} />
     </div>
   )
 }
+
