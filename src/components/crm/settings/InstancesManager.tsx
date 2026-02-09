@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Trash, WifiHigh } from '@phosphor-icons/react'
+import { Plus, Trash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { supabase } from '@/supabase/client'
 
@@ -19,8 +19,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
   const [instances, setInstances] = useState<EmpresaInstanciaDB[]>([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [testingId, setTestingId] = useState<string | null>(null)
-  const [lastTest, setLastTest] = useState<Record<string, { ok: boolean; status?: number; hint?: string }>>({})
+
 
   const [form, setForm] = useState<{ plataforma: 'whatsapp' | 'instagram' | 'facebook' | ''; client_id: string; api_url: string; label: string; active: boolean }>({
     plataforma: '',
@@ -95,26 +94,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
     }
   }
 
-  const handleTest = async (id: string) => {
-    try {
-      setTestingId(id)
-      const { data, error } = await supabase.functions.invoke('test-instance', {
-        body: { companyId: empresaId, instanceId: id }
-      })
-      if (error) throw error
-      const ok = !!data?.ok
-      const status = data?.authCheck?.status ?? data?.connectivity?.status
-      const hint = data?.authCheck?.hint || (data?.tokenPresent ? undefined : 'Falta token de SuperAPI')
-      setLastTest(prev => ({ ...prev, [id]: { ok, status, hint } }))
-      if (ok) toast.success('Conexión verificada correctamente')
-      else toast.error(`Prueba fallida${hint ? `: ${hint}` : ''}`)
-    } catch (e: any) {
-      console.error('[InstancesManager] test error', e)
-      toast.error(e?.message || 'Error al probar instancia')
-    } finally {
-      setTestingId(null)
-    }
-  }
+
 
   return (
     <div className="space-y-6">
@@ -185,14 +165,6 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                     <span className="text-xs">{inst.active ? 'Activa' : 'Inactiva'}</span>
                   </div>
                   <div className="flex items-center justify-end gap-1">
-                    <Button size="sm" variant="secondary" onClick={() => handleTest(inst.id)} disabled={testingId === inst.id}>
-                      <WifiHigh className="mr-1" size={16} /> {testingId === inst.id ? 'Probando...' : 'Probar'}
-                    </Button>
-                    {lastTest[inst.id] && (
-                      <span className={`text-xs ${lastTest[inst.id].ok ? 'text-green-600' : 'text-red-600'}`}>
-                        {lastTest[inst.id].ok ? 'OK' : `Error${lastTest[inst.id].hint ? `: ${lastTest[inst.id].hint}` : ''}`}
-                      </span>
-                    )}
                     <Button variant="ghost" className="text-destructive" onClick={() => handleDelete(inst.id)}>
                       <Trash size={18} />
                     </Button>

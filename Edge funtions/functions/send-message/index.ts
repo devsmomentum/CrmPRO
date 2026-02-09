@@ -230,57 +230,71 @@ serve(async (req) => {
     if (SUPER_API_KEY) {
       currentStep = 'Fetch Super API';
 
-      // Validar CLIENT_ID si estamos usando la URL por defecto v4
-      if (BASE_URL.includes("v4.iasuperapi.com") && !CLIENT_ID) {
-        throw new Error("Falta configurar SUPER_API_CLIENT (Client ID) para usar la API v4");
+      // Construir chatId correctamente según la plataforma
+      let chatId = String((to && targetChannel === 'whatsapp') ? to : (lead.telefono || ''));
+
+      // Para WhatsApp, limpiar el número de teléfono (solo dígitos)
+      if (targetChannel === 'whatsapp' || targetChannel === 'wws') {
+        chatId = chatId.replace(/\D/g, '');
       }
 
-      // Construcción correcta de URL para Super API v4:
-      // Formato: https://v4.iasuperapi.com/CLIENT_ID/api/v1/messages
-
-      let targetUrl: string;
-
-      if (BASE_URL.includes("v4.iasuperapi.com")) {
-        // Forzamos el dominio raíz para v4
-        // El orden correcto para v4 es: /api/v1/{client_id}/messages
-        const domainOnly = "https://v4.iasuperapi.com";
-        targetUrl = `${domainOnly}/api/v1/${CLIENT_ID}/messages`;
-        console.log(`[Debug] URL v4 final calculada: ${targetUrl}`);
-      } else {
-        // Para URLs personalizadas, normalizamos (quitamos /api/v1 y barras finales)
-        const normalizedBase = BASE_URL.replace(/\/api\/v1\/?$/, "").replace(/\/$/, "");
-        if (CLIENT_ID && !normalizedBase.includes(CLIENT_ID)) {
-          targetUrl = `${normalizedBase}/${CLIENT_ID}/messages`;
-        } else {
-          targetUrl = normalizedBase.endsWith('/messages') ? normalizedBase : `${normalizedBase}/messages`;
-        }
-      }
-
-      console.log(`[Debug] Target URL calculada: ${targetUrl}`);
-
-      let platform = 'whatsapp';
+      // Determinar plataforma según documentación Super API:
+      // wws = WhatsApp Web, api = WhatsApp Cloud API (Meta), instagram, facebook
+      // Para WhatsApp Meta usamos 'api', para WhatsApp Web usamos 'wws'
+      let platform = 'api'; // WhatsApp Meta (Cloud API) por defecto
       if (targetChannel === 'instagram') platform = 'instagram';
       else if (targetChannel === 'facebook') platform = 'facebook';
+      else if (targetChannel === 'wws') platform = 'wws'; // WhatsApp Web explícito
 
-      let chatId = String((to && targetChannel === 'whatsapp') ? to : (lead.telefono || ''));
-      if (platform === 'wws') {
-        chatId = chatId.replace(/\D/g, '');
-        chatId = chatId.includes('@c.us') ? chatId : `${chatId}@c.us`;
+      console.log(`[Debug] ChatId construido: ${chatId}`);
+      console.log(`[Debug] Platform: ${platform}`);
+      console.log(`[Debug] CLIENT_ID: ${CLIENT_ID}`);
+
+      // Según documentación Super API:
+      // POST https://v4.iasuperapi.com/api/v1/send-message
+      // Body: { chatId, message, platform, client, media }
+      const apiPayload: any = {
+        chatId,          // Obligatorio: número de teléfono
+        message: content, // Mensaje de texto
+        platform,        // wws, instagram, facebook, api
+        client: CLIENT_ID // Cliente en SuperAPI (de la sección instancias)
+      };
+
+      // Agregar media si existe
+      if (media?.downloadUrl) {
+        apiPayload.media = {
+          downloadUrl: media.downloadUrl,
+          fileName: media.fileName || 'file'
+        };
       }
 
-      const apiPayload: any = { chatId, platform, message: content };
-      if (media?.downloadUrl) apiPayload.media = { downloadUrl: media.downloadUrl, fileName: media.fileName || 'file' };
+      // URL correcta según documentación: /api/v1/send-message
+      const domainOnly = BASE_URL.includes("v4.iasuperapi.com")
+        ? "https://v4.iasuperapi.com"
+        : BASE_URL.replace(/\/api\/v1\/?$/, "").replace(/\/$/, "");
 
-      const response = await fetch(targetUrl, {
+      const sendMessageUrl = `${domainOnly}/api/v1/send-message`;
+
+      console.log(`[Debug] URL: ${sendMessageUrl}`);
+      console.log(`[Debug] Payload:`, JSON.stringify(apiPayload));
+
+      const response = await fetch(sendMessageUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPER_API_KEY}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPER_API_KEY}`
+        },
         body: JSON.stringify(apiPayload)
       });
 
       if (!response.ok) {
         const txt = await response.text();
-        throw new Error(`Super API Error ${response.status} en ${targetUrl}: ${txt}`);
+        console.error(`[Error] Super API respondió ${response.status}: ${txt}`);
+        throw new Error(`Super API Error ${response.status}: ${txt}`);
       }
+
+      const responseData = await response.json().catch(() => ({}));
+      console.log(`[Debug] Respuesta de Super API:`, JSON.stringify(responseData));
     }
 
     currentStep = 'Guardar en DB';
