@@ -13,6 +13,7 @@ interface Props {
 }
 
 export function IntegrationsManager({ empresaId }: Props) {
+  const [integrationId, setIntegrationId] = useState<string | null>(null)
   const [webhookSecret, setWebhookSecret] = useState('')
   const [apiToken, setApiToken] = useState('')
   const [apiUrl, setApiUrl] = useState('')
@@ -31,6 +32,7 @@ export function IntegrationsManager({ empresaId }: Props) {
         .maybeSingle()
 
       if (integration) {
+        setIntegrationId(integration.id)
         const meta = integration.metadata || {}
         setAllowedPhone(meta.allowed_phone || '')
         setTestMode(!!meta.test_mode)
@@ -44,6 +46,8 @@ export function IntegrationsManager({ empresaId }: Props) {
         setWebhookSecret(secret)
         setApiToken(token)
         setApiUrl(url)
+      } else {
+        setIntegrationId(null)
       }
     }
     load()
@@ -75,6 +79,48 @@ export function IntegrationsManager({ empresaId }: Props) {
     } catch (e: any) {
       console.error('[IntegrationsManager] Error saving', e)
       toast.error('No se pudo guardar la integración')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!integrationId) {
+      toast.error('No hay integración para eliminar')
+      return
+    }
+
+    if (!confirm('¿Estás seguro de que deseas eliminar esta integración? Esta acción no se puede deshacer.')) {
+      return
+    }
+
+    try {
+      // Primero eliminar todas las credenciales asociadas
+      const { error: credsError } = await supabase
+        .from('integracion_credenciales')
+        .delete()
+        .eq('integracion_id', integrationId)
+
+      if (credsError) throw credsError
+
+      // Luego eliminar la integración
+      const { error: integError } = await supabase
+        .from('integraciones')
+        .delete()
+        .eq('id', integrationId)
+
+      if (integError) throw integError
+
+      // Limpiar el estado
+      setIntegrationId(null)
+      setWebhookSecret('')
+      setApiToken('')
+      setApiUrl('')
+      setAllowedPhone('')
+      setTestMode(false)
+
+      toast.success('Integración eliminada correctamente')
+    } catch (e: any) {
+      console.error('[IntegrationsManager] Error deleting', e)
+      toast.error('No se pudo eliminar la integración')
     }
   }
 
@@ -126,7 +172,14 @@ export function IntegrationsManager({ empresaId }: Props) {
             <input id="test-mode" type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
             <Label htmlFor="test-mode">Modo prueba (dry-run, sin efectos)</Label>
           </div>
-          <Button onClick={handleSave}>Guardar Integración</Button>
+          <div className="flex gap-2">
+            <Button onClick={handleSave}>Guardar Integración</Button>
+            {integrationId && (
+              <Button onClick={handleDelete} variant="destructive">
+                Eliminar Integración
+              </Button>
+            )}
+          </div>
           <div className="text-sm text-muted-foreground mt-2">
             URL de webhook: configura tu proveedor para llamar a
             <br />
