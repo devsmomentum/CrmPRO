@@ -8,7 +8,7 @@ import { MessageInput, ChatList, ChatWindow } from './chats'
 
 interface ChatsViewProps {
   companyId: string
-  onNavigateToPipeline?: (leadId: string) => void
+  onNavigateToPipeline?: (lead: Lead) => void
   canDeleteLead?: boolean
 }
 

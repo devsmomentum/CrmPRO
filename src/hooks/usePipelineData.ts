@@ -99,7 +99,7 @@ function mapDbLeadToLead(l: any): Lead {
         assignedTo: l.asignado_a,
         tags: l.tags || [],
         createdAt: new Date(l.created_at),
-        lastContact: new Date(l.created_at)
+        lastContact: l.last_message_at ? new Date(l.last_message_at) : new Date(l.created_at)
     }
 }
 

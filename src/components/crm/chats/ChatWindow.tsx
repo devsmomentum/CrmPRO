@@ -28,7 +28,7 @@ interface ChatWindowProps {
     onBack: () => void // Para móvil
     onArchive: (lead: Lead, state: boolean) => Promise<void>
     onDelete: (lead: Lead) => Promise<void>
-    onNavigateToPipeline?: (leadId: string) => void
+    onNavigateToPipeline?: (lead: Lead) => void
     updateLeadListOrder: (leadId: string, msg: any) => void
     updateUnreadCount: (leadId: string, count: number) => void
     onLeadUpdate?: (lead: Lead) => void
@@ -467,7 +467,7 @@ export function ChatWindow({
                                 <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold border-border/60 hover:bg-muted transition-all" onClick={() => setDetailSheetOpen(true)}>
                                     <PencilSimple size={18} className="mr-2" /> Editar
                                 </Button>
-                                <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold border-border/60 hover:bg-muted transition-all" onClick={() => onNavigateToPipeline?.(lead.id)}>
+                                <Button variant="outline" size="sm" className="h-10 rounded-xl font-bold border-border/60 hover:bg-muted transition-all" onClick={() => onNavigateToPipeline?.(lead)}>
                                     <ArrowSquareOut size={18} className="mr-2" /> Pipeline
                                 </Button>
                                 <Button

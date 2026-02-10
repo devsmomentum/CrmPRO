@@ -157,7 +157,9 @@ export interface Appointment {
   startTime: Date
   endTime: Date
   status: 'scheduled' | 'completed' | 'cancelled'
-  attendees?: string[] // IDs of team members or external emails
+  attendees?: string[] // IDs of team members or external emails (deprecated, use participants)
+  participants?: string[] // Array de nombres de participantes
+  notes?: string // Notas adicionales de la reunión
 }
 
 export interface Notification {
@@ -248,6 +250,61 @@ export interface LeadDB {
   last_message_sender?: string
   last_message_content?: string
   preferred_instance_id?: string | null
+}
+
+// ============================================================
+// CONTACTS
+// ============================================================
+
+export interface Contact {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  company?: string
+  avatar?: string
+  location?: string
+  position?: string
+  birthday?: Date
+  rating?: 1 | 2 | 3 | 4 | 5
+  source?: string
+  notes?: string
+  socialNetworks?: {
+    linkedin?: string
+    instagram?: string
+    twitter?: string
+  }
+  tags?: string[]
+  assignedTo?: string
+  archived?: boolean
+  createdAt: Date
+  updatedAt?: Date
+  // Computed fields
+  leadsCount?: number
+  lastInteraction?: Date
+  totalValue?: number
+}
+
+export interface ContactDB {
+  id: string
+  nombre_completo: string
+  email: string | null
+  telefono: string | null
+  empresa: string | null
+  avatar: string | null
+  ubicacion: string | null
+  cargo: string | null
+  cumpleanos: string | null
+  rating: number | null
+  fuente: string | null
+  notas: string | null
+  redes_sociales: any | null
+  tags: string[] | null
+  equipo_id: string
+  asignado_a: string | null
+  archivado: boolean
+  created_at: string
+  updated_at: string | null
 }
 
 // ----- Empresa Instancias -----
@@ -392,4 +449,42 @@ export interface SearchLeadsOptions {
   archived?: boolean
   limit?: number
   order?: 'asc' | 'desc'
+}
+
+// ----- Contactos (Agenda Clientes) -----
+
+export interface ContactDB {
+  id: string
+  nombre: string
+  email: string | null
+  telefono: string | null
+  empresa_nombre: string | null
+  cargo: string | null
+  notas: string | null
+  empresa_id: string
+  origen_lead_id: string | null
+  created_at: string
+  updated_at: string
+  archivado: boolean
+}
+
+export interface Contact {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  company?: string
+  position?: string
+  notes?: string
+  rating?: number
+  source?: string
+  socialNetworks?: { platform: string; handle: string }[]
+  tags?: any[]
+  avatar?: string
+  location?: string
+  birthday?: Date
+  assignedTo?: string
+  archived: boolean
+  createdAt: Date
+  updatedAt?: Date
 }

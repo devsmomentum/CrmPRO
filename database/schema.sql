@@ -163,6 +163,28 @@ CREATE TABLE lead (
   archived_at timestamptz
 );
 
+-- ============================================================
+-- PERSONA (CONTACTOS)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS persona (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre_completo text NOT NULL,
+  email text,
+  telefono text,
+  empresa text,
+  equipo_id uuid NOT NULL REFERENCES equipos(id) ON DELETE CASCADE,
+  usuario_id uuid REFERENCES auth.users(id),
+  archivado boolean DEFAULT false,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Índices para persona
+CREATE INDEX IF NOT EXISTS idx_persona_equipo_id ON persona(equipo_id);
+CREATE INDEX IF NOT EXISTS idx_persona_email ON persona(email);
+CREATE INDEX IF NOT EXISTS idx_persona_archivado ON persona(archivado);
+
+
 -- Habilitar RLS
 ALTER TABLE lead ENABLE ROW LEVEL SECURITY;
 
@@ -1073,3 +1095,41 @@ select 'gpt_5_2_codex', true, 'global'
 where not exists (
   select 1 from feature_flags where key = 'gpt_5_2_codex' and scope = 'global' and empresa_id is null
 );
+
+
+CREATE TABLE appointments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  lead_id uuid NOT NULL REFERENCES lead(id) ON DELETE CASCADE,
+  team_member_id uuid REFERENCES auth.users(id),
+  title text NOT NULL,
+  description text,
+  start_time timestamptz NOT NULL,
+  end_time timestamptz NOT NULL,
+  status text DEFAULT 'scheduled', -- scheduled | completed | cancelled
+  participants text[], -- array de nombres de participantes
+  notes text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLS policies
+ALTER TABLE appointments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY appointments_rw ON appointments
+  FOR ALL
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+  );
+
+-- Index para queries frecuentes
+CREATE INDEX idx_appointments_empresa ON appointments(empresa_id);
+CREATE INDEX idx_appointments_lead ON appointments(lead_id);
+CREATE INDEX idx_appointments_start_time ON appointments(start_time);

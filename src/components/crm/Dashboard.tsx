@@ -16,12 +16,12 @@ import { getCompanyMeetings } from '@/supabase/services/reuniones'
 interface DashboardProps {
   companyId?: string
   onShowNotifications: () => void
-  onNavigateToLead?: (leadId: string) => void
+  onNavigateToLead?: (lead: Lead) => void
 }
 
 export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: DashboardProps) {
   const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
-  // const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+  const [leads, setLeads] = useState<Lead[]>([])
   const [leadsCount, setLeadsCount] = useState(0)
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
@@ -36,6 +36,16 @@ export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: 
           setLeadsCount(count || 0)
         })
         .catch(err => console.error('Error fetching leads count in Dashboard:', err))
+
+      // Cargar leads para navegación
+      getLeads(companyId)
+        .then((data) => {
+          if (data) {
+            const { mapDBToLead } = require('@/hooks/useLeadsList')
+            setLeads(data.map(mapDBToLead))
+          }
+        })
+        .catch(err => console.error('Error fetching leads in Dashboard:', err))
 
       // Cargar pipelines para contar
       getPipelines(companyId)
@@ -69,9 +79,9 @@ export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: 
   const todayEnd = new Date(today)
   todayEnd.setHours(23, 59, 59, 999)
 
-  const todayMeetings = meetings.filter(m => {
+  const upcomingMeetings = meetings.filter(m => {
     const mDate = new Date(m.date)
-    return isToday(mDate)
+    return isToday(mDate) || isAfter(mDate, todayStart)
   })
 
   const expiredMeetings = meetings.filter(m => {
@@ -80,7 +90,7 @@ export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: 
   })
 
   // Ordenar reuniones de hoy por hora
-  todayMeetings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  upcomingMeetings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
   // Ordenar reuniones vencidas (más recientes primero)
   expiredMeetings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -252,70 +262,92 @@ export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: 
           </CardContent>
         </Card>
 
-        {/* Reuniones de Hoy */}
-        <Card className="border-none shadow-sm rounded-2xl min-h-[300px]">
-          <CardHeader className="flex flex-row items-center justify-between">
+        {/* Próximas Citas */}
+        <Card className="border-none shadow-sm rounded-2xl min-h-[300px] max-h-[420px] flex flex-col">
+          <CardHeader className="flex flex-row items-center justify-between flex-none">
             <div className="space-y-1">
-              <CardTitle className="text-xl font-bold">Próximas Citas</CardTitle>
-              <p className="text-xs text-muted-foreground">Tu agenda para el día actual</p>
+              <CardTitle className="text-xl font-bold flex items-center gap-2">
+                Próximas Citas
+                {upcomingMeetings.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-none font-bold">
+                    {upcomingMeetings.length}
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Tu agenda de próximas citas</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-primary/5 flex items-center justify-center">
               <CalendarBlank size={22} className="text-primary" weight="duotone" />
             </div>
           </CardHeader>
-          <CardContent className="space-y-4 pt-2">
-            {todayMeetings.length === 0 ? (
+          <CardContent className="pt-2 flex-1 overflow-hidden">
+            {upcomingMeetings.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 opacity-60">
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
                   <CalendarBlank size={32} className="text-muted-foreground" weight="thin" />
                 </div>
                 <div>
                   <p className="font-bold text-lg">Agenda despejada</p>
-                  <p className="text-sm text-muted-foreground">No hay citas programadas para hoy</p>
+                  <p className="text-sm text-muted-foreground">No hay citas programadas</p>
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {todayMeetings.map(meeting => (
-                  <div key={meeting.id} className="flex flex-col gap-2 p-4 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-background flex flex-col items-center justify-center shadow-sm border border-muted-foreground/10 shrink-0">
-                        <span className="text-[10px] font-bold text-primary uppercase leading-none">{format(new Date(meeting.date), 'MMM')}</span>
-                        <span className="text-lg font-black leading-none mt-0.5">{format(new Date(meeting.date), 'd')}</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold text-[15px] truncate">{meeting.title}</p>
-                        <p className="text-[11px] text-primary font-bold mt-1 flex items-center gap-1.5">
-                          <Clock size={12} weight="bold" />
-                          {formatTime(meeting.date)} ({meeting.duration} min)
-                        </p>
+              <div className="space-y-2 overflow-y-auto max-h-full pr-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                {upcomingMeetings.slice(0, 5).map(meeting => (
+                  <div key={meeting.id} className="flex items-center gap-3 p-3 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all">
+                    <div className="w-10 h-10 rounded-lg bg-background flex flex-col items-center justify-center shadow-sm border border-muted-foreground/10 shrink-0">
+                      <span className="text-[9px] font-bold text-primary uppercase leading-none">{format(new Date(meeting.date), 'MMM')}</span>
+                      <span className="text-sm font-black leading-none mt-0.5">{format(new Date(meeting.date), 'd')}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-sm truncate">{meeting.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[10px] text-primary font-bold flex items-center gap-1">
+                          <Clock size={10} weight="bold" />
+                          {formatTime(meeting.date)} · {meeting.duration}min
+                        </span>
+                        {meeting.participants && meeting.participants.length > 0 && (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <Users size={10} />
+                            {meeting.participants.slice(0, 2).map(p => p.name).join(', ')}
+                            {meeting.participants.length > 2 && ` +${meeting.participants.length - 2}`}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    {/* Sección de participantes / asignados */}
-                    {meeting.participants && meeting.participants.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1 pl-16">
-                        {meeting.participants.map(p => (
-                          <Badge key={p.id} variant="secondary" className="text-[10px] h-5 px-1.5 bg-background border border-border/50">
-                            <Users size={10} className="mr-1 opacity-70" /> {p.name}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-
                     {onNavigateToLead && (
-                      <div className="mt-2 flex justify-end">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary"
-                          onClick={() => onNavigateToLead(meeting.leadId)}
-                        >
-                          Ver Lead
-                        </Button>
-                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] text-muted-foreground hover:text-primary shrink-0"
+                        onClick={async () => {
+                          const leadData = leads.find(l => l.id === meeting.leadId)
+                          if (leadData) {
+                            onNavigateToLead(leadData)
+                          } else {
+                            try {
+                              const { getLeadById } = await import('@/supabase/services/leads')
+                              const dbLead = await getLeadById(meeting.leadId)
+                              if (dbLead) {
+                                const { mapDBToLead } = await import('@/hooks/useLeadsList')
+                                onNavigateToLead(mapDBToLead(dbLead))
+                              }
+                            } catch (err) {
+                              console.error('Error loading lead:', err)
+                            }
+                          }
+                        }}
+                      >
+                        Ver Lead
+                      </Button>
                     )}
                   </div>
                 ))}
+                {upcomingMeetings.length > 5 && (
+                  <p className="text-center text-[11px] text-muted-foreground py-1 font-medium">
+                    +{upcomingMeetings.length - 5} citas más · Ver en Calendario
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
@@ -364,7 +396,24 @@ export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: 
                               variant="ghost"
                               size="sm"
                               className="h-5 px-2 text-[9px] text-muted-foreground hover:text-primary"
-                              onClick={() => onNavigateToLead(meeting.leadId)}
+                              onClick={async () => {
+                                const leadData = leads.find(l => l.id === meeting.leadId)
+                                if (leadData) {
+                                  onNavigateToLead(leadData)
+                                } else {
+                                  // Fetch from DB if not in current list
+                                  try {
+                                    const { getLeadById } = await import('@/supabase/services/leads')
+                                    const dbLead = await getLeadById(meeting.leadId)
+                                    if (dbLead) {
+                                      const { mapDBToLead } = await import('@/hooks/useLeadsList')
+                                      onNavigateToLead(mapDBToLead(dbLead))
+                                    }
+                                  } catch (err) {
+                                    console.error('Error loading lead:', err)
+                                  }
+                                }
+                              }}
                             >
                               Ir al lead
                             </Button>

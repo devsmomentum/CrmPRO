@@ -214,6 +214,30 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
   }, [pendingNavigation, leads, activePipeline])
 
+  // EFECTO: Leer navegación pendiente desde sessionStorage (Chats/Dashboard)
+  useEffect(() => {
+    const pendingNav = sessionStorage.getItem('pendingLeadNavigation')
+    if (pendingNav && pipelines.length > 0) {
+      sessionStorage.removeItem('pendingLeadNavigation')
+      try {
+        const { leadId, leadData, pipelineId } = JSON.parse(pendingNav)
+        const leadPipeline = pipelines.find(p => p.id === pipelineId || p.type === pipelineId)
+
+        console.log('[PipelineView] Navegación desde externa:', { leadId, pipelineId, leadPipeline })
+
+        setPendingNavigation({
+          leadId,
+          leadData,
+          pipelineType: leadPipeline?.type || 'sales',
+          stage: 'init',
+          attempt: 0
+        })
+      } catch (err) {
+        console.error('[PipelineView] Error parsing pending navigation:', err)
+      }
+    }
+  }, [pipelines])
+
   const currentCompany = companies.find(c => c.id === companyId)
   const userRole = currentCompany?.role || 'viewer'
 

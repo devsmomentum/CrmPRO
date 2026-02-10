@@ -82,12 +82,6 @@ export function SingleLeadForm({
 
         const budgetValue = parseFloat(budget) || 0
 
-        // Si hay múltiples instancias WA y el usuario no seleccionó una, advertir (opcional)
-        if (whatsappInstances.length > 1 && !preferredInstanceId) {
-            toast.error('Selecciona la instancia de WhatsApp para el primer contacto')
-            return
-        }
-
         await onSubmit({
             name: name.trim(),
             email: email.trim(),
@@ -133,7 +127,7 @@ export function SingleLeadForm({
             {/* WhatsApp Instance Selector (solo si hay instancias disponibles) */}
             {whatsappInstances.length > 0 && (
                 <div>
-                    <Label htmlFor="lead-wa-instance">Instancia WhatsApp para primer contacto</Label>
+                    <Label htmlFor="lead-wa-instance">Instancia WhatsApp (opcional)</Label>
                     <Select
                         value={preferredInstanceId || ''}
                         onValueChange={(v) => setPreferredInstanceId(v)}

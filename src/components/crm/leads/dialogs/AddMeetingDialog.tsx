@@ -7,10 +7,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { TeamMember } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
-// Eliminamos useKV de Spark para evitar errores 401 Unauthorized
-// import { useKV } from '@github/spark/hooks'
 import { Badge } from '@/components/ui/badge'
 import { X } from '@phosphor-icons/react'
+import { createLeadMeeting } from '@/supabase/services/reuniones'
 
 export interface AddMeetingFormData {
   title: string
@@ -22,15 +21,16 @@ export interface AddMeetingFormData {
 
 interface AddMeetingDialogProps {
   leadId: string
+  empresaId: string
   open: boolean
   onClose: () => void
-  onAdd: (meeting: AddMeetingFormData) => Promise<void> | void
+  onAdd?: (meeting: AddMeetingFormData) => Promise<void> | void
   teamMembers?: TeamMember[]
 }
 
 export function AddMeetingDialog(props: AddMeetingDialogProps) {
   const t = useTranslation('es')
-  const { open, onClose, onAdd, teamMembers = [] } = props
+  const { open, onClose, leadId, empresaId, onAdd, teamMembers = [] } = props
 
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
@@ -59,19 +59,35 @@ export function AddMeetingDialog(props: AddMeetingDialogProps) {
 
     setIsSubmitting(true)
     try {
-      await onAdd({
+      // Use createLeadMeeting from reuniones.ts (writes to lead_reuniones table)
+      await createLeadMeeting({
+        leadId,
+        empresaId,
         title: title.trim(),
-        date,
+        date: new Date(date),
         duration,
         participants: selectedParticipants,
         notes: notes.trim()
       })
+
+      // Llamar callback opcional si existe (para compatibilidad)
+      if (onAdd) {
+        await onAdd({
+          title: title.trim(),
+          date,
+          duration,
+          participants: selectedParticipants,
+          notes: notes.trim()
+        })
+      }
+
       toast.success(t.messages.meetingCreated)
       resetForm()
       onClose()
-    } catch (error) {
-      console.error('Error creating meeting', error)
-      toast.error('No se pudo crear la reunión')
+    } catch (error: any) {
+      console.error('Error creating meeting:', error)
+      const msg = error?.message || error?.details || 'Error desconocido'
+      toast.error(`No se pudo crear la reunión: ${msg}`)
     } finally {
       setIsSubmitting(false)
     }

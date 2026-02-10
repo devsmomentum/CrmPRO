@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { Dashboard } from '@/components/crm/Dashboard'
 import { PipelineView } from '@/components/crm/PipelineView'
 import { ChatsView } from '@/components/crm/ChatsView'
+import { ContactsView } from '@/components/crm/contacts/ContactsView'
 import { AnalyticsDashboard } from '@/components/crm/AnalyticsDashboard'
 import { CalendarView } from '@/components/crm/CalendarView'
 import { TeamView } from '@/components/crm/TeamView'
@@ -80,6 +81,9 @@ function App() {
           <Route path="/chats" element={
             <ChatsViewWrapper />
           } />
+          <Route path="/contacts" element={
+            <ContactsView companyId={currentCompanyId} currentUserId={user?.id} />
+          } />
           <Route path="/analytics" element={
             <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />
           } />
@@ -117,6 +121,9 @@ function App() {
           } />
           <Route path="chats" element={
             <ChatsViewWrapper />
+          } />
+          <Route path="contacts" element={
+            <ContactsView companyId={currentCompanyId} currentUserId={user?.id} />
           } />
           <Route path="analytics" element={
             <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />
@@ -162,8 +169,12 @@ function ChatsViewWrapper() {
     <ChatsView
       companyId={currentCompanyId}
       canDeleteLead={canDeleteLead}
-      onNavigateToPipeline={(leadId) => {
-        sessionStorage.setItem('openLeadId', leadId)
+      onNavigateToPipeline={(lead) => {
+        sessionStorage.setItem('pendingLeadNavigation', JSON.stringify({
+          leadId: lead.id,
+          leadData: lead,
+          pipelineId: lead.pipeline
+        }))
         const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
         navigate(isGuestMode ? '/guest/pipeline' : '/pipeline')
       }}
@@ -277,8 +288,12 @@ function DashboardWrapper() {
         const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
         navigate(isGuestMode ? '/guest/notifications' : '/notifications')
       }}
-      onNavigateToLead={(leadId) => {
-        sessionStorage.setItem('openLeadId', leadId)
+      onNavigateToLead={(lead) => {
+        sessionStorage.setItem('pendingLeadNavigation', JSON.stringify({
+          leadId: lead.id,
+          leadData: lead,
+          pipelineId: lead.pipeline
+        }))
         const currentCompany = companies.find(c => c.id === currentCompanyId)
         const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
         navigate(isGuestMode ? '/guest/pipeline' : '/pipeline')

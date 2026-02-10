@@ -32,7 +32,8 @@ export function usePdfExport(): UsePdfExportReturn {
 
         try {
             // Dynamic import to reduce bundle size
-            const { default: jsPDF } = await import('jspdf')
+            const jsPDFModule = await import('jspdf')
+            const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF || jsPDFModule
             await import('jspdf-autotable')
 
             // Filter leads by stage if specified

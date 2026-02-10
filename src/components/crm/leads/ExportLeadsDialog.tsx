@@ -16,11 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Download, FileXls, FilePdf, Spinner, CheckCircle } from '@phosphor-icons/react'
+import { Download, FileXls, Spinner } from '@phosphor-icons/react'
 import { Lead, Stage, TeamMember } from '@/lib/types'
-import { ExportFormat, ExportColumn, DEFAULT_EXPORT_COLUMNS } from '@/lib/exportUtils'
+import { ExportColumn, DEFAULT_EXPORT_COLUMNS } from '@/lib/exportUtils'
 import { useExcelExport } from '@/hooks/useExcelExport'
-import { usePdfExport } from '@/hooks/usePdfExport'
 
 interface ExportLeadsDialogProps {
     leads: Lead[]
@@ -38,14 +37,10 @@ export function ExportLeadsDialog({
     trigger
 }: ExportLeadsDialogProps) {
     const [open, setOpen] = useState(false)
-    const [format, setFormat] = useState<ExportFormat>('excel')
     const [selectedStage, setSelectedStage] = useState<string>('all')
     const [columns, setColumns] = useState<ExportColumn[]>(DEFAULT_EXPORT_COLUMNS)
 
-    const { isExporting: isExportingExcel, exportToExcel } = useExcelExport()
-    const { isExporting: isExportingPdf, exportToPDF } = usePdfExport()
-
-    const isExporting = isExportingExcel || isExportingPdf
+    const { isExporting, exportToExcel } = useExcelExport()
 
     // Calculate leads count based on selected stage
     const leadsCount = useMemo(() => {
@@ -67,19 +62,14 @@ export function ExportLeadsDialog({
             : stages.find(s => s.id === selectedStage)?.name
 
         const options = {
-            format,
+            format: 'excel' as const,
             columns,
             stageId: selectedStage === 'all' ? undefined : selectedStage,
             stageName,
             companyName
         }
 
-        if (format === 'excel') {
-            await exportToExcel(leads, stages, teamMembers, options)
-        } else {
-            await exportToPDF(leads, stages, teamMembers, options)
-        }
-
+        await exportToExcel(leads, stages, teamMembers, options)
         setOpen(false)
     }
 
@@ -88,7 +78,6 @@ export function ExportLeadsDialog({
         setOpen(newOpen)
         if (!newOpen) {
             // Reset to defaults
-            setFormat('excel')
             setSelectedStage('all')
             setColumns(DEFAULT_EXPORT_COLUMNS)
         }
@@ -122,49 +111,14 @@ export function ExportLeadsDialog({
 
                 <ScrollArea className="flex-1 overflow-y-auto">
                     <div className="p-6 space-y-6">
-                        {/* Format Selection */}
-                        <div className="space-y-3">
-                            <Label className="text-sm font-bold text-slate-700">Formato de Exportación</Label>
-                            <div className="grid grid-cols-2 gap-4">
-                                <button
-                                    onClick={() => setFormat('excel')}
-                                    className={`relative flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all duration-200 ${format === 'excel'
-                                        ? 'border-blue-500 bg-blue-50/50'
-                                        : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'
-                                        }`}
-                                >
-                                    {format === 'excel' && (
-                                        <div className="absolute top-2 right-2">
-                                            <CheckCircle size={20} weight="fill" className="text-blue-500" />
-                                        </div>
-                                    )}
-                                    <div className="bg-green-100 p-4 rounded-xl mb-3 border border-green-200">
-                                        <FileXls size={40} weight="duotone" className="text-green-600" />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="font-bold text-slate-800">Excel (.xlsx)</p>
-                                    </div>
-                                </button>
-
-                                <button
-                                    onClick={() => setFormat('pdf')}
-                                    className={`relative flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all duration-200 ${format === 'pdf'
-                                        ? 'border-blue-500 bg-blue-50/50'
-                                        : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50'
-                                        }`}
-                                >
-                                    {format === 'pdf' && (
-                                        <div className="absolute top-2 right-2">
-                                            <CheckCircle size={20} weight="fill" className="text-blue-500" />
-                                        </div>
-                                    )}
-                                    <div className="bg-red-100 p-4 rounded-xl mb-3 border border-red-200">
-                                        <FilePdf size={40} weight="duotone" className="text-red-600" />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="font-bold text-slate-800">PDF (.pdf)</p>
-                                    </div>
-                                </button>
+                        {/* Format Info */}
+                        <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-xl">
+                            <div className="bg-green-100 p-3 rounded-lg border border-green-200">
+                                <FileXls size={32} weight="duotone" className="text-green-600" />
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-800">Formato: Excel (.xlsx)</p>
+                                <p className="text-sm text-slate-600">Los leads se exportarán en formato Excel</p>
                             </div>
                         </div>
 

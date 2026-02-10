@@ -1052,6 +1052,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
       <AddMeetingDialog
         leadId={lead.id}
+        empresaId={companyId || ''}
         open={showMeetingDialog}
         onClose={() => setShowMeetingDialog(false)}
         onAdd={handleAddMeeting}

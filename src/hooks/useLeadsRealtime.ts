@@ -25,7 +25,7 @@ export function useLeadsRealtime({ companyId, onInsert, onUpdate, onDelete }: Us
     assignedTo: dbLead.asignado_a,
     tags: dbLead.tags || [],
     createdAt: new Date(dbLead.created_at),
-    lastContact: new Date(dbLead.created_at)
+    lastContact: dbLead.last_message_at ? new Date(dbLead.last_message_at) : new Date(dbLead.created_at)
   });
 
   useEffect(() => {
