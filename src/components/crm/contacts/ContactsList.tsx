@@ -66,7 +66,7 @@ export function ContactsList({
     }, [contacts, searchQuery, sortBy])
 
     return (
-        <div className="w-80 border-r border-border flex flex-col h-full bg-card overflow-hidden">
+        <div className="w-full md:w-80 border-r border-border flex flex-col h-full bg-card overflow-hidden">
             {/* Search and Filters - Fixed Header */}
             <div className="flex-none p-4 space-y-3 border-b border-border bg-card z-10">
                 {/* Search Input */}
