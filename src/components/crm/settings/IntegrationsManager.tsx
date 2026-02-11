@@ -24,29 +24,34 @@ export function IntegrationsManager({ empresaId }: Props) {
   const [allowedPhone, setAllowedPhone] = useState('')
   const [testMode, setTestMode] = useState(false)
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
-  const [autoCreateLead, setAutoCreateLead] = useState(false)
+  const [autoCreateLead, setAutoCreateLead] = useState(true)
   const [defaultPipelineId, setDefaultPipelineId] = useState('')
   const [defaultStageId, setDefaultStageId] = useState('')
   const [defaultLeadName, setDefaultLeadName] = useState('Nuevo lead')
   const [includeFirstMessage, setIncludeFirstMessage] = useState(true)
 
+  console.log('🎨 [DEBUG] IntegrationsManager Render. autoCreateLead:', autoCreateLead, 'empresaId:', empresaId)
+
   useEffect(() => {
-    if (!empresaId) return
+    console.log('🔍 [DEBUG] useEffect load running for empresaId:', empresaId)
     // Cargar valores existentes si los hay
     const load = async () => {
-      const { data: integration } = await supabase
+      const { data: integration, error } = await supabase
         .from('integraciones')
         .select('*')
         .eq('empresa_id', empresaId)
         .eq('provider', 'chat')
         .maybeSingle()
 
+      if (error) console.error('❌ [DEBUG] Error loading integration:', error);
+
       if (integration) {
+        console.log('✅ [DEBUG] Integration found in UI:', integration.id, integration.metadata)
         setIntegrationId(integration.id)
         const meta = integration.metadata || {}
         setAllowedPhone(meta.allowed_phone || '')
         setTestMode(!!meta.test_mode)
-        setAutoCreateLead(!!meta.unregistered_auto_create)
+        setAutoCreateLead(meta.unregistered_auto_create !== false)
         setDefaultPipelineId(meta.unregistered_pipeline_id || '')
         setDefaultStageId(meta.unregistered_stage_id || '')
         setDefaultLeadName(meta.unregistered_default_name || 'Nuevo lead')
@@ -109,253 +114,256 @@ export function IntegrationsManager({ empresaId }: Props) {
     }
   }, [pipelines, defaultPipelineId, defaultStageId])
 
-  const handleSave = async () => {
-    if (!empresaId) {
-      toast.error('Empresa no seleccionada')
-      return
-    }
-    try {
-      const integration = await upsertIntegration(empresaId, 'chat', {
-        allowed_phone: allowedPhone || null,
-        test_mode: testMode,
-        unregistered_auto_create: autoCreateLead,
-        unregistered_pipeline_id: defaultPipelineId || null,
-        unregistered_stage_id: defaultStageId || null,
-        unregistered_default_name: defaultLeadName || 'Nuevo lead',
-        unregistered_include_first_message: includeFirstMessage
-      })
-      // Guardar credenciales (sin client, ahora se maneja por instancia)
-      const credentials = [
-        { key: 'webhook_secret', value: webhookSecret },
-        { key: 'api_token', value: apiToken },
-        { key: 'api_url', value: apiUrl }
-      ]
+  console.log('🔍 [DEBUG] handleSave details:', {
+    empresaId,
+    autoCreateLead,
+    integrationIdBefore: integrationId
+  })
 
-      for (const cred of credentials) {
-        if (cred.value) {
-          const { error } = await supabase
-            .from('integracion_credenciales')
-            .upsert({ integracion_id: integration.id, key: cred.key, value: cred.value }, { onConflict: 'integracion_id,key' })
-          if (error) throw error
-        }
-      }
-      toast.success('Integración guardada')
-    } catch (e: any) {
-      console.error('[IntegrationsManager] Error saving', e)
-      toast.error('No se pudo guardar la integración')
-    }
-  }
+  const integration = await upsertIntegration(empresaId, 'chat', {
+    allowed_phone: allowedPhone || null,
+    test_mode: testMode,
+    unregistered_auto_create: autoCreateLead,
+    unregistered_pipeline_id: defaultPipelineId || null,
+    unregistered_stage_id: defaultStageId || null,
+    unregistered_default_name: defaultLeadName || 'Nuevo lead',
+    unregistered_include_first_message: includeFirstMessage
+  })
 
-  const handleDelete = async () => {
-    if (!integrationId) {
-      toast.error('No hay integración para eliminar')
-      return
-    }
+  console.log('✅ [DEBUG] Upsert result:', integration.id, integration.metadata)
+  // Guardar credenciales (sin client, ahora se maneja por instancia)
+  const credentials = [
+    { key: 'webhook_secret', value: webhookSecret },
+    { key: 'api_token', value: apiToken },
+    { key: 'api_url', value: apiUrl }
+  ]
 
-    if (!confirm('¿Estás seguro de que deseas eliminar esta integración? Esta acción no se puede deshacer.')) {
-      return
-    }
-
-    try {
-      // Primero eliminar todas las credenciales asociadas
-      const { error: credsError } = await supabase
+  for (const cred of credentials) {
+    if (cred.value) {
+      const { error } = await supabase
         .from('integracion_credenciales')
-        .delete()
-        .eq('integracion_id', integrationId)
-
-      if (credsError) throw credsError
-
-      // Luego eliminar la integración
-      const { error: integError } = await supabase
-        .from('integraciones')
-        .delete()
-        .eq('id', integrationId)
-
-      if (integError) throw integError
-
-      // Limpiar el estado
-      setIntegrationId(null)
-      setWebhookSecret('')
-      setApiToken('')
-      setApiUrl('')
-      setAllowedPhone('')
-      setTestMode(false)
-      setAutoCreateLead(false)
-      setDefaultPipelineId('')
-      setDefaultStageId('')
-      setDefaultLeadName('Nuevo lead')
-      setIncludeFirstMessage(true)
-
-      toast.success('Integración eliminada correctamente')
-    } catch (e: any) {
-      console.error('[IntegrationsManager] Error deleting', e)
-      toast.error('No se pudo eliminar la integración')
+        .upsert({ integracion_id: integration.id, key: cred.key, value: cred.value }, { onConflict: 'integracion_id,key' })
+      if (error) throw error
     }
   }
-
-  const handleSimulate = () => {
-    if (!autoCreateLead) {
-      toast('Simulacion: sin accion, no se crea lead para numeros no registrados.')
-      return
-    }
-
-    const pipeline = pipelines.find(p => p.id === defaultPipelineId)
-    const stage = pipeline?.stages?.find(s => s.id === defaultStageId)
-
-    if (!pipeline || !stage) {
-      toast.error('Selecciona un pipeline y una etapa para la simulacion')
-      return
-    }
-
-    toast.success(`Simulacion: se crearia un lead en "${pipeline.name}" → "${stage.name}" con nombre "${defaultLeadName}"${includeFirstMessage ? ' e incluiria el primer mensaje.' : '.'}`)
+  setIntegrationId(integration.id)
+  toast.success('Integración guardada')
+} catch (e: any) {
+  console.error('[IntegrationsManager] Error saving', e)
+  toast.error('No se pudo guardar la integración')
+}
   }
 
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Webhook Chat (SuperAPI)</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+const handleDelete = async () => {
+  if (!integrationId) {
+    toast.error('No hay integración para eliminar')
+    return
+  }
+
+  if (!confirm('¿Estás seguro de que deseas eliminar esta integración? Esta acción no se puede deshacer.')) {
+    return
+  }
+
+  try {
+    // Primero eliminar todas las credenciales asociadas
+    const { error: credsError } = await supabase
+      .from('integracion_credenciales')
+      .delete()
+      .eq('integracion_id', integrationId)
+
+    if (credsError) throw credsError
+
+    // Luego eliminar la integración
+    const { error: integError } = await supabase
+      .from('integraciones')
+      .delete()
+      .eq('id', integrationId)
+
+    if (integError) throw integError
+
+    // Limpiar el estado
+    setIntegrationId(null)
+    setWebhookSecret('')
+    setApiToken('')
+    setApiUrl('')
+    setAllowedPhone('')
+    setTestMode(false)
+    setAutoCreateLead(false)
+    setDefaultPipelineId('')
+    setDefaultStageId('')
+    setDefaultLeadName('Nuevo lead')
+    setIncludeFirstMessage(true)
+
+    toast.success('Integración eliminada correctamente')
+  } catch (e: any) {
+    console.error('[IntegrationsManager] Error deleting', e)
+    toast.error('No se pudo eliminar la integración')
+  }
+}
+
+const handleSimulate = () => {
+  if (!autoCreateLead) {
+    toast('Simulacion: sin accion, no se crea lead para numeros no registrados.')
+    return
+  }
+
+  const pipeline = pipelines.find(p => p.id === defaultPipelineId)
+  const stage = pipeline?.stages?.find(s => s.id === defaultStageId)
+
+  if (!pipeline || !stage) {
+    toast.error('Selecciona un pipeline y una etapa para la simulacion')
+    return
+  }
+
+  toast.success(`Simulacion: se crearia un lead en "${pipeline.name}" → "${stage.name}" con nombre "${defaultLeadName}"${includeFirstMessage ? ' e incluiria el primer mensaje.' : '.'}`)
+}
+
+return (
+  <div className="space-y-6">
+    <Card>
+      <CardHeader>
+        <CardTitle>Webhook Chat (SuperAPI)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Label>Webhook Secret</Label>
+          <Input
+            value={webhookSecret}
+            onChange={(e) => setWebhookSecret(e.target.value)}
+            type="password"
+            placeholder="secreto para validar firma (HMAC)"
+          />
+        </div>
+        <div>
+          <Label>API Token</Label>
+          <Input
+            value={apiToken}
+            onChange={(e) => setApiToken(e.target.value)}
+            type="password"
+            placeholder="token de acceso para consultas de perfil"
+          />
+        </div>
+        <div>
+          <Label>API URL (Opcional)</Label>
+          <Input
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+            placeholder="https://v4.iasuperapi.com/api/v1 (por defecto)"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            URL base global. Cada instancia puede tener su propia URL personalizada.
+          </p>
+        </div>
+        <div>
+          <Label>Teléfono permitido (opcional)</Label>
+          <Input
+            value={allowedPhone}
+            onChange={(e) => setAllowedPhone(e.target.value)}
+            placeholder="584XXXXXXXXX"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <input id="test-mode" type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
+          <Label htmlFor="test-mode">Modo prueba (dry-run, sin efectos)</Label>
+        </div>
+        <div className="flex gap-2">
+          <Button onClick={handleSave}>Guardar Integración</Button>
+          {integrationId && (
+            <Button onClick={handleDelete} variant="destructive">
+              Eliminar Integración
+            </Button>
+          )}
+        </div>
+        <div className="text-sm text-muted-foreground mt-2">
+          URL de webhook: configura tu proveedor para llamar a
+          <br />
+          <code>/api/webhook-chat?secret=TU_WEBHOOK_SECRET</code>
+          <br />
+          Para pruebas locales sin proveedor, añade <code>&test=true</code> y envía un POST firmado.
+        </div>
+      </CardContent>
+    </Card>
+
+    <Card>
+      <CardHeader>
+        <CardTitle>Mensajes de numeros no registrados</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <Label>Webhook Secret</Label>
-            <Input
-              value={webhookSecret}
-              onChange={(e) => setWebhookSecret(e.target.value)}
-              type="password"
-              placeholder="secreto para validar firma (HMAC)"
-            />
-          </div>
-          <div>
-            <Label>API Token</Label>
-            <Input
-              value={apiToken}
-              onChange={(e) => setApiToken(e.target.value)}
-              type="password"
-              placeholder="token de acceso para consultas de perfil"
-            />
-          </div>
-          <div>
-            <Label>API URL (Opcional)</Label>
-            <Input
-              value={apiUrl}
-              onChange={(e) => setApiUrl(e.target.value)}
-              placeholder="https://v4.iasuperapi.com/api/v1 (por defecto)"
-            />
+            <Label className="text-sm">Crear lead automaticamente</Label>
             <p className="text-xs text-muted-foreground mt-1">
-              URL base global. Cada instancia puede tener su propia URL personalizada.
+              Cuando llega un mensaje de un numero que no existe en el CRM.
             </p>
           </div>
+          <Switch checked={autoCreateLead} onCheckedChange={setAutoCreateLead} />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <Label>Teléfono permitido (opcional)</Label>
-            <Input
-              value={allowedPhone}
-              onChange={(e) => setAllowedPhone(e.target.value)}
-              placeholder="584XXXXXXXXX"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input id="test-mode" type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
-            <Label htmlFor="test-mode">Modo prueba (dry-run, sin efectos)</Label>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={handleSave}>Guardar Integración</Button>
-            {integrationId && (
-              <Button onClick={handleDelete} variant="destructive">
-                Eliminar Integración
-              </Button>
-            )}
-          </div>
-          <div className="text-sm text-muted-foreground mt-2">
-            URL de webhook: configura tu proveedor para llamar a
-            <br />
-            <code>/api/webhook-chat?secret=TU_WEBHOOK_SECRET</code>
-            <br />
-            Para pruebas locales sin proveedor, añade <code>&test=true</code> y envía un POST firmado.
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Mensajes de numeros no registrados</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label className="text-sm">Crear lead automaticamente</Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                Cuando llega un mensaje de un numero que no existe en el CRM.
-              </p>
-            </div>
-            <Switch checked={autoCreateLead} onCheckedChange={setAutoCreateLead} />
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label>Pipeline destino</Label>
-              <Select value={defaultPipelineId} onValueChange={setDefaultPipelineId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona un pipeline" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pipelines.map(pipeline => (
-                    <SelectItem key={pipeline.id} value={pipeline.id}>
-                      {pipeline.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Etapa destino</Label>
-              <Select value={defaultStageId} onValueChange={setDefaultStageId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecciona una etapa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(pipelines.find(p => p.id === defaultPipelineId)?.stages || []).map(stage => (
-                    <SelectItem key={stage.id} value={stage.id}>
-                      {stage.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <Label>Pipeline destino</Label>
+            <Select value={defaultPipelineId} onValueChange={setDefaultPipelineId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona un pipeline" />
+              </SelectTrigger>
+              <SelectContent>
+                {pipelines.map(pipeline => (
+                  <SelectItem key={pipeline.id} value={pipeline.id}>
+                    {pipeline.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
-            <Label>Nombre por defecto del lead</Label>
-            <Input
-              value={defaultLeadName}
-              onChange={(e) => setDefaultLeadName(e.target.value)}
-              placeholder="Nuevo lead"
-            />
+            <Label>Etapa destino</Label>
+            <Select value={defaultStageId} onValueChange={setDefaultStageId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecciona una etapa" />
+              </SelectTrigger>
+              <SelectContent>
+                {(pipelines.find(p => p.id === defaultPipelineId)?.stages || []).map(stage => (
+                  <SelectItem key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
+        </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label className="text-sm">Guardar mensaje inicial</Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                Incluye el primer mensaje como nota al crear el lead.
-              </p>
-            </div>
-            <Switch checked={includeFirstMessage} onCheckedChange={setIncludeFirstMessage} />
+        <div>
+          <Label>Nombre por defecto del lead</Label>
+          <Input
+            value={defaultLeadName}
+            onChange={(e) => setDefaultLeadName(e.target.value)}
+            placeholder="Nuevo lead"
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <Label className="text-sm">Guardar mensaje inicial</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Incluye el primer mensaje como nota al crear el lead.
+            </p>
           </div>
+          <Switch checked={includeFirstMessage} onCheckedChange={setIncludeFirstMessage} />
+        </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={handleSimulate}>
-              Simular mensaje entrante
-            </Button>
-            <Button onClick={handleSave}>Guardar configuracion</Button>
-          </div>
-        </CardContent>
-      </Card>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={handleSimulate}>
+            Simular mensaje entrante
+          </Button>
+          <Button onClick={handleSave}>Guardar configuracion</Button>
+        </div>
+      </CardContent>
+    </Card>
 
-      {/* Gestión de Instancias Multi-Plataforma */}
-      <InstancesManager empresaId={empresaId} />
-    </div>
-  )
+    {/* Gestión de Instancias Multi-Plataforma */}
+    <InstancesManager empresaId={empresaId} />
+  </div>
+)
 }
 

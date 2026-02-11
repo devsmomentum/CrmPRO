@@ -233,7 +233,8 @@ async function resolveIntegrationBySecret(
   console.log(`✅ [PASO 2] Integración encontrada:`, {
     id: integracion.id,
     empresa_id: integracion.empresa_id,
-    provider: integracion.provider
+    provider: integracion.provider,
+    meta_auto_create: integracion.metadata?.unregistered_auto_create
   });
 
   // PASO 3: Verificar que el provider coincida
@@ -410,6 +411,8 @@ serve(async (req) => {
   const integrationMetadata = resolved?.metadata || {};
   const apiTokenResolved = resolved?.apiToken;
 
+  console.log("🔍 [DEBUG] integrationMetadata resolviendo:", JSON.stringify(integrationMetadata, null, 2));
+
   // 🔍 DEBUG: Log de resultado de resolución
   if (empresaFromSecret) {
     console.log("✅ [SECRET] Empresa resuelta por secret:", empresaFromSecret);
@@ -515,6 +518,7 @@ serve(async (req) => {
     }
 
     if (req.method === "POST") {
+      const leadsProcessedInPhase1 = new Set<string>();
       // 1. Leemos el body como TEXTO para poder verificar la firma (HMAC)
       const bodyText = await req.text();
 
@@ -832,7 +836,11 @@ serve(async (req) => {
           etapa_id: urlEtapaId || undefined
         }];
       } else if (empresaFromSecret) {
-        empresasConfig = [{ empresa_id: empresaFromSecret }];
+        empresasConfig = [{
+          empresa_id: empresaFromSecret,
+          pipeline_id: integrationMetadata?.unregistered_pipeline_id || undefined,
+          etapa_id: integrationMetadata?.unregistered_stage_id || undefined
+        }];
         console.log(`✅ [EMPRESA] Usando empresa resuelta por secreto: ${empresaFromSecret}`);
       }
       // Prioridad 2: WEBHOOK_EMPRESAS JSON
@@ -1121,19 +1129,33 @@ serve(async (req) => {
           let lastMinuteCheck = false;
 
           if (!existingLead) {
+            // VERIFICAR SI SE DEBE CREAR AUTOMÁTICAMENTE
+            const autoCreate = integrationMetadata?.unregistered_auto_create !== false; // por defecto true para mantener retrocompatibilidad if no existe el campo
+
+            console.log(`🔍 [DEBUG] unregistered_auto_create value:`, integrationMetadata?.unregistered_auto_create);
+            console.log(`🔍 [DEBUG] Calculated autoCreate boolean:`, autoCreate);
+
+            if (!autoCreate) {
+              console.log(`[Empresa ${empresa_id}] Auto-creación desactivada para números desconocidos. Saltando.`);
+              return new Response(JSON.stringify({ success: true, message: "Auto-create disabled" }), {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              });
+            }
+
             // ==========================================================
             // 5. CREACIÓN DE NUEVO LEAD (Si llegamos aquí, es nuevo)
             // ==========================================================
 
             // Determinar Pipeline
-            let targetPipelineId = pipeline_id || null;
+            let targetPipelineId = pipeline_id || integrationMetadata?.unregistered_pipeline_id || null;
             if (!targetPipelineId) {
               const { data: pipeline } = await supabase.from('pipeline').select('id').eq('empresa_id', empresa_id).order('created_at', { ascending: true }).limit(1).maybeSingle();
               if (pipeline) targetPipelineId = pipeline.id;
             }
 
             // Determinar Etapa
-            let targetEtapaId = etapa_id || null;
+            let targetEtapaId = etapa_id || integrationMetadata?.unregistered_stage_id || null;
             if (targetPipelineId && !targetEtapaId) {
               const { data: etapa } = await supabase.from('etapas').select('id, nombre').eq('pipeline_id', targetPipelineId).or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%').order('orden', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
               if (etapa) targetEtapaId = etapa.id;
@@ -1141,6 +1163,12 @@ serve(async (req) => {
                 const { data: firstEtapa } = await supabase.from('etapas').select('id').eq('pipeline_id', targetPipelineId).order('orden', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
                 if (firstEtapa) targetEtapaId = firstEtapa.id;
               }
+            }
+
+            // Nombre por defecto si no se obtuvo uno real
+            const defaultName = integrationMetadata?.unregistered_default_name || "Nuevo Lead";
+            if (finalName.startsWith("Nuevo Lead") && defaultName !== "Nuevo Lead") {
+              finalName = `${defaultName} ${sourceType} ${cleanPhone}`;
             }
 
             // Objeto del nuevo Lead usando 'finalName'
@@ -1202,19 +1230,26 @@ serve(async (req) => {
 
             // SOLO INSERTAR SI NO SE PROCESÓ EN LA FASE 1
             if (!leadsProcessedInPhase1.has(newLeadInstance.id)) {
-              await supabase.from("mensajes").insert({
-                lead_id: newLeadInstance.id,
-                content: content,
-                sender: 'lead',
-                channel: sourceType.toLowerCase(),
-                external_id: externalId,
-                metadata: {
-                  ...normalizedMetadata,
-                  instanceId: instanceResolved?.id || null,
-                  platform: sourceType.toLowerCase()
-                }
-              });
-              console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para lead: ${newLeadInstance.id} (Fase 2)`);
+              // Verificar si se debe incluir el primer mensaje (si el lead es nuevo)
+              const includeFirst = existingLead || integrationMetadata?.unregistered_include_first_message !== false;
+
+              if (includeFirst) {
+                await supabase.from("mensajes").insert({
+                  lead_id: newLeadInstance.id,
+                  content: content,
+                  sender: 'lead',
+                  channel: sourceType.toLowerCase(),
+                  external_id: externalId,
+                  metadata: {
+                    ...normalizedMetadata,
+                    instanceId: instanceResolved?.id || null,
+                    platform: sourceType.toLowerCase()
+                  }
+                });
+                console.log(`✅ [Empresa ${empresa_id}] Mensaje guardado para lead: ${newLeadInstance.id} (Fase 2)`);
+              } else {
+                console.log(`[Empresa ${empresa_id}] Saltando guardado de mensaje inicial por configuración.`);
+              }
             } else {
               console.log(`⏭️ [Empresa ${empresa_id}] Saltando inserción duplicada para lead ${newLeadInstance.id} (Ya procesado en Fase 1)`);
             }
