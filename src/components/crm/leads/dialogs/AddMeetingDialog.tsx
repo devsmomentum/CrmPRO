@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { TeamMember } from '@/lib/types'
+import { TeamMember, Lead } from '@/lib/types'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
-import { X } from '@phosphor-icons/react'
+import { X, Calendar as CalendarIcon } from '@phosphor-icons/react'
 import { createLeadMeeting } from '@/supabase/services/reuniones'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { format } from 'date-fns'
 
 export interface AddMeetingFormData {
   title: string
@@ -17,23 +19,45 @@ export interface AddMeetingFormData {
   duration: number
   participants: string[]
   notes: string
+  leadId?: string
 }
 
 interface AddMeetingDialogProps {
-  leadId: string
+  leadId?: string
+  leads?: Lead[]
   empresaId: string
   open: boolean
   onClose: () => void
   onAdd?: (meeting: AddMeetingFormData) => Promise<void> | void
   teamMembers?: TeamMember[]
+  defaultDate?: Date
 }
 
 export function AddMeetingDialog(props: AddMeetingDialogProps) {
   const t = useTranslation('es')
-  const { open, onClose, leadId, empresaId, onAdd, teamMembers = [] } = props
+  const { open, onClose, leadId: initialLeadId, leads, empresaId, onAdd, teamMembers = [], defaultDate } = props
+
+  const [selectedLeadId, setSelectedLeadId] = useState<string>(initialLeadId || '')
+  
+  useEffect(() => {
+    if (initialLeadId) {
+      setSelectedLeadId(initialLeadId)
+    }
+  }, [initialLeadId])
 
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
+  
+  useEffect(() => {
+      if (open && defaultDate) {
+          // Format for input type="datetime-local": YYYY-MM-DDThh:mm
+          const d = new Date(defaultDate)
+          const offset = d.getTimezoneOffset()
+          const adjusted = new Date(d.getTime() - (offset * 60 * 1000))
+          setDate(adjusted.toISOString().slice(0, 16))
+      }
+  }, [open, defaultDate])
+
   const [duration, setDuration] = useState(30)
   const [notes, setNotes] = useState('')
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([])
@@ -52,6 +76,11 @@ export function AddMeetingDialog(props: AddMeetingDialogProps) {
   }
 
   const handleSubmit = async () => {
+    if (!selectedLeadId) {
+        toast.error('Debe seleccionar un lead')
+        return
+    }
+
     if (!title.trim() || !date) {
       toast.error(t.messages.fillRequired)
       return
@@ -61,7 +90,7 @@ export function AddMeetingDialog(props: AddMeetingDialogProps) {
     try {
       // Use createLeadMeeting from reuniones.ts (writes to lead_reuniones table)
       await createLeadMeeting({
-        leadId,
+        leadId: selectedLeadId,
         empresaId,
         title: title.trim(),
         date: new Date(date),
@@ -77,7 +106,8 @@ export function AddMeetingDialog(props: AddMeetingDialogProps) {
           date,
           duration,
           participants: selectedParticipants,
-          notes: notes.trim()
+          notes: notes.trim(),
+          leadId: selectedLeadId
         })
       }
 
@@ -109,6 +139,23 @@ export function AddMeetingDialog(props: AddMeetingDialogProps) {
           <DialogTitle>{t.meeting.addMeeting}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
+          {!initialLeadId && leads && leads.length > 0 && (
+            <div>
+              <Label>Lead *</Label>
+              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar Lead" />
+                </SelectTrigger>
+                <SelectContent className="max-h-[200px]">
+                  {leads.map((lead) => (
+                    <SelectItem key={lead.id} value={lead.id}>
+                      {lead.nombre || lead.name || 'Sin nombre'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div>
             <Label htmlFor="meeting-title">{t.meeting.meetingTitle}</Label>
             <Input

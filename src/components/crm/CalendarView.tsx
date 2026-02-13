@@ -17,16 +17,12 @@ import {
 } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { Appointment, Lead } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Calendar as MiniCalendar } from '@/components/ui/calendar'
 import { Badge } from '@/components/ui/badge'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { AddAppointmentDialog } from './leads/dialogs/AddAppointmentDialog'
+import { AddMeetingDialog, AddMeetingFormData } from './leads/dialogs/AddMeetingDialog'
 import { useAppointments } from '@/hooks/useAppointments'
 import { useLeadsList } from '@/hooks/useLeadsList'
-import { CreateAppointmentDTO } from '@/supabase/services/appointments'
 import { cn } from '@/lib/utils'
 import { 
   Plus, 
@@ -59,18 +55,15 @@ export function CalendarView({ companyId, user }: { companyId?: string, user?: a
   const [showAddDialog, setShowAddDialog] = useState(false)
   
   // --- Data Fetching ---
-  const { appointments, addAppointment, isLoading: isLoadingAppointments } = useAppointments(companyId || '')
+  const { appointments, fetchAppointments, isLoading: isLoadingAppointments } = useAppointments(companyId || '')
   const { leads } = useLeadsList({ companyId: companyId || '', autoLoad: true })
 
   // --- Helpers ---
-  const handleAddAppointment = async (apptData: CreateAppointmentDTO) => {
-    if (!companyId) return
-    try {
-      await addAppointment({ ...apptData, empresa_id: companyId })
-      setShowAddDialog(false)
-    } catch (e) {
-      console.error(e)
+  const handleAddMeeting = async () => {
+    if (fetchAppointments) {
+        await fetchAppointments()
     }
+    setShowAddDialog(false)
   }
 
   const getLead = (leadId: string) => (leads || []).find(l => l.id === leadId)
@@ -271,23 +264,6 @@ export function CalendarView({ companyId, user }: { companyId?: string, user?: a
         
         {/* SIDEBAR (Desktop) */}
         <aside className="w-80 border-r bg-muted/10 hidden md:flex flex-col gap-6 p-6 overflow-y-auto shrink-0">
-            {/* Mini Calendar */}
-            <Card className="border shadow-sm">
-                <CardContent className="p-0">
-                    <MiniCalendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => {
-                            if (date) {
-                                setSelectedDate(date)
-                                setCurrentDate(date)
-                            }
-                        }}
-                        initialFocus
-                        className="rounded-md"
-                    />
-                </CardContent>
-            </Card>
 
             {/* Upcoming List */}
             <div className="space-y-3">
@@ -475,11 +451,12 @@ export function CalendarView({ companyId, user }: { companyId?: string, user?: a
         
       </div>
 
-      <AddAppointmentDialog
+      <AddMeetingDialog
         open={showAddDialog}
         onClose={() => setShowAddDialog(false)}
-        onAdd={handleAddAppointment}
+        onAdd={handleAddMeeting}
         leads={leads}
+        empresaId={companyId || ''}
         defaultDate={selectedDate || new Date()}
       />
     </div>
