@@ -55,6 +55,11 @@ interface PipelineColumnProps {
 
     // Helpers
     t: any
+
+    // Stage DnD
+    onStageDragStart: (e: React.DragEvent, stage: Stage) => void
+    onStageDragOverHeader: (e: React.DragEvent) => void
+    onStageDropOnHeader: (e: React.DragEvent, targetStageId: string) => void
 }
 
 export function PipelineColumn({
@@ -89,6 +94,10 @@ export function PipelineColumn({
     onMoveToStage,
     onOpenMoveDialog,
     t
+    ,
+    onStageDragStart,
+    onStageDragOverHeader,
+    onStageDropOnHeader
 }: PipelineColumnProps) {
 
     const stageLeads = pipelineLeads.filter(l => l.stage === stage.id)
@@ -102,7 +111,13 @@ export function PipelineColumn({
             onDrop={(e) => onDrop(e, stage.id)}
         >
             {/* Stage Header - Title Row */}
-            <div className="sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0 mb-3">
+            <div
+                className="sticky top-0 bg-background/95 backdrop-blur z-10 py-2 border-b md:border-none md:static md:bg-transparent md:z-0 md:py-0 mb-3"
+                draggable={isAdminOrOwner}
+                onDragStart={(e) => onStageDragStart(e, stage)}
+                onDragOver={onStageDragOverHeader}
+                onDrop={(e) => onStageDropOnHeader(e, stage.id)}
+            >
                 {/* Row 1: Stage Name and Count */}
                 <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">

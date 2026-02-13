@@ -3,6 +3,7 @@ import { useLeadsRealtime } from '@/hooks/useLeadsRealtime'
 import { usePipelineData } from '@/hooks/usePipelineData'
 import { usePipelineLeadActions } from '@/hooks/usePipelineLeadActions'
 import { useDragDrop } from '@/hooks/useDragDrop'
+import { useStageDragDrop } from '@/hooks/useStageDragDrop'
 import { Lead, Pipeline, PipelineType, TeamMember, Stage } from '@/lib/types'
 // import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -299,6 +300,19 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     setLeads,
     setStageCounts,
     canEditLeads
+  })
+
+  // Drag & Drop de Etapas (reordenar columnas)
+  const {
+    draggedStageRef,
+    handleStageDragStart,
+    handleStageDragOverHeader,
+    handleStageDropOnHeader
+  } = useStageDragDrop({
+    pipelines,
+    activePipeline,
+    setPipelines,
+    canEditStages: isAdminOrOwner
   })
 
   // Sincronización en tiempo real de leads
@@ -857,6 +871,10 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           setMoveDialogOpen(true)
         }}
         t={t}
+        // Stage DnD
+        onStageDragStart={handleStageDragStart}
+        onStageDragOverHeader={handleStageDragOverHeader}
+        onStageDropOnHeader={handleStageDropOnHeader}
       />
 
 

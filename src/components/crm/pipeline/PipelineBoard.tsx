@@ -52,6 +52,10 @@ interface PipelineBoardProps {
 
     // Helpers
     t: any
+    // Stage DnD
+    onStageDragStart: (e: React.DragEvent, stage: Stage) => void
+    onStageDragOverHeader: (e: React.DragEvent) => void
+    onStageDropOnHeader: (e: React.DragEvent, targetStageId: string) => void
 }
 
 export function PipelineBoard({
@@ -87,6 +91,10 @@ export function PipelineBoard({
     onMoveToStage,
     onOpenMoveDialog,
     t
+    ,
+    onStageDragStart,
+    onStageDragOverHeader,
+    onStageDropOnHeader
 }: PipelineBoardProps) {
 
     return (
@@ -135,6 +143,10 @@ export function PipelineBoard({
                             onMoveToStage={onMoveToStage}
                             onOpenMoveDialog={onOpenMoveDialog}
                             t={t}
+                            // Stage DnD
+                            onStageDragStart={onStageDragStart}
+                            onStageDragOverHeader={onStageDragOverHeader}
+                            onStageDropOnHeader={onStageDropOnHeader}
                         />
                     ))}
 

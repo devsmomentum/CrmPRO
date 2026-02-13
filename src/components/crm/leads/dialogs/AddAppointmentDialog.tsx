@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,16 +17,54 @@ interface AddAppointmentDialogProps {
   onClose: () => void
   onAdd: (appointment: CreateAppointmentDTO) => Promise<void>
   leads: Lead[]
+  defaultDate?: Date
 }
 
-export function AddAppointmentDialog({ open, onClose, onAdd, leads }: AddAppointmentDialogProps) {
+export function AddAppointmentDialog({ open, onClose, onAdd, leads, defaultDate }: AddAppointmentDialogProps) {
   const t = useTranslation('es')
 
   const [leadId, setLeadId] = useState('')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
+  
+  // Initialize with defaultDate if provided
+  const getInitialTime = (date?: Date, addHours = 0) => {
+    if (!date) return ''
+    const d = new Date(date)
+    d.setHours(d.getHours() + addHours)
+    // Adjust for timezone offset to keep local time in ISO string
+    const offset = d.getTimezoneOffset()
+    const adjusted = new Date(d.getTime() - (offset * 60 * 1000))
+    return adjusted.toISOString().slice(0, 16)
+  }
+
+  const [startTime, setStartTime] = useState(getInitialTime(defaultDate || new Date()))
+  const [endTime, setEndTime] = useState(getInitialTime(defaultDate || new Date(), 1))
+
+  // Update effect when dialog opens
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const [prevOpen, setPrevOpen] = useState(false)
+  if (open && !prevOpen) {
+      if (defaultDate) {
+          // Calculate dates only when opening to avoid constant re-renders or stale dates
+          const start = getInitialTime(defaultDate)
+          const end = getInitialTime(defaultDate, 1)
+          // We can't set state directly in render, use effect
+      }
+  }
+  
+  // Better approach: use useEffect
+  useEffect(() => {
+    if (open && defaultDate) {
+       setStartTime(getInitialTime(defaultDate))
+       setEndTime(getInitialTime(defaultDate, 1))
+    } else if (open && !startTime) {
+       // If no default date but opening, ensure we have "now"
+       const now = new Date()
+       setStartTime(getInitialTime(now))
+       setEndTime(getInitialTime(now, 1))
+    }
+  }, [open, defaultDate])
   const [participants, setParticipants] = useState<string[]>([])
   const [participantInput, setParticipantInput] = useState('')
   const [notes, setNotes] = useState('')

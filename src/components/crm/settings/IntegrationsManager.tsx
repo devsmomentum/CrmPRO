@@ -120,38 +120,40 @@ export function IntegrationsManager({ empresaId }: Props) {
     integrationIdBefore: integrationId
   })
 
-  const integration = await upsertIntegration(empresaId, 'chat', {
-    allowed_phone: allowedPhone || null,
-    test_mode: testMode,
-    unregistered_auto_create: autoCreateLead,
-    unregistered_pipeline_id: defaultPipelineId || null,
-    unregistered_stage_id: defaultStageId || null,
-    unregistered_default_name: defaultLeadName || 'Nuevo lead',
-    unregistered_include_first_message: includeFirstMessage
-  })
+  const handleSave = async () => {
+    try {
+      const integration = await upsertIntegration(empresaId, 'chat', {
+        allowed_phone: allowedPhone || null,
+        test_mode: testMode,
+        unregistered_auto_create: autoCreateLead,
+        unregistered_pipeline_id: defaultPipelineId || null,
+        unregistered_stage_id: defaultStageId || null,
+        unregistered_default_name: defaultLeadName || 'Nuevo lead',
+        unregistered_include_first_message: includeFirstMessage
+      })
 
-  console.log('✅ [DEBUG] Upsert result:', integration.id, integration.metadata)
-  // Guardar credenciales (sin client, ahora se maneja por instancia)
-  const credentials = [
-    { key: 'webhook_secret', value: webhookSecret },
-    { key: 'api_token', value: apiToken },
-    { key: 'api_url', value: apiUrl }
-  ]
+      console.log('✅ [DEBUG] Upsert result:', integration.id, integration.metadata)
+      // Guardar credenciales (sin client, ahora se maneja por instancia)
+      const credentials = [
+        { key: 'webhook_secret', value: webhookSecret },
+        { key: 'api_token', value: apiToken },
+        { key: 'api_url', value: apiUrl }
+      ]
 
-  for (const cred of credentials) {
-    if (cred.value) {
-      const { error } = await supabase
-        .from('integracion_credenciales')
-        .upsert({ integracion_id: integration.id, key: cred.key, value: cred.value }, { onConflict: 'integracion_id,key' })
-      if (error) throw error
+      for (const cred of credentials) {
+        if (cred.value) {
+          const { error } = await supabase
+            .from('integracion_credenciales')
+            .upsert({ integracion_id: integration.id, key: cred.key, value: cred.value }, { onConflict: 'integracion_id,key' })
+          if (error) throw error
+        }
+      }
+      setIntegrationId(integration.id)
+      toast.success('Integración guardada')
+    } catch (e: any) {
+      console.error('[IntegrationsManager] Error saving', e)
+      toast.error('No se pudo guardar la integración')
     }
-  }
-  setIntegrationId(integration.id)
-  toast.success('Integración guardada')
-} catch (e: any) {
-  console.error('[IntegrationsManager] Error saving', e)
-  toast.error('No se pudo guardar la integración')
-}
   }
 
 const handleDelete = async () => {

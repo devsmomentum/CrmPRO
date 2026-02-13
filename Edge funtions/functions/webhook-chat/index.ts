@@ -518,7 +518,6 @@ serve(async (req) => {
     }
 
     if (req.method === "POST") {
-      const leadsProcessedInPhase1 = new Set<string>();
       // 1. Leemos el body como TEXTO para poder verificar la firma (HMAC)
       const bodyText = await req.text();
 
@@ -565,6 +564,7 @@ serve(async (req) => {
 
       // 2. Convertimos el texto a JSON para leer los datos
       const payload = JSON.parse(bodyText);
+      const leadsProcessedInPhase1 = new Set<string>();
 
       // Obtener el número de WhatsApp configurado para producción
       // Nota: Al mezclar `??` con `||` se requieren paréntesis por reglas del runtime
