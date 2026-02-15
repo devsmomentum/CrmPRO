@@ -76,9 +76,7 @@ export function ContactsView({ companyId, currentUserId }: ContactsViewProps) {
                         Contactos
                     </h1>
                     <div className="flex gap-1.5 md:gap-2 flex-shrink-0">
-                        <div className="hidden md:block">
-                            <MigrationButton empresaId={companyId} />
-                        </div>
+                        {/* aqui estaba el boton de migrar contactos */}
                         <Button
                             onClick={() => setIsCreateDialogOpen(true)}
                             className="bg-primary hover:bg-primary/90 h-8 md:h-9 text-xs md:text-sm px-2.5 md:px-4"

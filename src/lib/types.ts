@@ -23,13 +23,20 @@ export interface Message {
 export interface Task {
   id: string
   title: string
-  description: string
-  assignedTo: string
-  dueDate: Date
-  completed: boolean
-  priority: Priority
+  description?: string
+  assignedTo?: string // UUID del usuario
+  assignedToName?: string // Helper para UI (join)
   leadId?: string
-  createdBy: string
+  leadName?: string // Helper para UI
+  leadCompany?: string // Helper para UI
+  empresaId: string
+  type: 'call' | 'email' | 'meeting' | 'todo' | string
+  status: 'pending' | 'completed' | 'cancelled'
+  priority: Priority
+  dueDate: Date
+  completedAt?: Date
+  createdAt: Date
+  createdBy?: string
 }
 
 export type MeetingParticipantType = 'internal' | 'external'
@@ -287,10 +294,10 @@ export interface Contact {
 
 export interface ContactDB {
   id: string
-  nombre_completo: string
+  nombre: string
   email: string | null
   telefono: string | null
-  empresa: string | null
+  empresa_nombre: string | null
   avatar: string | null
   ubicacion: string | null
   cargo: string | null
@@ -300,7 +307,9 @@ export interface ContactDB {
   notas: string | null
   redes_sociales: any | null
   tags: string[] | null
-  equipo_id: string
+  equipo_id?: string
+  empresa_id: string
+  origen_lead_id?: string
   asignado_a: string | null
   archivado: boolean
   created_at: string
@@ -451,40 +460,4 @@ export interface SearchLeadsOptions {
   order?: 'asc' | 'desc'
 }
 
-// ----- Contactos (Agenda Clientes) -----
 
-export interface ContactDB {
-  id: string
-  nombre: string
-  email: string | null
-  telefono: string | null
-  empresa_nombre: string | null
-  cargo: string | null
-  notas: string | null
-  empresa_id: string
-  origen_lead_id: string | null
-  created_at: string
-  updated_at: string
-  archivado: boolean
-}
-
-export interface Contact {
-  id: string
-  name: string
-  email?: string
-  phone?: string
-  company?: string
-  position?: string
-  notes?: string
-  rating?: number
-  source?: string
-  socialNetworks?: { platform: string; handle: string }[]
-  tags?: any[]
-  avatar?: string
-  location?: string
-  birthday?: Date
-  assignedTo?: string
-  archived: boolean
-  createdAt: Date
-  updatedAt?: Date
-}

@@ -48,13 +48,13 @@ export function ContactCard({ contact, isSelected, onClick }: ContactCardProps) 
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-sm text-foreground truncate">
+                            <h3 className="font-semibold text-sm text-foreground truncate" title={contact.name}>
                                 {contact.name}
                             </h3>
                             {contact.position && (
-                                <p className="text-xs text-muted-foreground truncate">
+                                <p className="text-xs text-muted-foreground truncate" title={contact.position}>
                                     {contact.position}
                                 </p>
                             )}
@@ -62,11 +62,11 @@ export function ContactCard({ contact, isSelected, onClick }: ContactCardProps) 
 
                         {/* Rating Stars */}
                         {contact.rating && contact.rating > 0 && (
-                            <div className="flex gap-0.5 flex-shrink-0">
+                            <div className="flex gap-0.5 flex-shrink-0" title={`Rating: ${contact.rating}`}>
                                 {stars.map((filled, i) => (
                                     <Star
                                         key={i}
-                                        size={10}
+                                        size={12}
                                         weight={filled ? 'fill' : 'regular'}
                                         className={filled ? 'text-amber-500' : 'text-muted-foreground/30'}
                                     />

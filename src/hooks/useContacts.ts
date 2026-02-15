@@ -31,15 +31,17 @@ function mapDBToContact(db: ContactDB): Contact {
         createdAt: new Date(db.created_at),
         updatedAt: db.updated_at ? new Date(db.updated_at) : undefined,
 
-        // Campos de UI que no están en la tabla contactos aún
-        tags: [],
-        rating: 0,
-        avatar: undefined,
-        location: undefined,
-        source: undefined,
-        birthday: undefined,
-        assignedTo: undefined,
-        socialNetworks: []
+        // Mapped fields
+        rating: (db.rating as 1 | 2 | 3 | 4 | 5) || 0,
+        socialNetworks: db.redes_sociales || {},
+
+        // Campos de UI que no están en la tabla contactos aún / no usados
+        tags: db.tags || [],
+        avatar: db.avatar || undefined,
+        location: db.ubicacion || undefined,
+        source: db.fuente || undefined,
+        birthday: db.cumpleanos ? new Date(db.cumpleanos) : undefined,
+        assignedTo: db.asignado_a || undefined,
     }
 }
 
@@ -55,7 +57,11 @@ function mapContactToDB(contact: Partial<Contact>, companyId: string): Partial<C
         cargo: contact.position || null,
         notas: contact.notes || null,
         archivado: contact.archived || false,
-        empresa_id: companyId
+        empresa_id: companyId,
+
+        // New fields
+        rating: contact.rating || 0,
+        redes_sociales: contact.socialNetworks || {}
     }
 }
 

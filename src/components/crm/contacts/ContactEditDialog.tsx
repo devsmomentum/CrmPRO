@@ -15,13 +15,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue
-} from '@/components/ui/select'
 import { Star } from '@phosphor-icons/react'
 import { cn } from '@/lib/utils'
 
@@ -47,9 +40,7 @@ export function ContactEditDialog({
         if (contact) {
             setFormData(contact)
         } else {
-            setFormData({
-                rating: 3
-            })
+            setFormData({})
         }
     }, [contact, open])
 
@@ -136,78 +127,6 @@ export function ContactEditDialog({
                         </div>
                     </div>
 
-                    {/* Location & Source */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <Label htmlFor="location">Ubicación</Label>
-                            <Input
-                                id="location"
-                                value={formData.location || ''}
-                                onChange={(e) => updateField('location', e.target.value)}
-                                placeholder="New York, USA"
-                            />
-                        </div>
-                        <div>
-                            <Label htmlFor="source">Fuente</Label>
-                            <Input
-                                id="source"
-                                value={formData.source || ''}
-                                onChange={(e) => updateField('source', e.target.value)}
-                                placeholder="Referido, Web, Evento..."
-                            />
-                        </div>
-                    </div>
-
-                    {/* Birthday & Rating */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <Label htmlFor="birthday">Cumpleaños</Label>
-                            <Input
-                                id="birthday"
-                                type="date"
-                                value={formData.birthday ? formData.birthday.toISOString().split('T')[0] : ''}
-                                onChange={(e) => updateField('birthday', e.target.value ? new Date(e.target.value) : undefined)}
-                            />
-                        </div>
-                        <div>
-                            <Label>Rating</Label>
-                            <div className="flex gap-2 items-center mt-2">
-                                {[1, 2, 3, 4, 5].map(rating => (
-                                    <button
-                                        key={rating}
-                                        type="button"
-                                        onClick={() => updateField('rating', rating)}
-                                        className="transition-transform hover:scale-110"
-                                    >
-                                        <Star
-                                            size={28}
-                                            weight={(formData.rating || 0) >= rating ? 'fill' : 'regular'}
-                                            className={
-                                                (formData.rating || 0) >= rating
-                                                    ? 'text-amber-500'
-                                                    : 'text-muted-foreground/30'
-                                            }
-                                        />
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Tags */}
-                    <div>
-                        <Label htmlFor="tags">Etiquetas (separadas por comas)</Label>
-                        <Input
-                            id="tags"
-                            value={formData.tags?.join(', ') || ''}
-                            onChange={(e) => updateField(
-                                'tags',
-                                e.target.value.split(',').map(t => t.trim()).filter(t => t)
-                            )}
-                            placeholder="Cliente VIP, Proveedor, Socio..."
-                        />
-                    </div>
-
                     {/* Notes */}
                     <div>
                         <Label htmlFor="notes">Notas</Label>
@@ -218,6 +137,31 @@ export function ContactEditDialog({
                             placeholder="Notas adicionales sobre este contacto..."
                             rows={3}
                         />
+                    </div>
+
+                    {/* Rating */}
+                    <div>
+                        <Label>Rating</Label>
+                        <div className="flex gap-2 items-center mt-2">
+                            {[1, 2, 3, 4, 5].map(rating => (
+                                <button
+                                    key={rating}
+                                    type="button"
+                                    onClick={() => updateField('rating', rating)}
+                                    className="transition-transform hover:scale-110"
+                                >
+                                    <Star
+                                        size={28}
+                                        weight={(formData.rating || 0) >= rating ? 'fill' : 'regular'}
+                                        className={
+                                            (formData.rating || 0) >= rating
+                                                ? 'text-amber-500'
+                                                : 'text-muted-foreground/30'
+                                        }
+                                    />
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Social Networks */}
