@@ -3,17 +3,26 @@
  * Fetches contacts from Supabase 'contactos' table
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Contact, ContactDB } from '@/lib/types'
 import {
     getContacts,
     createContact as createContactService,
     updateContact as updateContactService,
     deleteContact as deleteContactService,
-    archiveContact as archiveContactService,
-    searchContacts as searchContactsService
+    archiveContact as archiveContactService
 } from '@/supabase/services/contacts'
 import { toast } from 'sonner'
+
+// Simple debounce implementation
+function useDebounce<T>(value: T, delay: number): T {
+    const [debouncedValue, setDebouncedValue] = useState<T>(value)
+    useEffect(() => {
+        const handler = setTimeout(() => setDebouncedValue(value), delay)
+        return () => clearTimeout(handler)
+    }, [value, delay])
+    return debouncedValue
+}
 
 /**
  * Map database contact to Contact type
@@ -65,22 +74,71 @@ function mapContactToDB(contact: Partial<Contact>, companyId: string): Partial<C
     }
 }
 
+export type SortOption = 'recent' | 'oldest' | 'name-asc' | 'name-desc' | 'rating'
+
 export function useContacts(companyId?: string) {
     const [contacts, setContacts] = useState<Contact[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [error, setError] = useState<Error | null>(null)
 
-    const fetchContacts = useCallback(async () => {
+    // Pagination & Search State
+    const [page, setPage] = useState(1)
+    const [hasMore, setHasMore] = useState(true)
+    const [totalContacts, setTotalContacts] = useState(0)
+    const [searchQuery, setSearchQuery] = useState('')
+    const [sortBy, setSortBy] = useState<SortOption>('recent')
+
+    const debouncedSearch = useDebounce(searchQuery, 500)
+    const LIMIT = 20
+
+    // Reset pagination when search or sort changes
+    useEffect(() => {
+        setPage(1)
+        setHasMore(true)
+        // We don't clear contacts here to avoid Flickr, but we will replace them in fetch
+    }, [debouncedSearch, sortBy])
+
+    const fetchContacts = useCallback(async (isLoadMore = false) => {
         if (!companyId) {
             setIsLoading(false)
             return
         }
 
         try {
-            setIsLoading(true)
+            if (!isLoadMore) setIsLoading(true)
             setError(null)
-            const data = await getContacts(companyId)
-            setContacts(data.map(mapDBToContact))
+
+            const currentPage = isLoadMore ? page + 1 : 1
+
+            const { data, count } = await getContacts({
+                companyId,
+                page: currentPage,
+                limit: LIMIT,
+                search: debouncedSearch,
+                sort: sortBy
+            })
+
+            const mappedContacts = data.map(mapDBToContact)
+
+            if (isLoadMore) {
+                setContacts(prev => [...prev, ...mappedContacts])
+                setPage(currentPage)
+            } else {
+                setContacts(mappedContacts)
+                setPage(1)
+            }
+
+            setTotalContacts(count)
+            setHasMore(contacts.length + mappedContacts.length < count)
+            // Check if we loaded less than limit (end of list)
+            if (data.length < LIMIT) {
+                setHasMore(false)
+            } else {
+                setHasMore(true) // Should rely on count, but this is a fallback
+                if (isLoadMore && contacts.length + mappedContacts.length >= count) setHasMore(false)
+                if (!isLoadMore && mappedContacts.length >= count) setHasMore(false)
+            }
+
         } catch (err) {
             console.error('Error fetching contacts:', err)
             setError(err as Error)
@@ -88,11 +146,18 @@ export function useContacts(companyId?: string) {
         } finally {
             setIsLoading(false)
         }
-    }, [companyId])
+    }, [companyId, page, debouncedSearch, sortBy])
 
+    // Initial fetch and parameter change fetch
     useEffect(() => {
-        fetchContacts()
-    }, [fetchContacts])
+        fetchContacts(false)
+    }, [fetchContacts]) // fetchContacts depends on debouncedSearch and sortBy
+
+    const loadMore = useCallback(() => {
+        if (!isLoading && hasMore) {
+            fetchContacts(true)
+        }
+    }, [isLoading, hasMore, fetchContacts])
 
     const createContact = useCallback(async (contact: Partial<Contact>): Promise<Contact | null> => {
         if (!companyId) return null
@@ -102,6 +167,7 @@ export function useContacts(companyId?: string) {
             const created = await createContactService(dbContact)
             const newContact = mapDBToContact(created)
             setContacts(prev => [newContact, ...prev])
+            setTotalContacts(prev => prev + 1)
             toast.success('Contacto creado exitosamente')
             return newContact
         } catch (err) {
@@ -132,6 +198,7 @@ export function useContacts(companyId?: string) {
         try {
             await deleteContactService(id)
             setContacts(prev => prev.filter(c => c.id !== id))
+            setTotalContacts(prev => prev - 1)
             toast.success('Contacto eliminado')
             return true
         } catch (err) {
@@ -145,6 +212,7 @@ export function useContacts(companyId?: string) {
         try {
             await archiveContactService(id)
             setContacts(prev => prev.filter(c => c.id !== id))
+            setTotalContacts(prev => prev - 1)
             toast.success('Contacto archivado')
             return true
         } catch (err) {
@@ -154,28 +222,22 @@ export function useContacts(companyId?: string) {
         }
     }, [])
 
-    const searchContacts = useCallback(async (query: string): Promise<Contact[]> => {
-        if (!companyId) return []
-
-        try {
-            const data = await searchContactsService(companyId, query)
-            return data.map(mapDBToContact)
-        } catch (err) {
-            console.error('Error searching contacts:', err)
-            toast.error('Error al buscar contactos')
-            return []
-        }
-    }, [companyId])
-
     return {
         contacts,
         isLoading,
         error,
-        refetch: fetchContacts,
+        refetch: () => fetchContacts(false),
         createContact,
         updateContact,
         deleteContact,
         archiveContact,
-        searchContacts
+        // Pagination & Search exports
+        loadMore,
+        hasMore,
+        totalContacts,
+        searchQuery,
+        setSearchQuery,
+        sortBy,
+        setSortBy
     }
 }

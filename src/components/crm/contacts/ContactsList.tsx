@@ -2,68 +2,42 @@
  * ContactsList - Sidebar with searchable contact list
  */
 
-import { useState, useMemo } from 'react'
 import { Contact } from '@/lib/types'
 import { ContactCard } from './ContactCard'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MagnifyingGlass, SortAscending, Spinner } from '@phosphor-icons/react'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { SortOption } from '@/hooks/useContacts'
 
 interface ContactsListProps {
     contacts: Contact[]
     isLoading: boolean
     selectedContact: Contact | null
     onSelectContact: (contact: Contact) => void
+    // Pagination & Search
+    loadMore: () => void
+    hasMore: boolean
+    searchQuery: string
+    setSearchQuery: (query: string) => void
+    sortBy: SortOption
+    setSortBy: (sort: SortOption) => void
 }
-
-type SortOption = 'name-asc' | 'name-desc' | 'recent' | 'oldest' | 'rating'
 
 export function ContactsList({
     contacts,
     isLoading,
     selectedContact,
-    onSelectContact
+    onSelectContact,
+    loadMore,
+    hasMore,
+    searchQuery,
+    setSearchQuery,
+    sortBy,
+    setSortBy
 }: ContactsListProps) {
-    const [searchQuery, setSearchQuery] = useState('')
-    const [sortBy, setSortBy] = useState<SortOption>('recent')
-
-    // Filter and sort contacts
-    const filteredAndSortedContacts = useMemo(() => {
-        let result = [...contacts]
-
-        // Apply search filter
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase()
-            result = result.filter(contact =>
-                contact.name.toLowerCase().includes(query) ||
-                contact.email?.toLowerCase().includes(query) ||
-                contact.phone?.includes(query) ||
-                contact.company?.toLowerCase().includes(query)
-            )
-        }
-
-        // Apply sorting
-        result.sort((a, b) => {
-            switch (sortBy) {
-                case 'name-asc':
-                    return a.name.localeCompare(b.name)
-                case 'name-desc':
-                    return b.name.localeCompare(a.name)
-                case 'recent':
-                    return b.createdAt.getTime() - a.createdAt.getTime()
-                case 'oldest':
-                    return a.createdAt.getTime() - b.createdAt.getTime()
-                case 'rating':
-                    return (b.rating || 0) - (a.rating || 0)
-                default:
-                    return 0
-            }
-        })
-
-        return result
-    }, [contacts, searchQuery, sortBy])
+    // No local state for search/sort anymore
 
     return (
         <div className="w-full md:w-80 border-r border-border flex flex-col h-full bg-card overflow-hidden">
@@ -104,11 +78,7 @@ export function ContactsList({
             {/* Contacts List - Scrollable Area */}
             <ScrollArea className="flex-1 h-full">
                 <div className="p-2 pb-20">
-                    {isLoading ? (
-                        <div className="flex items-center justify-center py-12">
-                            <Spinner size={32} className="animate-spin text-primary" />
-                        </div>
-                    ) : filteredAndSortedContacts.length === 0 ? (
+                    {contacts.length === 0 && !isLoading ? (
                         <div className="text-center py-12 px-4">
                             <p className="text-muted-foreground text-sm">
                                 {searchQuery ? 'No se encontraron contactos' : 'No hay contactos aún'}
@@ -116,7 +86,7 @@ export function ContactsList({
                         </div>
                     ) : (
                         <div className="space-y-1">
-                            {filteredAndSortedContacts.map(contact => (
+                            {contacts.map(contact => (
                                 <ContactCard
                                     key={contact.id}
                                     contact={contact}
@@ -126,15 +96,24 @@ export function ContactsList({
                             ))}
                         </div>
                     )}
+
+                    {/* Loading State & Load More */}
+                    <div className="py-4 flex justify-center">
+                        {isLoading ? (
+                            <Spinner size={24} className="animate-spin text-primary" />
+                        ) : hasMore ? (
+                            <Button variant="ghost" size="sm" onClick={loadMore}>
+                                Cargar más
+                            </Button>
+                        ) : null}
+                    </div>
                 </div>
             </ScrollArea>
 
-            {/* Footer with count - Fixed Footer relative to list if needed, or just scrolling with it? 
-                User wants independent scroll. Sticky footer is better.
-            */}
+            {/* Footer with count */}
             <div className="flex-none p-3 border-t border-border bg-muted/20 z-10">
                 <p className="text-xs text-muted-foreground text-center">
-                    {filteredAndSortedContacts.length} {filteredAndSortedContacts.length === 1 ? 'contacto' : 'contactos'}
+                    Mostrando {contacts.length} resultados
                 </p>
             </div>
         </div>
