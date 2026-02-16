@@ -1,33 +1,50 @@
 import { useEffect, useState } from 'react'
 import { listEmpresaInstancias, createEmpresaInstancia, updateEmpresaInstancia, deleteEmpresaInstancia } from '@/supabase/services/instances'
 import type { EmpresaInstanciaDB } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Plus, Trash } from '@phosphor-icons/react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Plus, Trash, PencilSimple, Eye, EyeSlash } from '@phosphor-icons/react'
 import { toast } from 'sonner'
-import { supabase } from '@/supabase/client'
 
 interface InstancesManagerProps {
   empresaId: string
+}
+
+interface InstanceForm {
+  plataforma: 'whatsapp' | 'instagram' | 'facebook' | ''
+  client_id: string
+  api_url: string
+  label: string
+  api_token: string
+  webhook_secret: string
+  verify_token: string
+  active: boolean
 }
 
 export function InstancesManager({ empresaId }: InstancesManagerProps) {
   const [instances, setInstances] = useState<EmpresaInstanciaDB[]>([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [showTokens, setShowTokens] = useState<Record<string, boolean>>({})
 
-
-  const [form, setForm] = useState<{ plataforma: 'whatsapp' | 'instagram' | 'facebook' | ''; client_id: string; api_url: string; label: string; active: boolean }>({
+  const emptyForm: InstanceForm = {
     plataforma: '',
     client_id: '',
     api_url: '',
     label: '',
+    api_token: '',
+    webhook_secret: '',
+    verify_token: '',
     active: true
-  })
+  }
+
+  const [form, setForm] = useState<InstanceForm>(emptyForm)
 
   useEffect(() => {
     let mounted = true
@@ -52,6 +69,10 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
       toast.error('Selecciona plataforma y client_id')
       return
     }
+    if (!form.api_token) {
+      toast.error('El API Token es requerido')
+      return
+    }
     try {
       setCreating(true)
       const created = await createEmpresaInstancia({
@@ -60,16 +81,55 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
         client_id: form.client_id.trim(),
         api_url: form.api_url.trim() || null as any,
         label: form.label.trim() || null as any,
+        api_token: form.api_token.trim() || null as any,
+        webhook_secret: form.webhook_secret.trim() || null as any,
+        verify_token: form.verify_token.trim() || null as any,
         active: form.active
       } as any)
       setInstances((arr) => [created, ...arr])
-      setForm({ plataforma: '', client_id: '', api_url: '', label: '', active: true })
-      toast.success('Instancia creada')
+      setForm(emptyForm)
+      toast.success('Instancia creada correctamente')
     } catch (e: any) {
       console.error('[InstancesManager] create error', e)
       toast.error(e?.message || 'Error al crear instancia')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handleEdit = (inst: EmpresaInstanciaDB) => {
+    setEditingId(inst.id)
+    setForm({
+      plataforma: inst.plataforma as any,
+      client_id: inst.client_id,
+      api_url: inst.api_url || '',
+      label: inst.label || '',
+      api_token: (inst as any).api_token || '',
+      webhook_secret: (inst as any).webhook_secret || '',
+      verify_token: (inst as any).verify_token || '',
+      active: inst.active
+    })
+  }
+
+  const handleUpdate = async () => {
+    if (!editingId) return
+    try {
+      const updated = await updateEmpresaInstancia(editingId, {
+        client_id: form.client_id.trim(),
+        api_url: form.api_url.trim() || null as any,
+        label: form.label.trim() || null as any,
+        api_token: form.api_token.trim() || null as any,
+        webhook_secret: form.webhook_secret.trim() || null as any,
+        verify_token: form.verify_token.trim() || null as any,
+        active: form.active
+      } as any)
+      setInstances((arr) => arr.map(i => i.id === editingId ? updated : i))
+      setEditingId(null)
+      setForm(emptyForm)
+      toast.success('Instancia actualizada')
+    } catch (e: any) {
+      console.error('[InstancesManager] update error', e)
+      toast.error(e?.message || 'Error al actualizar')
     }
   }
 
@@ -84,6 +144,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
   }
 
   const handleDelete = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta instancia?')) return
     try {
       await deleteEmpresaInstancia(id)
       setInstances((arr) => arr.filter(i => i.id !== id))
@@ -94,49 +155,85 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
     }
   }
 
-
+  const maskToken = (token: string | null | undefined) => {
+    if (!token) return '-'
+    if (token.length <= 8) return '••••••••'
+    return token.substring(0, 4) + '••••••••' + token.substring(token.length - 4)
+  }
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Nueva instancia</CardTitle>
+          <CardTitle>Nueva Instancia</CardTitle>
+          <CardDescription>
+            Configura una nueva instancia de WhatsApp, Instagram o Facebook con sus credenciales de Super API
+          </CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-6 gap-3">
-          <div className="md:col-span-1">
-            <Label>Plataforma</Label>
-            <Select value={form.plataforma} onValueChange={(v: any) => setForm(s => ({ ...s, plataforma: v }))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecciona" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                <SelectItem value="instagram">Instagram</SelectItem>
-                <SelectItem value="facebook">Facebook</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="md:col-span-2">
-            <Label>Client ID</Label>
-            <Input value={form.client_id} onChange={(e) => setForm(s => ({ ...s, client_id: e.target.value }))} placeholder="client_id de la SuperAPI" />
-          </div>
-          <div className="md:col-span-2">
-            <Label>API URL</Label>
-            <Input value={form.api_url} onChange={(e) => setForm(s => ({ ...s, api_url: e.target.value }))} placeholder="https://... (opcional)" />
-          </div>
-          <div className="md:col-span-1">
-            <Label>Etiqueta</Label>
-            <Input value={form.label} onChange={(e) => setForm(s => ({ ...s, label: e.target.value }))} placeholder="Ej. Ventas MX" />
-          </div>
-          <div className="md:col-span-1 flex items-end gap-2">
-            <div className="flex items-center gap-2">
-              <Switch checked={form.active} onCheckedChange={(v) => setForm(s => ({ ...s, active: v }))} />
-              <span className="text-sm">Activa</span>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <Label>Plataforma *</Label>
+              <Select value={form.plataforma} onValueChange={(v: any) => setForm(s => ({ ...s, plataforma: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="instagram">Instagram</SelectItem>
+                  <SelectItem value="facebook">Facebook</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Client ID *</Label>
+              <Input value={form.client_id} onChange={(e) => setForm(s => ({ ...s, client_id: e.target.value }))} placeholder="client_id de SuperAPI" />
+            </div>
+            <div>
+              <Label>Etiqueta</Label>
+              <Input value={form.label} onChange={(e) => setForm(s => ({ ...s, label: e.target.value }))} placeholder="Ej: Ventas MX" />
             </div>
           </div>
-          <div className="md:col-span-1 flex items-end">
+
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <Label>API Token * <span className="text-xs text-muted-foreground">(Bearer token de Super API)</span></Label>
+              <Input
+                type="password"
+                value={form.api_token}
+                onChange={(e) => setForm(s => ({ ...s, api_token: e.target.value }))}
+                placeholder="Tu token de autenticación"
+              />
+            </div>
+            <div>
+              <Label>Webhook Secret <span className="text-xs text-muted-foreground">(Para validar webhooks entrantes)</span></Label>
+              <Input
+                value={form.webhook_secret}
+                onChange={(e) => setForm(s => ({ ...s, webhook_secret: e.target.value }))}
+                placeholder="Secret único para esta instancia"
+              />
+            </div>
+            <div>
+              <Label>Verify Token <span className="text-xs text-muted-foreground">(Para verificación estilo Facebook/Meta)</span></Label>
+              <Input
+                value={form.verify_token}
+                onChange={(e) => setForm(s => ({ ...s, verify_token: e.target.value }))}
+                placeholder="Token de verificación"
+              />
+            </div>
+            <div>
+              <Label>API URL <span className="text-xs text-muted-foreground">(Opcional, default: https://v4.iasuperapi.com)</span></Label>
+              <Input value={form.api_url} onChange={(e) => setForm(s => ({ ...s, api_url: e.target.value }))} placeholder="https://..." />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center gap-2">
+              <Switch checked={form.active} onCheckedChange={(v) => setForm(s => ({ ...s, active: v }))} />
+              <span className="text-sm">Instancia activa</span>
+            </div>
             <Button onClick={handleCreate} disabled={creating}>
-              <Plus className="mr-2" size={18} /> Agregar
+              <Plus className="mr-2" size={18} /> Crear Instancia
             </Button>
           </div>
         </CardContent>
@@ -144,30 +241,91 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Instancias existentes</CardTitle>
+          <CardTitle>Instancias Configuradas</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <div className="text-sm text-muted-foreground">Cargando...</div>
+          ) : instances.length === 0 ? (
+            <div className="text-sm text-muted-foreground">No hay instancias configuradas</div>
           ) : (
-            <div className="space-y-2">
-              {instances.length === 0 && (
-                <div className="text-sm text-muted-foreground">No hay instancias</div>
-              )}
+            <div className="space-y-3">
               {instances.map(inst => (
-                <div key={inst.id} className="grid grid-cols-1 md:grid-cols-9 gap-2 items-center border rounded p-2">
-                  <div className="text-sm font-medium">{inst.plataforma}</div>
-                  <div className="md:col-span-2 truncate text-sm" title={inst.client_id}>{inst.client_id}</div>
-                  <div className="md:col-span-2 truncate text-sm" title={inst.api_url || ''}>{inst.api_url || '-'}</div>
-                  <div className="text-sm">{inst.label || '-'}</div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={inst.active} onCheckedChange={(v) => handleToggleActive(inst.id, v)} />
-                    <span className="text-xs">{inst.active ? 'Activa' : 'Inactiva'}</span>
+                <div key={inst.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold capitalize">{inst.plataforma}</span>
+                        {inst.label && <span className="text-xs bg-muted px-2 py-0.5 rounded">{inst.label}</span>}
+                        <Switch checked={inst.active} onCheckedChange={(v) => handleToggleActive(inst.id, v)} />
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        <span className="font-mono">{inst.client_id}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button variant="ghost" size="sm" onClick={() => handleEdit(inst)}>
+                            <PencilSimple size={18} />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-2xl">
+                          <DialogHeader>
+                            <DialogTitle>Editar Instancia</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <Label>Client ID</Label>
+                                <Input value={form.client_id} onChange={(e) => setForm(s => ({ ...s, client_id: e.target.value }))} />
+                              </div>
+                              <div>
+                                <Label>Etiqueta</Label>
+                                <Input value={form.label} onChange={(e) => setForm(s => ({ ...s, label: e.target.value }))} />
+                              </div>
+                            </div>
+                            <div>
+                              <Label>API Token</Label>
+                              <Input type="password" value={form.api_token} onChange={(e) => setForm(s => ({ ...s, api_token: e.target.value }))} />
+                            </div>
+                            <div>
+                              <Label>Webhook Secret</Label>
+                              <Input value={form.webhook_secret} onChange={(e) => setForm(s => ({ ...s, webhook_secret: e.target.value }))} />
+                            </div>
+                            <div>
+                              <Label>Verify Token</Label>
+                              <Input value={form.verify_token} onChange={(e) => setForm(s => ({ ...s, verify_token: e.target.value }))} />
+                            </div>
+                            <div>
+                              <Label>API URL</Label>
+                              <Input value={form.api_url} onChange={(e) => setForm(s => ({ ...s, api_url: e.target.value }))} />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <Button variant="outline" onClick={() => { setEditingId(null); setForm(emptyForm) }}>Cancelar</Button>
+                              <Button onClick={handleUpdate}>Guardar Cambios</Button>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                      <Button variant="ghost" size="sm" className="text-destructive" onClick={() => handleDelete(inst.id)}>
+                        <Trash size={18} />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-end gap-1">
-                    <Button variant="ghost" className="text-destructive" onClick={() => handleDelete(inst.id)}>
-                      <Trash size={18} />
-                    </Button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">API Token:</span>{' '}
+                      <span className="font-mono">{maskToken((inst as any).api_token)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Webhook Secret:</span>{' '}
+                      <span className="font-mono">{maskToken((inst as any).webhook_secret)}</span>
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="text-muted-foreground">API URL:</span>{' '}
+                      <span className="font-mono">{inst.api_url || 'https://v4.iasuperapi.com (default)'}</span>
+                    </div>
                   </div>
                 </div>
               ))}

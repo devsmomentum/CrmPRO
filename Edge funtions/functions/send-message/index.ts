@@ -158,9 +158,9 @@ serve(async (req) => {
 
     // Obtener instancia y credenciales
     console.log(`[Debug] Buscando detalles de instancia en DB con ID: ${effectiveInstanceId}`);
-    const { data: instanceRow, error: instanceErr } = await supabaseClient
+    let { data: instanceRow, error: instanceErr } = await supabaseClient
       .from('empresa_instancias')
-      .select('id, empresa_id, plataforma, client_id, api_url, active')
+      .select('id, empresa_id, plataforma, client_id, api_url, active, api_token')
       .eq('id', effectiveInstanceId)
       .maybeSingle();
 
@@ -169,63 +169,64 @@ serve(async (req) => {
       throw new Error(`Error en base de datos al buscar instancia: ${instanceErr.message}`);
     }
 
-    if (!instanceRow) {
-      console.error(`[Error] No se encontró ninguna fila en empresa_instancias para ID: ${effectiveInstanceId}`);
-      throw new Error('Instancia no encontrada');
+    // Si la instancia no existe o no está activa, buscar un fallback
+    if (!instanceRow || !instanceRow.active) {
+      console.warn(`⚠️ [Fallback] Instancia ${effectiveInstanceId} no encontrada o inactiva. Buscando alternativa...`);
+
+      // Buscar cualquier instancia activa de la empresa para el canal
+      const { data: fallbackInstances } = await supabaseClient
+        .from('empresa_instancias')
+        .select('id, empresa_id, plataforma, client_id, api_url, active, api_token')
+        .eq('empresa_id', empresaId)
+        .eq('plataforma', targetChannel === 'whatsapp' ? 'whatsapp' : targetChannel)
+        .eq('active', true)
+        .limit(1);
+
+      if (!fallbackInstances || fallbackInstances.length === 0) {
+        console.error(`❌ [Error] No hay instancias activas de ${targetChannel} para empresa ${empresaId}`);
+        throw new Error(`No hay instancias de ${targetChannel} configuradas para esta empresa. Por favor configura una instancia en Configuración → Instancias.`);
+      }
+
+      instanceRow = fallbackInstances[0];
+      effectiveInstanceId = instanceRow.id;
+      console.log(`✅ [Fallback] Usando instancia alternativa: ${instanceRow.id} (${instanceRow.plataforma})`);
+
+      // Actualizar preferred_instance_id del lead para futuras veces
+      await supabaseClient
+        .from('lead')
+        .update({ preferred_instance_id: instanceRow.id })
+        .eq('id', lead_id);
+
+      console.log(`📝 [Fallback] Actualizado preferred_instance_id del lead a: ${instanceRow.id}`);
     }
 
-    if (!instanceRow.active) throw new Error('La instancia seleccionada está deshabilitada');
     if (instanceRow.empresa_id !== empresaId) {
       console.error(`[Error] Conflicto de empresa. Instancia pertenece a ${instanceRow.empresa_id} pero el lead/petición dice ${empresaId}`);
       throw new Error('La instancia no pertenece a la empresa indicada');
     }
 
     currentStep = 'Preparar Super API';
-    // Valores por defecto de entorno
-    let SUPER_API_KEY = Deno.env.get('SUPER_API_SECRET_TOKEN');
-    let CLIENT_ID = instanceRow.client_id || Deno.env.get('SUPER_API_CLIENT');
 
-    // URL base por defecto
-    let BASE_URL = (instanceRow.api_url && instanceRow.api_url.length > 5 && instanceRow.api_url !== '.')
+    // ✅ ARQUITECTURA SIMPLIFICADA: Usar SOLO credenciales de la instancia
+    const SUPER_API_KEY = (instanceRow as any).api_token;
+    const CLIENT_ID = instanceRow.client_id;
+    const BASE_URL = (instanceRow.api_url && instanceRow.api_url.length > 5 && instanceRow.api_url !== '.')
       ? instanceRow.api_url
       : "https://v4.iasuperapi.com";
 
-    const envUrl = Deno.env.get('SUPER_API_URL');
-    if (!instanceRow.api_url && envUrl && envUrl.length > 5 && envUrl !== '.') {
-      BASE_URL = envUrl;
+    // Validar que la instancia tenga credenciales configuradas
+    if (!SUPER_API_KEY) {
+      throw new Error(`La instancia ${instanceRow.id} no tiene API Token configurado. Por favor configúralo en Configuración → Instancias.`);
     }
 
-    // Intentar obtener credenciales específicas de la empresa (Multitenant)
-    if (empresaId) {
-      const { data: integration } = await supabaseClient
-        .from('integraciones')
-        .select('id')
-        .eq('empresa_id', empresaId)
-        .eq('provider', 'chat')
-        .eq('status', 'active')
-        .maybeSingle();
-
-      if (integration) {
-        const { data: creds } = await supabaseClient
-          .from('integracion_credenciales')
-          .select('key, value')
-          .eq('integracion_id', integration.id);
-
-        if (creds) {
-          const apiToken = creds.find((c: any) => c.key === 'api_token' || c.key === 'token')?.value;
-          if (apiToken) SUPER_API_KEY = apiToken;
-
-          // Nota: CLIENT_ID ahora viene de la instancia, no de integracion_credenciales
-          // Solo usamos api_url global si la instancia no tiene uno específico
-          if (!instanceRow.api_url) {
-            const customUrl = creds.find((c: any) => c.key === 'api_url')?.value;
-            if (customUrl && customUrl.length > 5 && customUrl !== '.') {
-              BASE_URL = customUrl;
-            }
-          }
-        }
-      }
+    if (!CLIENT_ID) {
+      throw new Error(`La instancia ${instanceRow.id} no tiene Client ID configurado. Por favor configúralo en Configuración → Instancias.`);
     }
+
+    console.log(`✅ [Credenciales] Usando instancia: ${instanceRow.id} (${instanceRow.plataforma})`);
+    console.log(`✅ [Credenciales] Client ID: ${CLIENT_ID}`);
+
+
 
     if (SUPER_API_KEY) {
       currentStep = 'Fetch Super API';
@@ -236,15 +237,21 @@ serve(async (req) => {
       // Para WhatsApp, limpiar el número de teléfono (solo dígitos)
       if (targetChannel === 'whatsapp' || targetChannel === 'wws') {
         chatId = chatId.replace(/\D/g, '');
+        // Super API con platform 'wws' requiere el formato: numero@c.us
+        // Ejemplo: 584143996158@c.us
+        if (chatId && !chatId.includes('@')) {
+          chatId = `${chatId}@c.us`;
+        }
       }
 
       // Determinar plataforma según documentación Super API:
-      // wws = WhatsApp Web, api = WhatsApp Cloud API (Meta), instagram, facebook
-      // Para WhatsApp Meta usamos 'api', para WhatsApp Web usamos 'wws'
-      let platform = 'api'; // WhatsApp Meta (Cloud API) por defecto
+      // wws = WhatsApp Web (Super API), api = WhatsApp Cloud API (Meta), instagram, facebook
+      // Por defecto usamos 'wws' que es el más común con Super API
+      let platform = 'wws'; // WhatsApp Web (Super API) por defecto
       if (targetChannel === 'instagram') platform = 'instagram';
       else if (targetChannel === 'facebook') platform = 'facebook';
-      else if (targetChannel === 'wws') platform = 'wws'; // WhatsApp Web explícito
+      else if (targetChannel === 'api') platform = 'api'; // Solo si explícitamente es Meta Cloud API
+      // Si targetChannel es 'whatsapp', se queda en 'wws'
 
       console.log(`[Debug] ChatId construido: ${chatId}`);
       console.log(`[Debug] Platform: ${platform}`);
@@ -287,14 +294,24 @@ serve(async (req) => {
         body: JSON.stringify(apiPayload)
       });
 
-      if (!response.ok) {
-        const txt = await response.text();
-        console.error(`[Error] Super API respondió ${response.status}: ${txt}`);
-        throw new Error(`Super API Error ${response.status}: ${txt}`);
-      }
+      console.log(`[Super API] Status: ${response.status} ${response.statusText}`);
 
       const responseData = await response.json().catch(() => ({}));
-      console.log(`[Debug] Respuesta de Super API:`, JSON.stringify(responseData));
+      console.log(`[Super API] Response Body:`, JSON.stringify(responseData, null, 2));
+
+      // Verificar si Super API retornó un error en el body aunque el HTTP sea 200
+      if (responseData.error || responseData.status === 'error' || !response.ok) {
+        const errorMsg = responseData.message || responseData.error || `HTTP ${response.status}`;
+        console.error(`[Super API Error] ${errorMsg}`);
+        throw new Error(`Super API Error: ${errorMsg}`);
+      }
+
+      // Verificar si el mensaje fue enviado exitosamente
+      if (responseData.status === 'success' || responseData.sent) {
+        console.log(`✅ [Super API] Mensaje enviado exitosamente`);
+      } else {
+        console.warn(`⚠️ [Super API] Respuesta inesperada:`, responseData);
+      }
     }
 
     currentStep = 'Guardar en DB';
