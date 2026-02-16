@@ -142,6 +142,8 @@ export function AddLeadDialog({
         telefono: data.phone || undefined,
         empresa: data.company || undefined,
         ubicacion: data.location || undefined,
+        evento: data.evento || undefined,
+        membresia: data.membresia || undefined,
         presupuesto: data.budget,
         etapa_id: data.stageId,
         pipeline_id: pipelineId || '',
@@ -159,6 +161,8 @@ export function AddLeadDialog({
           phone: dbLead.telefono || '',
           company: dbLead.empresa || '',
           location: dbLead.ubicacion || '',
+          evento: dbLead.evento || '',
+          membresia: dbLead.membresia || '',
           budget: dbLead.presupuesto || 0,
           stage: dbLead.etapa_id || '',
           pipeline: dbLead.pipeline_id || pipelineType,
@@ -174,7 +178,8 @@ export function AddLeadDialog({
       }
     } catch (err) {
       console.error('Error creating lead:', err)
-      toast.error('Error al crear el lead')
+      const message = err instanceof Error ? err.message : 'Error al crear el lead'
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }

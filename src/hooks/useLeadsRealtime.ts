@@ -18,6 +18,8 @@ export function useLeadsRealtime({ companyId, onInsert, onUpdate, onDelete }: Us
     phone: dbLead.telefono,
     company: dbLead.empresa,
     location: dbLead.ubicacion,
+    evento: dbLead.evento,
+    membresia: dbLead.membresia,
     budget: dbLead.presupuesto,
     stage: dbLead.etapa_id,
     pipeline: dbLead.pipeline_id || 'sales',

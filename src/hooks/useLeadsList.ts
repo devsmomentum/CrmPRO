@@ -136,6 +136,8 @@ export function mapDBToLead(d: any): Lead {
         lastContact: d.last_contact ? new Date(d.last_contact) : undefined,
         avatar: d.avatar || undefined,
         company: d.empresa || d.company || undefined,
+        evento: d.evento || undefined,
+        membresia: d.membresia || undefined,
         archived: !!d.archived,
         archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
     }

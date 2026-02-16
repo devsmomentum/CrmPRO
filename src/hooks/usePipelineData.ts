@@ -92,6 +92,8 @@ function mapDbLeadToLead(l: any): Lead {
         phone: l.telefono,
         company: l.empresa,
         location: l.ubicacion,
+        evento: l.evento,
+        membresia: l.membresia,
         budget: l.presupuesto,
         stage: l.etapa_id,
         pipeline: l.pipeline_id || 'sales',

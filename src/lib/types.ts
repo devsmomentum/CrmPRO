@@ -100,6 +100,8 @@ export interface Lead {
   createdAt: Date
   lastContact: Date
   location?: string
+  evento?: string
+  membresia?: string
   lastMessageAt?: Date
   lastMessageSender?: 'lead' | 'team'
   lastMessage?: string
@@ -216,6 +218,8 @@ export interface CreateLeadDTO {
   presupuesto?: number
   prioridad?: Priority
   ubicacion?: string
+  evento?: string
+  membresia?: string
   empresa?: string
   preferred_instance_id?: string | null
 }
@@ -230,6 +234,8 @@ export interface UpdateLeadDTO {
   etapa_id?: string
   pipeline_id?: string
   ubicacion?: string
+  evento?: string
+  membresia?: string
   empresa?: string
   archived?: boolean
   archived_at?: string | null
@@ -248,6 +254,8 @@ export interface LeadDB {
   presupuesto?: number
   prioridad?: string
   ubicacion?: string
+  evento?: string
+  membresia?: string
   empresa?: string
   created_at: string
   updated_at?: string

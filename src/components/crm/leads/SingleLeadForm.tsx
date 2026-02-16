@@ -23,6 +23,8 @@ export interface SingleLeadFormData {
     phone: string
     company: string
     location: string
+    evento: string
+    membresia: string
     budget: number
     priority: 'low' | 'medium' | 'high'
     stageId: string
@@ -57,6 +59,8 @@ export function SingleLeadForm({
     const [phone, setPhone] = useState('')
     const [company, setCompany] = useState('')
     const [location, setLocation] = useState('')
+    const [evento, setEvento] = useState('')
+    const [membresia, setMembresia] = useState('')
     const [budget, setBudget] = useState('')
     const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium')
     const [stageId, setStageId] = useState(defaultStageId || stages[0]?.id || '')
@@ -80,6 +84,16 @@ export function SingleLeadForm({
             return
         }
 
+        if (evento.trim().length > 80) {
+            toast.error('Evento no puede superar 80 caracteres')
+            return
+        }
+
+        if (membresia.trim().length > 80) {
+            toast.error('Membresía no puede superar 80 caracteres')
+            return
+        }
+
         const budgetValue = parseFloat(budget) || 0
 
         await onSubmit({
@@ -88,6 +102,8 @@ export function SingleLeadForm({
             phone: phone.trim(),
             company: company.trim(),
             location: location.trim(),
+            evento: evento.trim(),
+            membresia: membresia.trim(),
             budget: budgetValue,
             priority,
             stageId,
@@ -101,6 +117,8 @@ export function SingleLeadForm({
         setPhone('')
         setCompany('')
         setLocation('')
+        setEvento('')
+        setMembresia('')
         setBudget('')
         setPriority('medium')
     }
@@ -214,6 +232,28 @@ export function SingleLeadForm({
                     onChange={handleBudgetChange}
                     max={MAX_BUDGET}
                     placeholder="10000"
+                />
+            </div>
+
+            <div>
+                <Label htmlFor="lead-evento">Evento</Label>
+                <Input
+                    id="lead-evento"
+                    value={evento}
+                    onChange={(e) => setEvento(e.target.value)}
+                    maxLength={80}
+                    placeholder="Ej. Expo 2026"
+                />
+            </div>
+
+            <div>
+                <Label htmlFor="lead-membresia">Membresía</Label>
+                <Input
+                    id="lead-membresia"
+                    value={membresia}
+                    onChange={(e) => setMembresia(e.target.value)}
+                    maxLength={80}
+                    placeholder="Ej. Gold"
                 />
             </div>
 

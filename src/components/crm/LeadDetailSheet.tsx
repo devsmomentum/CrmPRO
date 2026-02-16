@@ -500,6 +500,15 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   }
 
   const updateField = async (field: keyof Lead, value: string | number) => {
+    if (field === 'evento' || field === 'membresia') {
+      const textValue = String(value ?? '').trim()
+      if (textValue.length > 80) {
+        toast.error(`${field === 'evento' ? 'Evento' : 'Membresía'} no puede superar 80 caracteres`)
+        return
+      }
+      value = textValue
+    }
+
     if (field === 'budget') {
       const numValue = typeof value === 'number' ? value : parseFloat(value)
       if (numValue < 0) {
@@ -521,6 +530,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       email: 'correo_electronico',
       phone: 'telefono',
       company: 'empresa',
+      evento: 'evento',
+      membresia: 'membresia',
       budget: 'presupuesto',
       priority: 'prioridad',
       assignedTo: 'asignado_a',

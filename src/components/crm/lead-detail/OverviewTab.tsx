@@ -111,15 +111,41 @@ export function OverviewTab({
                     </div>
                 </div>
                 <div>
+                    <Label className="text-xs text-muted-foreground">Evento</Label>
+                    <div className="mt-1">
+                        <InlineEdit
+                            value={lead.evento || ''}
+                            onSave={(value) => onUpdateField('evento', value)}
+                            displayClassName="font-medium !m-0 !p-0 hover:bg-transparent justify-start w-auto"
+                            disabled={!canEdit}
+                            placeholder="Sin evento"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <Label className="text-xs text-muted-foreground">Membresía</Label>
+                    <div className="mt-1">
+                        <InlineEdit
+                            value={lead.membresia || ''}
+                            onSave={(value) => onUpdateField('membresia', value)}
+                            displayClassName="font-medium !m-0 !p-0 hover:bg-transparent justify-start w-auto"
+                            disabled={!canEdit}
+                            placeholder="Sin membresía"
+                        />
+                    </div>
+                </div>
+                <div>
                     <Label className="text-xs text-muted-foreground">{t.createdAt}</Label>
                     <p className="font-medium mt-1">{safeFormatDate(lead.createdAt, 'MMM d, yyyy')}</p>
                 </div>
+               {/* 
                 <div>
                     <Label className="text-xs text-muted-foreground">{t.lastContact}</Label>
                     <p className="font-medium mt-1">
                         {lead.lastContact ? safeFormatDate(lead.lastContact, 'MMM d, yyyy') : 'No contactado'}
                     </p>
                 </div>
+                */}
             </div>
 
             <Separator />

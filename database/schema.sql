@@ -1256,3 +1256,18 @@ ADD COLUMN IF NOT EXISTS redes_sociales jsonb DEFAULT '{}'::jsonb;
 
 -- Ensure RLS allows access (usually existing policies cover all columns, but good to check)
 -- Existing policies seem to be row-based, so adding columns should automatically be covered for select/update/insert.
+
+
+
+alter table public.lead add column if not exists evento text;
+alter table public.lead add column if not exists membresia text;
+
+
+select column_name, is_nullable
+from information_schema.columns
+where table_schema = 'public'
+  and table_name = 'lead'
+  and column_name in ('correo_electronico', 'evento', 'membresia');
+
+alter table public.lead
+  alter column correo_electronico drop not null;
