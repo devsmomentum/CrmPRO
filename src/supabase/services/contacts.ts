@@ -5,19 +5,75 @@
 import { supabase } from '../client'
 import { ContactDB } from '@/lib/types'
 
+export interface GetContactsOptions {
+    companyId: string
+    page?: number // 1-based
+    limit?: number
+    search?: string
+    sort?: 'recent' | 'oldest' | 'name-asc' | 'name-desc' | 'rating'
+}
+
+export interface GetContactsResponse {
+    data: ContactDB[]
+    count: number
+}
+
 /**
- * Get all contacts for a company
+ * Get contacts with pagination, search, and sorting
  */
-export async function getContacts(companyId: string): Promise<ContactDB[]> {
-    const { data, error } = await supabase
+export async function getContacts({
+    companyId,
+    page = 1,
+    limit = 50,
+    search = '',
+    sort = 'recent'
+}: GetContactsOptions): Promise<GetContactsResponse> {
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+
+    let query = supabase
         .from('contactos')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('empresa_id', companyId)
         .eq('archivado', false)
-        .order('created_at', { ascending: false })
+
+    // Apply search if present
+    if (search.trim()) {
+        const s = search.trim()
+        query = query.or(`nombre.ilike.%${s}%,email.ilike.%${s}%,telefono.ilike.%${s}%,empresa_nombre.ilike.%${s}%`)
+    }
+
+    // Apply sorting
+    switch (sort) {
+        case 'name-asc':
+            query = query.order('nombre', { ascending: true })
+            break
+        case 'name-desc':
+            query = query.order('nombre', { ascending: false })
+            break
+        case 'oldest':
+            query = query.order('created_at', { ascending: true })
+            break
+        case 'rating':
+            query = query.order('rating', { ascending: false })
+            break
+        case 'recent':
+        default:
+            query = query.order('created_at', { ascending: false })
+            break
+    }
+
+    // Apply pagination
+    query = query.range(from, to)
+
+    const { data, error, count } = await query
 
     if (error) throw error
-    return data as ContactDB[]
+
+    return {
+        data: data as ContactDB[],
+        count: count || 0
+    }
 }
 
 /**
@@ -110,20 +166,4 @@ export async function unarchiveContact(id: string): Promise<void> {
         .eq('id', id)
 
     if (error) throw error
-}
-
-/**
- * Search contacts
- */
-export async function searchContacts(companyId: string, query: string): Promise<ContactDB[]> {
-    const { data, error } = await supabase
-        .from('contactos')
-        .select('*')
-        .eq('empresa_id', companyId)
-        .eq('archivado', false)
-        .or(`nombre.ilike.%${query}%,email.ilike.%${query}%,telefono.ilike.%${query}%,empresa_nombre.ilike.%${query}%`)
-        .order('created_at', { ascending: false })
-
-    if (error) throw error
-    return data as ContactDB[]
 }

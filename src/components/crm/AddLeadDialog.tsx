@@ -134,13 +134,11 @@ export function AddLeadDialog({
     setIsSubmitting(true)
     try {
       // Generar email dummy si no existe (para cumplir con restricción NOT NULL de DB)
-      const finalEmail = data.email && data.email.trim()
-        ? data.email.trim()
-        : `no-email-${Date.now()}@placeholder.com`
+      
 
       const dbLead = await createLead({
         nombre_completo: data.name,
-        correo_electronico: finalEmail,
+        correo_electronico: data.email?.trim() || undefined,
         telefono: data.phone || undefined,
         empresa: data.company || undefined,
         ubicacion: data.location || undefined,
@@ -192,7 +190,7 @@ export function AddLeadDialog({
     const batchLeads = validRows.map((row, index) => ({
       nombre_completo: row.nombre_completo || '',
       telefono: row.telefono,
-      correo_electronico: row.correo_electronico || `no-email-${Date.now()}-${index}@placeholder.com`,
+      correo_electronico: row.correo_electronico || undefined,
       empresa: row.empresa,
       ubicacion: row.ubicacion,
       presupuesto: row.presupuesto,

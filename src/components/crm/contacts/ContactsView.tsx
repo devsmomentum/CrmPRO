@@ -20,9 +20,25 @@ interface ContactsViewProps {
 }
 
 export function ContactsView({ companyId, currentUserId }: ContactsViewProps) {
-    const { contacts, isLoading, createContact, updateContact, deleteContact, archiveContact } = useContacts(companyId)
+    const {
+        contacts,
+        isLoading,
+        createContact,
+        updateContact,
+        deleteContact,
+        archiveContact,
+        loadMore,
+        hasMore,
+        totalContacts,
+        searchQuery,
+        setSearchQuery,
+        sortBy,
+        setSortBy
+    } = useContacts(companyId)
     const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+
+    // ... (handlers remain same)
 
     const handleCreateContact = async (contactData: Partial<Contact>) => {
         const created = await createContact(contactData)
@@ -57,8 +73,8 @@ export function ContactsView({ companyId, currentUserId }: ContactsViewProps) {
     }
 
     const stats = {
-        total: contacts.length,
-        vip: contacts.filter(c => (c.rating || 0) >= 4).length,
+        total: totalContacts, // Use total from server
+        vip: contacts.filter(c => (c.rating || 0) >= 4).length, // Only counts loaded ones (approximation)
         newThisMonth: contacts.filter(c => {
             const monthAgo = new Date()
             monthAgo.setMonth(monthAgo.getMonth() - 1)
@@ -76,9 +92,7 @@ export function ContactsView({ companyId, currentUserId }: ContactsViewProps) {
                         Contactos
                     </h1>
                     <div className="flex gap-1.5 md:gap-2 flex-shrink-0">
-                        <div className="hidden md:block">
-                            <MigrationButton empresaId={companyId} />
-                        </div>
+                        {/* aqui estaba el boton de migrar contactos */}
                         <Button
                             onClick={() => setIsCreateDialogOpen(true)}
                             className="bg-primary hover:bg-primary/90 h-8 md:h-9 text-xs md:text-sm px-2.5 md:px-4"
@@ -127,6 +141,12 @@ export function ContactsView({ companyId, currentUserId }: ContactsViewProps) {
                         isLoading={isLoading}
                         selectedContact={selectedContact}
                         onSelectContact={setSelectedContact}
+                        loadMore={loadMore}
+                        hasMore={hasMore}
+                        searchQuery={searchQuery}
+                        setSearchQuery={setSearchQuery}
+                        sortBy={sortBy}
+                        setSortBy={setSortBy}
                     />
                 </div>
 

@@ -163,28 +163,6 @@ CREATE TABLE lead (
   archived_at timestamptz
 );
 
--- ============================================================
--- PERSONA (CONTACTOS)
--- ============================================================
-CREATE TABLE IF NOT EXISTS persona (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  nombre_completo text NOT NULL,
-  email text,
-  telefono text,
-  empresa text,
-  equipo_id uuid NOT NULL REFERENCES equipos(id) ON DELETE CASCADE,
-  usuario_id uuid REFERENCES auth.users(id),
-  archivado boolean DEFAULT false,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- Índices para persona
-CREATE INDEX IF NOT EXISTS idx_persona_equipo_id ON persona(equipo_id);
-CREATE INDEX IF NOT EXISTS idx_persona_email ON persona(email);
-CREATE INDEX IF NOT EXISTS idx_persona_archivado ON persona(archivado);
-
-
 -- Habilitar RLS
 ALTER TABLE lead ENABLE ROW LEVEL SECURITY;
 
@@ -1133,3 +1111,148 @@ CREATE POLICY appointments_rw ON appointments
 CREATE INDEX idx_appointments_empresa ON appointments(empresa_id);
 CREATE INDEX idx_appointments_lead ON appointments(lead_id);
 CREATE INDEX idx_appointments_start_time ON appointments(start_time);
+
+
+-- 1. Tabla Contactos (Agenda Clientes)
+CREATE TABLE IF NOT EXISTS contactos (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    nombre text NOT NULL,
+    email text,
+    telefono text,
+    empresa_nombre text,
+    cargo text,
+    notas text,
+    empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+    origen_lead_id uuid REFERENCES lead(id) ON DELETE SET NULL, -- Relación clave con tus chats
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    archivado boolean DEFAULT false
+);
+
+-- RLS
+ALTER TABLE contactos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY contactos_policy_all ON contactos FOR ALL 
+USING (empresa_id IN (SELECT id FROM empresa WHERE usuario_id = auth.uid()));
+
+-- 2. Automatismo (Sync)
+CREATE OR REPLACE FUNCTION sincronizar_lead_a_contacto_real() RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM contactos WHERE origen_lead_id = NEW.id OR (email = NEW.correo_electronico AND empresa_id = NEW.empresa_id)) THEN
+        INSERT INTO contactos (nombre, email, telefono, empresa_nombre, empresa_id, origen_lead_id, created_at)
+        VALUES (NEW.nombre_completo, NEW.correo_electronico, NEW.telefono, NEW.empresa, NEW.empresa_id, NEW.id, COALESCE(NEW.created_at, now()));
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS tr_sincronizar_lead_contacto_real ON lead;
+CREATE TRIGGER tr_sincronizar_lead_contacto_real AFTER INSERT OR UPDATE ON lead FOR EACH ROW EXECUTE FUNCTION sincronizar_lead_a_contacto_real();
+
+-- 3. Carga Inicial
+INSERT INTO contactos (nombre, email, telefono, empresa_nombre, empresa_id, origen_lead_id, created_at)
+SELECT nombre_completo, correo_electronico, telefono, empresa, empresa_id, id, created_at
+FROM lead l WHERE NOT EXISTS (SELECT 1 FROM contactos c WHERE c.origen_lead_id = l.id);
+
+
+-- ============================================================
+-- TASKS TABLE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  empresa_id uuid NOT NULL REFERENCES empresa(id) ON DELETE CASCADE,
+  lead_id uuid REFERENCES lead(id) ON DELETE SET NULL,
+  assigned_to uuid REFERENCES auth.users(id), -- Usuario asignado
+  title text NOT NULL,
+  description text,
+  type text NOT NULL DEFAULT 'todo', -- 'call', 'email', 'meeting', 'todo'
+  status text NOT NULL DEFAULT 'pending', -- 'pending', 'completed', 'cancelled'
+  priority text NOT NULL DEFAULT 'medium', -- 'low', 'medium', 'high'
+  due_date timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  created_by uuid REFERENCES auth.users(id) -- Quién creó la tarea
+);
+
+-- Índices para mejorar rendimiento
+CREATE INDEX IF NOT EXISTS idx_tasks_empresa_id ON tasks(empresa_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_lead_id ON tasks(lead_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON tasks(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+
+-- ============================================================
+-- RLS POLICIES (Seguridad)
+-- ============================================================
+
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+
+-- POLICY: Ver tareas (Miembros de la empresa pueden ver todas las tareas de la empresa)
+-- Se asume que es colaborativo. Si se quisiera privacidad por usuario, se filtraría por assigned_to.
+CREATE POLICY tasks_select ON tasks
+  FOR SELECT TO authenticated
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+    OR
+    empresa_id IN (
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+-- POLICY: Insertar tareas (Miembros de la empresa pueden crear)
+CREATE POLICY tasks_insert ON tasks
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+    OR
+    empresa_id IN (
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+-- POLICY: Actualizar tareas (Miembros de la empresa pueden editar)
+CREATE POLICY tasks_update ON tasks
+  FOR UPDATE TO authenticated
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+    OR
+    empresa_id IN (
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+    OR
+    empresa_id IN (
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+
+-- POLICY: Eliminar tareas (Solo dueños o admins podrían, pero por ahora dejamos a miembros para simplificar colaboración)
+CREATE POLICY tasks_delete ON tasks
+  FOR DELETE TO authenticated
+  USING (
+    empresa_id IN (
+      SELECT id FROM empresa WHERE usuario_id = auth.uid()
+    )
+    OR
+    empresa_id IN (
+      SELECT empresa_id FROM empresa_miembros WHERE usuario_id = auth.uid()
+    )
+  );
+-- Add rating and redes_sociales columns to contactos table
+ALTER TABLE public.contactos 
+ADD COLUMN IF NOT EXISTS rating integer DEFAULT 0,
+ADD COLUMN IF NOT EXISTS redes_sociales jsonb DEFAULT '{}'::jsonb;
+
+-- Ensure RLS allows access (usually existing policies cover all columns, but good to check)
+-- Existing policies seem to be row-based, so adding columns should automatically be covered for select/update/insert.
