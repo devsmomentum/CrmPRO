@@ -770,7 +770,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           <div className="relative group">
             <div
               ref={tabsScrollRef}
-              className="overflow-x-auto pb-2 -mx-1 px-1 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all"
+              className="overflow-x-auto pb-2 -mx-1 pl-1 pr-20 md:pr-24 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all"
             >
               <TabsList className="inline-flex flex-nowrap h-11 items-center justify-start gap-2 bg-muted/30 p-1.5 rounded-xl w-max min-w-full">
                 {(pipelines || []).map(p => (
