@@ -283,6 +283,7 @@ function DashboardWrapper() {
   return (
     <Dashboard
       companyId={currentCompanyId}
+      companies={companies}
       onShowNotifications={() => {
         const currentCompany = companies.find(c => c.id === currentCompanyId)
         const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id

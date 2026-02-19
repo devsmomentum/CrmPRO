@@ -6,7 +6,7 @@
  * Extraído de LeadDetailSheet para mantener el código organizado.
  */
 
-import { Lead, Message, Channel, TeamMember } from '@/lib/types'
+import { Lead, Message, Channel, TeamMember, EmpresaInstanciaDB } from '@/lib/types'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -18,7 +18,8 @@ import {
     InstagramLogo,
     FacebookLogo,
     EnvelopeSimple,
-    Phone
+    Phone,
+    DeviceMobile
 } from '@phosphor-icons/react'
 
 interface User {
@@ -37,6 +38,7 @@ interface OverviewTabProps {
     recentMessages: Message[]
     canEdit: boolean
     maxBudget: number
+    instances?: EmpresaInstanciaDB[]
     translations: {
         assignedTo: string
         budget: string
@@ -59,6 +61,15 @@ function getChannelIcon(channel: Channel) {
     return channelIcons[channel] || EnvelopeSimple
 }
 
+const platformIcons: Record<string, React.ElementType> = {
+    whatsapp: WhatsappLogo,
+    instagram: InstagramLogo,
+    facebook: FacebookLogo,
+    telegram: TelegramLogo,
+    email: EnvelopeSimple,
+    phone: Phone,
+}
+
 export function OverviewTab({
     lead,
     teamMembers,
@@ -69,8 +80,11 @@ export function OverviewTab({
     recentMessages,
     canEdit,
     maxBudget,
+    instances = [],
     translations: t
 }: OverviewTabProps) {
+    const preferredInstance = instances.find(i => i.id === lead.preferred_instance_id) || null
+    const PlatformIcon = preferredInstance ? (platformIcons[preferredInstance.plataforma] || DeviceMobile) : null
     return (
         <div className="flex-1 px-4 sm:px-6 py-4 sm:py-6 space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -95,6 +109,22 @@ export function OverviewTab({
                         </Select>
                     </div>
                 </div>
+                {preferredInstance && PlatformIcon && (
+                    <div>
+                        <Label className="text-xs text-muted-foreground">Instancia que lo atiende</Label>
+                        <div className="mt-1 flex items-center gap-2 p-2 rounded-md bg-muted/60 border border-border w-fit">
+                            <PlatformIcon size={16} className="text-muted-foreground shrink-0" />
+                            <span className="text-sm font-medium">
+                                {preferredInstance.label || preferredInstance.plataforma}
+                            </span>
+                            {preferredInstance.client_id && (
+                                <span className="text-xs text-muted-foreground font-mono">
+                                    · {preferredInstance.client_id}
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                )}
                 <div>
                     <Label className="text-xs text-muted-foreground">{t.budget}</Label>
                     <div className="mt-1">
@@ -138,7 +168,7 @@ export function OverviewTab({
                     <Label className="text-xs text-muted-foreground">{t.createdAt}</Label>
                     <p className="font-medium mt-1">{safeFormatDate(lead.createdAt, 'MMM d, yyyy')}</p>
                 </div>
-               {/* 
+                {/* 
                 <div>
                     <Label className="text-xs text-muted-foreground">{t.lastContact}</Label>
                     <p className="font-medium mt-1">

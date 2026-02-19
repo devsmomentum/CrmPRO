@@ -9,11 +9,12 @@ import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { AddTaskDialog } from './tasks/AddTaskDialog'
 import { TaskHistoryDialog } from './tasks/TaskHistoryDialog'
 import { ExpiredTasksDialog } from './tasks/ExpiredTasksDialog'
 import { getLeads, getLeadsCount } from '@/supabase/services/leads'
-import { getCompanyMembers } from '@/supabase/services/empresa'
+import { getCompanyMembers, Company } from '@/supabase/services/empresa'
 import { toast } from 'sonner'
 import { getPipelines } from '@/supabase/helpers/pipeline'
 import { getCompanyMeetings } from '@/supabase/services/reuniones'
@@ -21,11 +22,12 @@ import { getTasks, updateTask, deleteTask } from '@/supabase/services/tasks'
 
 interface DashboardProps {
   companyId?: string
+  companies?: Company[]
   onShowNotifications: () => void
   onNavigateToLead?: (lead: Lead) => void
 }
 
-export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: DashboardProps) {
+export function Dashboard({ companyId, companies = [], onShowNotifications, onNavigateToLead }: DashboardProps) {
   const [tasks, setTasks] = useState<Task[]>([])
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]) // New state for completed today
   // const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
@@ -237,12 +239,32 @@ export function Dashboard({ companyId, onShowNotifications, onNavigateToLead }: 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8 space-y-8 bg-background/50">
       {/* Welcome Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-            ¡Bienvenido!
-          </h1>
-          <p className="text-muted-foreground font-medium">Esto es lo que está sucediendo hoy en tu negocio</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex items-center gap-5">
+          {(() => {
+            const activeCompany = (companies || []).find(c => c.id === companyId)
+            return (
+              <>
+                <Avatar className="h-16 w-16 md:h-20 md:w-20 shadow-xl ring-4 ring-background border-4 border-primary/10 animate-in zoom-in duration-500">
+                  {activeCompany?.logo ? (
+                    <AvatarImage src={activeCompany.logo} alt={activeCompany.name} className="object-cover" />
+                  ) : (
+                    <AvatarFallback className="text-2xl font-black bg-gradient-to-br from-primary to-primary/60 text-white">
+                      {activeCompany?.name?.slice(0, 2).toUpperCase() || '??'}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <div className="space-y-1">
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tight text-foreground transition-all">
+                    ¡Bienvenido{activeCompany ? ` a ${activeCompany.name}` : ''}!
+                  </h1>
+                  <p className="text-muted-foreground font-medium text-sm md:text-base opacity-80">
+                    {activeCompany ? `Gestionando ${activeCompany.name}` : 'Esto es lo que está sucediendo hoy en tu negocio'}
+                  </p>
+                </div>
+              </>
+            )
+          })()}
         </div>
         <div className="flex items-center gap-3">
           <Button

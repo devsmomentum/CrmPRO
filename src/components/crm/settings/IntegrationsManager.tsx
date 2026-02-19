@@ -19,7 +19,6 @@ interface Props {
 export function IntegrationsManager({ empresaId }: Props) {
   const [integrationId, setIntegrationId] = useState<string | null>(null)
   const [allowedPhone, setAllowedPhone] = useState('')
-  const [testMode, setTestMode] = useState(false)
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
   const [autoCreateLead, setAutoCreateLead] = useState(true)
   const [defaultPipelineId, setDefaultPipelineId] = useState('')
@@ -47,7 +46,6 @@ export function IntegrationsManager({ empresaId }: Props) {
         setIntegrationId(integration.id)
         const meta = integration.metadata || {}
         setAllowedPhone(meta.allowed_phone || '')
-        setTestMode(!!meta.test_mode)
         setAutoCreateLead(meta.unregistered_auto_create !== false)
         setDefaultPipelineId(meta.unregistered_pipeline_id || '')
         setDefaultStageId(meta.unregistered_stage_id || '')
@@ -111,7 +109,6 @@ export function IntegrationsManager({ empresaId }: Props) {
     try {
       const integration = await upsertIntegration(empresaId, 'chat', {
         allowed_phone: allowedPhone || null,
-        test_mode: testMode,
         unregistered_auto_create: autoCreateLead,
         unregistered_pipeline_id: defaultPipelineId || null,
         unregistered_stage_id: defaultStageId || null,
@@ -150,7 +147,6 @@ export function IntegrationsManager({ empresaId }: Props) {
       // Limpiar el estado
       setIntegrationId(null)
       setAllowedPhone('')
-      setTestMode(false)
       setAutoCreateLead(false)
       setDefaultPipelineId('')
       setDefaultStageId('')
@@ -198,10 +194,6 @@ export function IntegrationsManager({ empresaId }: Props) {
             <p className="text-xs text-muted-foreground mt-1">
               Si se especifica, solo se procesarán mensajes de este número.
             </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <input id="test-mode" type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
-            <Label htmlFor="test-mode">Modo prueba (dry-run, sin efectos)</Label>
           </div>
           <div className="flex gap-2">
             <Button onClick={handleSave}>Guardar Configuración</Button>

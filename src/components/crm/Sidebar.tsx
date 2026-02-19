@@ -4,6 +4,7 @@ import { House, Kanban, ChartBar, CalendarBlank, Users, Gear, Bell, SignOut, Mic
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { VoiceRecorder } from './VoiceRecorder'
 import { useTranslation } from '@/lib/i18n'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -66,42 +67,85 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
     <>
       <div className="hidden md:flex md:w-68 bg-card border-r border-border flex-col h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         <div className="p-6 space-y-4 flex-none">
-          <div className="flex flex-col gap-0.5">
-            <h1 className="text-2xl font-bold bg-gradient-to-br from-primary to-primary/60 bg-clip-text text-transparent flex items-center gap-2">
-              {t.app.title}
-            </h1>
-            <p className="text-[10px] uppercase tracking-widest font-semibold text-muted-foreground/60">{t.app.subtitle}</p>
-          </div>
+          {(() => {
+            const activeCompany = (companies || []).find(c => c.id === currentCompanyId);
+            return (
+              <div className="flex items-center gap-3 mb-2 animate-in fade-in slide-in-from-left-4 duration-500">
+                <Avatar className="h-10 w-10 shrink-0 shadow-md ring-2 ring-primary/10">
+                  {activeCompany?.logo ? (
+                    <AvatarImage src={activeCompany.logo} alt={activeCompany.name} className="object-cover" />
+                  ) : (
+                    <AvatarFallback className="bg-gradient-to-br from-primary to-primary/60 text-white font-bold">
+                      {activeCompany?.name?.slice(0, 2).toUpperCase() || '??'}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <div className="flex flex-col min-w-0">
+                  <h1 className="text-xl font-black text-foreground truncate leading-tight">
+                    {activeCompany?.name || t.app.title}
+                  </h1>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 leading-tight">
+                    {activeCompany ? 'Panel de Control' : t.app.subtitle}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
 
-          {user && (companies || []).length > 0 && (
-            <div className="space-y-1.5 pt-2">
-              <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground/70 flex items-center gap-1.5 ml-1">
-                <Buildings size={12} className="text-primary/70" /> Empresa Activa
-              </label>
-              <Select
-                value={currentCompanyId || ''}
-                onValueChange={(val) => onCompanyChange && onCompanyChange(val)}
-              >
-                <SelectTrigger className="h-10 text-xs bg-muted/30 border-muted-foreground/10 hover:border-primary/30 hover:bg-muted/50 transition-all rounded-xl focus:ring-1 focus:ring-primary/20">
-                  <SelectValue placeholder="Seleccionar empresa" />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-muted-foreground/10 shadow-xl">
-                  {(companies || []).map(c => (
-                    <SelectItem key={c.id} value={c.id} className="rounded-lg py-2 cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{c.name}</span>
-                        {c.ownerId !== user?.id && (
-                          <Badge variant="secondary" className="text-[9px] h-4 bg-primary/10 text-primary border-none uppercase font-extrabold px-1.5 leading-none tracking-tighter">
-                            Invitado
-                          </Badge>
+          {user && (companies || []).length > 0 && (() => {
+            const activeCompany = (companies || []).find(c => c.id === currentCompanyId)
+            return (
+              <div className="space-y-1.5 pt-2">
+                <label className="text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground/70 flex items-center gap-1.5 ml-1">
+                  <Buildings size={12} className="text-primary/70" /> Empresa Activa
+                </label>
+                <Select
+                  value={currentCompanyId || ''}
+                  onValueChange={(val) => onCompanyChange && onCompanyChange(val)}
+                >
+                  <SelectTrigger className="h-11 text-xs bg-muted/30 border-muted-foreground/10 hover:border-primary/30 hover:bg-muted/50 transition-all rounded-xl focus:ring-1 focus:ring-primary/20 pl-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar className="h-7 w-7 shrink-0 ring-1 ring-border">
+                        {activeCompany?.logo ? (
+                          <AvatarImage src={activeCompany.logo} alt={activeCompany.name} className="object-cover" />
+                        ) : (
+                          <AvatarFallback className="text-[10px] font-bold bg-primary/10 text-primary">
+                            {activeCompany?.name?.slice(0, 2).toUpperCase() || '??'}
+                          </AvatarFallback>
                         )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+                      </Avatar>
+                      <span className="truncate font-medium text-foreground">
+                        {activeCompany?.name || 'Seleccionar empresa'}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-muted-foreground/10 shadow-xl">
+                    {(companies || []).map(c => (
+                      <SelectItem key={c.id} value={c.id} className="rounded-lg py-2 cursor-pointer">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-6 w-6 shrink-0 ring-1 ring-border">
+                            {c.logo ? (
+                              <AvatarImage src={c.logo} alt={c.name} className="object-cover" />
+                            ) : (
+                              <AvatarFallback className="text-[9px] font-bold bg-primary/10 text-primary">
+                                {c.name?.slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            )}
+                          </Avatar>
+                          <span className="font-medium">{c.name}</span>
+                          {c.ownerId !== user?.id && (
+                            <Badge variant="secondary" className="text-[9px] h-4 bg-primary/10 text-primary border-none uppercase font-extrabold px-1.5 leading-none tracking-tighter">
+                              Invitado
+                            </Badge>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )
+          })()}
         </div>
 
         <nav className="flex-1 px-3 py-2 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent pr-1">
@@ -188,15 +232,27 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
       <div className="md:hidden fixed bottom-0 left-0 right-0 w-full bg-background border-t border-border z-[9999] shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] pb-[env(safe-area-inset-bottom)]">
         <nav className="flex items-center justify-between px-1 py-1.5 overflow-x-auto">
           {/* Botón de empresa */}
-          {user && (companies || []).length > 0 && (
-            <button
-              onClick={() => setShowCompanySelector(true)}
-              className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium text-muted-foreground min-w-fit"
-            >
-              <Buildings size={20} />
-              <span className="text-[9px] truncate max-w-[40px]">Empresa</span>
-            </button>
-          )}
+          {user && (companies || []).length > 0 && (() => {
+            const activeCompany = (companies || []).find(c => c.id === currentCompanyId)
+            return (
+              <button
+                onClick={() => setShowCompanySelector(true)}
+                className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg text-xs font-medium text-muted-foreground min-w-fit"
+              >
+                {activeCompany?.logo ? (
+                  <Avatar className="h-6 w-6 ring-1 ring-primary/30">
+                    <AvatarImage src={activeCompany.logo} alt={activeCompany.name} className="object-cover" />
+                    <AvatarFallback className="text-[9px] font-bold bg-primary/10 text-primary">
+                      {activeCompany.name?.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <Buildings size={20} />
+                )}
+                <span className="text-[9px] truncate max-w-[40px]">Empresa</span>
+              </button>
+            )
+          })()}
 
           {menuItems.map((item) => {
             const Icon = item.icon
@@ -256,15 +312,30 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                   setShowCompanySelector(false)
                 }}
                 className={cn(
-                  'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+                  'w-full flex items-center gap-3 text-left px-3 py-2 rounded-lg text-sm transition-colors',
                   currentCompanyId === c.id
                     ? 'bg-primary text-primary-foreground'
                     : 'hover:bg-muted'
                 )}
               >
-                {c.name}
+                <Avatar className="h-8 w-8 shrink-0 ring-1 ring-border">
+                  {c.logo ? (
+                    <AvatarImage src={c.logo} alt={c.name} className="object-cover" />
+                  ) : (
+                    <AvatarFallback className={cn(
+                      'text-[10px] font-bold',
+                      currentCompanyId === c.id ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                    )}>
+                      {c.name?.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <span className="flex-1 truncate font-medium">{c.name}</span>
                 {c.ownerId !== user?.id && (
-                  <Badge variant="secondary" className="text-[9px] ml-auto bg-primary/10 text-primary border-none uppercase font-extrabold px-1.5 h-4 tracking-tighter">
+                  <Badge variant="secondary" className={cn(
+                    'text-[9px] border-none uppercase font-extrabold px-1.5 h-4 tracking-tighter shrink-0',
+                    currentCompanyId === c.id ? 'bg-white/20 text-white' : 'bg-primary/10 text-primary'
+                  )}>
                     Invitado
                   </Badge>
                 )}

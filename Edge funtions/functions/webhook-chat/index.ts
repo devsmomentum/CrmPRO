@@ -152,143 +152,89 @@ async function fetchChatDetails(client: string, chatId: string, apiToken?: strin
   }
 }
 
-// Resolver integración y empresa por secreto de webhook
-async function resolveIntegrationBySecret(
+// Resolver empresa e instancia por webhook_secret — fuente única: empresa_instancias
+async function resolveBySecret(
   supabase: ReturnType<typeof createClient>,
   secret: string,
   provider: string
-): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string } | null> {
-  console.log(`🔍 [resolveIntegrationBySecret] Buscando secret: "${secret}" para provider: "${provider}"`);
+): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string; instanciaId: string } | null> {
+  if (!secret) return null;
 
-  if (!secret) {
-    console.warn('⚠️ [resolveIntegrationBySecret] Secret vacío, retornando null');
-    return null;
-  }
+  console.log(`🔍 [resolveBySecret] Buscando webhook_secret en empresa_instancias...`);
 
-  // PASO 1: Buscar la credencial con el secret
-  console.log('🔍 [PASO 1] Buscando en integracion_credenciales...');
-  const { data: credencial, error: errorCred } = await supabase
-    .from('integracion_credenciales')
-    .select('integracion_id, key, value')
-    .eq('value', secret)
-    .eq('key', 'webhook_secret')
-    .order('created_at', { ascending: false }) // Tomar el más reciente si hay duplicados
+  const { data: instancia, error } = await supabase
+    .from('empresa_instancias')
+    .select('id, empresa_id, plataforma, api_token')
+    .eq('webhook_secret', secret)
+    .eq('active', true)
+    .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  console.log('🔍 [PASO 1] Resultado:', {
-    found: !!credencial,
-    error: errorCred?.message,
-    credencial: credencial
-  });
-
-  if (errorCred) {
-    console.error('❌ [PASO 1] Error en query:', errorCred);
+  if (error) {
+    console.error('❌ [resolveBySecret] Error en query:', error);
     return null;
   }
 
-  if (!credencial) {
-    console.warn(`❌ [PASO 1] No se encontró credencial con secret: "${secret}"`);
+  if (!instancia) {
+    console.warn(`❌ [resolveBySecret] No se encontró instancia activa con ese webhook_secret`);
     return null;
   }
 
-  console.log(`✅ [PASO 1] Credencial encontrada, integracion_id: ${credencial.integracion_id}`);
-
-  // Verificar si hay duplicados (advertencia)
-  const { data: allCreds } = await supabase
-    .from('integracion_credenciales')
-    .select('integracion_id')
-    .eq('value', secret)
-    .eq('key', 'webhook_secret');
-
-  if (allCreds && allCreds.length > 1) {
-    console.warn(`⚠️ [PASO 1] ADVERTENCIA: Se encontraron ${allCreds.length} credenciales con el mismo secret "${secret}"`);
-    console.warn(`⚠️ [PASO 1] Se está usando la más reciente. Considera eliminar los duplicados.`);
-  }
-
-  // PASO 2: Buscar la integración asociada
-  console.log(`🔍 [PASO 2] Buscando integración con ID: ${credencial.integracion_id}`);
-  const { data: integracion, error: errorInteg } = await supabase
+  // Obtener metadata de la integración de esta empresa (pipeline, etapa, auto_create, etc.)
+  const { data: integracion } = await supabase
     .from('integraciones')
-    .select('id, empresa_id, provider, metadata')
-    .eq('id', credencial.integracion_id)
+    .select('id, metadata')
+    .eq('empresa_id', instancia.empresa_id)
+    .eq('provider', provider)
     .maybeSingle();
 
-  console.log('🔍 [PASO 2] Resultado:', {
-    found: !!integracion,
-    error: errorInteg?.message,
-    integracion: integracion
-  });
+  console.log(`✅ [resolveBySecret] Resolución exitosa - Empresa: ${instancia.empresa_id}, Instancia: ${instancia.id}`);
 
-  if (errorInteg) {
-    console.error('❌ [PASO 2] Error en query:', errorInteg);
-    return null;
-  }
-
-  if (!integracion) {
-    console.warn(`❌ [PASO 2] No se encontró integración con ID: ${credencial.integracion_id}`);
-    return null;
-  }
-
-  console.log(`✅ [PASO 2] Integración encontrada:`, {
-    id: integracion.id,
-    empresa_id: integracion.empresa_id,
-    provider: integracion.provider,
-    meta_auto_create: integracion.metadata?.unregistered_auto_create
-  });
-
-  // PASO 3: Verificar que el provider coincida
-  if (integracion.provider !== provider) {
-    console.warn(`❌ [PASO 3] Provider no coincide. Esperado: "${provider}", Encontrado: "${integracion.provider}"`);
-    return null;
-  }
-
-  console.log(`✅ [PASO 3] Provider correcto: "${provider}"`);
-
-  // PASO 4: Obtener el API token si existe
-  const { data: creds } = await supabase
-    .from('integracion_credenciales')
-    .select('key, value')
-    .eq('integracion_id', integracion.id);
-
-  const apiToken = (creds || [])
-    .find((c: any) => c.key === 'api_token' || c.key === 'token')?.value;
-
-  console.log(`✅ [resolveIntegrationBySecret] ¡RESOLUCIÓN EXITOSA!`);
-  console.log(`   - Empresa: ${integracion.empresa_id}`);
-  console.log(`   - Integración: ${integracion.id}`);
-  console.log(`   - API Token: ${apiToken ? 'Encontrado' : 'No encontrado'}`);
-
-  return { empresa_id: integracion.empresa_id, integracion_id: integracion.id, metadata: integracion.metadata, apiToken };
+  return {
+    empresa_id: instancia.empresa_id,
+    integracion_id: integracion?.id || '',
+    metadata: integracion?.metadata || {},
+    apiToken: instancia.api_token || undefined,
+    instanciaId: instancia.id,
+  };
 }
 
-// Resolver integración por verify_token (configurable desde BD, sin env)
-async function resolveIntegrationByVerifyToken(
+// Resolver empresa por verify_token — fuente única: empresa_instancias
+async function resolveByVerifyToken(
   supabase: ReturnType<typeof createClient>,
   verifyToken: string,
   provider: string
-): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string } | null> {
+): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string; instanciaId: string } | null> {
   if (!verifyToken) return null;
-  const { data, error } = await supabase
-    .from('integracion_credenciales')
-    .select('integracion_id, key, value, integraciones:integracion_id ( id, empresa_id, provider, metadata )')
-    .eq('value', verifyToken)
-    .eq('key', 'verify_token')
+
+  console.log(`🔍 [resolveByVerifyToken] Buscando verify_token en empresa_instancias...`);
+
+  const { data: instancia, error } = await supabase
+    .from('empresa_instancias')
+    .select('id, empresa_id, plataforma, api_token')
+    .eq('verify_token', verifyToken)
+    .eq('active', true)
     .maybeSingle();
 
-  if (error || !data) return null;
-  const integ = (data as any)?.integraciones;
-  if (!integ || integ.provider !== provider) return null;
+  if (error || !instancia) return null;
 
-  const { data: creds } = await supabase
-    .from('integracion_credenciales')
-    .select('key, value')
-    .eq('integracion_id', integ.id);
+  const { data: integracion } = await supabase
+    .from('integraciones')
+    .select('id, metadata')
+    .eq('empresa_id', instancia.empresa_id)
+    .eq('provider', provider)
+    .maybeSingle();
 
-  const apiToken = (creds || [])
-    .find((c: any) => c.key === 'api_token' || c.key === 'token')?.value;
+  console.log(`✅ [resolveByVerifyToken] Resolución exitosa - Empresa: ${instancia.empresa_id}`);
 
-  return { empresa_id: integ.empresa_id, integracion_id: integ.id, metadata: integ.metadata, apiToken };
+  return {
+    empresa_id: instancia.empresa_id,
+    integracion_id: integracion?.id || '',
+    metadata: integracion?.metadata || {},
+    apiToken: instancia.api_token || undefined,
+    instanciaId: instancia.id,
+  };
 }
 
 // Obtener palabras clave configuradas para una empresa
@@ -399,17 +345,17 @@ serve(async (req) => {
   console.log("   ➡️ decodedSecretParam:", decodedSecretParam);
   console.log("   ➡️ cleanSecretParam:", cleanSecretParam);
 
-  // Resolver integración primero con secreto saneado; si no, probar el valor original
-  console.log("🔍 [SECRET] Intentando resolver integración con secret:", cleanSecretParam);
-  let resolved = await resolveIntegrationBySecret(supabase, cleanSecretParam, provider);
+  // Resolver empresa e instancia por webhook_secret — fuente única: empresa_instancias
+  console.log("🔍 [SECRET] Resolviendo por webhook_secret:", cleanSecretParam);
+  let resolved: any = await resolveBySecret(supabase, cleanSecretParam, provider);
   if (!resolved && decodedSecretParam && decodedSecretParam !== cleanSecretParam) {
-    console.log("⚠️ [SECRET] No resuelto con cleanSecretParam, intentando con decodedSecretParam:", decodedSecretParam);
-    resolved = await resolveIntegrationBySecret(supabase, decodedSecretParam, provider);
+    resolved = await resolveBySecret(supabase, decodedSecretParam, provider);
   }
   const empresaFromSecret = resolved?.empresa_id || null;
   const integracionId = resolved?.integracion_id || null;
   const integrationMetadata = resolved?.metadata || {};
   const apiTokenResolved = resolved?.apiToken;
+  const instanciaIdFromSecret = resolved?.instanciaId || null;
 
   console.log("🔍 [DEBUG] integrationMetadata resolviendo:", JSON.stringify(integrationMetadata, null, 2));
 
@@ -439,8 +385,8 @@ serve(async (req) => {
           });
         }
 
-        // Intentar resolver por verify_token desde BD
-        const resolvedByVerify = await resolveIntegrationByVerifyToken(supabase, (url.searchParams.get("hub.verify_token") || url.searchParams.get("x-webhook-verify-token") || ""), provider);
+        // Intentar resolver por verify_token desde BD (empresa_instancias)
+        const resolvedByVerify = await resolveByVerifyToken(supabase, (url.searchParams.get("hub.verify_token") || url.searchParams.get("x-webhook-verify-token") || ""), provider);
         const empresaFromVerify = resolvedByVerify?.empresa_id || null;
 
         if (empresaFromSecret || empresaFromVerify || verifyToken === secretToken) {
@@ -569,7 +515,7 @@ serve(async (req) => {
       // Obtener el número de WhatsApp configurado para producción
       // Nota: Al mezclar `??` con `||` se requieren paréntesis por reglas del runtime
       const configuredPhone = (integrationMetadata?.allowed_phone || Deno.env.get("WHATSAPP_PHONE_NUMBER")) ?? "";
-      const cleanConfiguredPhone = configuredPhone.replace(/[\s\-\+]/g, "").trim();
+      const cleanConfiguredPhone = configuredPhone.replace(/[\s\-\+\(\)]/g, "").trim();
 
       if (hashHex !== receivedSignature) {
         console.log(`⚠️ Signature Mismatch - verificando por número de teléfono...`);
@@ -651,6 +597,45 @@ serve(async (req) => {
         }
       } else {
         console.warn('⚠️ [INSTANCE] No se pudo extraer client_id del payload');
+      }
+
+      // AUTO-APRENDIZAJE: Si no se resolvió instancia por client_id pero sí por webhook_secret,
+      // y el payload trae un client_id, guardarlo automáticamente en la instancia correspondiente.
+      if (!instanceResolved && instanciaIdFromSecret && clientId) {
+        console.log(`🔄 [AUTO-LEARN] Guardando client_id "${clientId}" en instancia ${instanciaIdFromSecret} (aprendido del primer mensaje)`);
+        try {
+          const { data: updatedInst, error: updateErr } = await supabase
+            .from('empresa_instancias')
+            .update({ client_id: String(clientId) })
+            .eq('id', instanciaIdFromSecret)
+            .select('id, empresa_id, plataforma')
+            .single();
+
+          if (updateErr) {
+            console.warn(`⚠️ [AUTO-LEARN] No se pudo guardar client_id:`, updateErr);
+          } else if (updatedInst) {
+            instanceResolved = updatedInst as any;
+            console.log(`✅ [AUTO-LEARN] client_id guardado y instancia resuelta: ${updatedInst.id} para empresa: ${updatedInst.empresa_id}`);
+          }
+        } catch (e) {
+          console.warn('[AUTO-LEARN] Error al guardar client_id:', e);
+        }
+      } else if (!instanceResolved && instanciaIdFromSecret) {
+        // Resuelto por webhook_secret pero sin client_id en el payload: usar la instancia del secret
+        console.log(`🔄 [AUTO-LEARN] Sin client_id en payload, usando instancia del webhook_secret: ${instanciaIdFromSecret}`);
+        try {
+          const { data: instBySecret } = await supabase
+            .from('empresa_instancias')
+            .select('id, empresa_id, plataforma')
+            .eq('id', instanciaIdFromSecret)
+            .maybeSingle();
+          if (instBySecret) {
+            instanceResolved = instBySecret as any;
+            console.log(`✅ [AUTO-LEARN] Instancia resuelta por webhook_secret: ${instBySecret.id}`);
+          }
+        } catch (e) {
+          console.warn('[AUTO-LEARN] Error al obtener instancia por secret:', e);
+        }
       }
 
       // supabase ya creado arriba con service role

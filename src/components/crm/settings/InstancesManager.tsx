@@ -22,7 +22,6 @@ interface InstanceForm {
   label: string
   api_token: string
   webhook_secret: string
-  verify_token: string
   active: boolean
 }
 
@@ -40,7 +39,6 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
     label: '',
     api_token: '',
     webhook_secret: '',
-    verify_token: '',
     active: true
   }
 
@@ -65,12 +63,16 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
   }, [empresaId])
 
   const handleCreate = async () => {
-    if (!form.plataforma || !form.client_id) {
-      toast.error('Selecciona plataforma y client_id')
+    if (!form.plataforma) {
+      toast.error('Selecciona una plataforma')
       return
     }
     if (!form.api_token) {
       toast.error('El API Token es requerido')
+      return
+    }
+    if (!form.webhook_secret) {
+      toast.error('El Webhook Secret es requerido')
       return
     }
     try {
@@ -83,7 +85,6 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
         label: form.label.trim() || null as any,
         api_token: form.api_token.trim() || null as any,
         webhook_secret: form.webhook_secret.trim() || null as any,
-        verify_token: form.verify_token.trim() || null as any,
         active: form.active
       } as any)
       setInstances((arr) => [created, ...arr])
@@ -106,7 +107,6 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
       label: inst.label || '',
       api_token: (inst as any).api_token || '',
       webhook_secret: (inst as any).webhook_secret || '',
-      verify_token: (inst as any).verify_token || '',
       active: inst.active
     })
   }
@@ -120,7 +120,6 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
         label: form.label.trim() || null as any,
         api_token: form.api_token.trim() || null as any,
         webhook_secret: form.webhook_secret.trim() || null as any,
-        verify_token: form.verify_token.trim() || null as any,
         active: form.active
       } as any)
       setInstances((arr) => arr.map(i => i.id === editingId ? updated : i))
@@ -186,8 +185,15 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
               </Select>
             </div>
             <div>
-              <Label>Client ID *</Label>
-              <Input value={form.client_id} onChange={(e) => setForm(s => ({ ...s, client_id: e.target.value }))} placeholder="client_id de SuperAPI" />
+              <Label className="flex items-center gap-1.5">
+                Client ID
+                <span className="text-xs font-normal text-muted-foreground">(opcional — se aprende automáticamente)</span>
+              </Label>
+              <Input
+                value={form.client_id}
+                onChange={(e) => setForm(s => ({ ...s, client_id: e.target.value }))}
+                placeholder="Se llenará con el primer mensaje"
+              />
             </div>
             <div>
               <Label>Etiqueta</Label>
@@ -211,14 +217,6 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                 value={form.webhook_secret}
                 onChange={(e) => setForm(s => ({ ...s, webhook_secret: e.target.value }))}
                 placeholder="Secret único para esta instancia"
-              />
-            </div>
-            <div>
-              <Label>Verify Token <span className="text-xs text-muted-foreground">(Para verificación estilo Facebook/Meta)</span></Label>
-              <Input
-                value={form.verify_token}
-                onChange={(e) => setForm(s => ({ ...s, verify_token: e.target.value }))}
-                placeholder="Token de verificación"
               />
             </div>
             <div>
@@ -259,8 +257,19 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                         {inst.label && <span className="text-xs bg-muted px-2 py-0.5 rounded">{inst.label}</span>}
                         <Switch checked={inst.active} onCheckedChange={(v) => handleToggleActive(inst.id, v)} />
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        <span className="font-mono">{inst.client_id}</span>
+                      <div className="flex items-center gap-2 text-sm">
+                        {inst.client_id ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
+                              ✅ Aprendido
+                            </span>
+                            <span className="font-mono text-muted-foreground">{inst.client_id}</span>
+                          </>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
+                            ⏳ Pendiente — se aprenderá con el primer mensaje
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="flex gap-1">
@@ -277,8 +286,20 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                           <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <Label>Client ID</Label>
-                                <Input value={form.client_id} onChange={(e) => setForm(s => ({ ...s, client_id: e.target.value }))} />
+                                <Label className="flex items-center gap-1.5">
+                                  Client ID
+                                  {inst.client_id ? (
+                                    <span className="text-xs font-normal text-green-600 dark:text-green-400">✅ Aprendido automáticamente</span>
+                                  ) : (
+                                    <span className="text-xs font-normal text-amber-600 dark:text-amber-400">⏳ Pendiente</span>
+                                  )}
+                                </Label>
+                                <Input
+                                  value={form.client_id}
+                                  readOnly
+                                  className="bg-muted text-muted-foreground cursor-not-allowed"
+                                  placeholder="Se llenará automáticamente con el primer mensaje"
+                                />
                               </div>
                               <div>
                                 <Label>Etiqueta</Label>
@@ -293,10 +314,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                               <Label>Webhook Secret</Label>
                               <Input value={form.webhook_secret} onChange={(e) => setForm(s => ({ ...s, webhook_secret: e.target.value }))} />
                             </div>
-                            <div>
-                              <Label>Verify Token</Label>
-                              <Input value={form.verify_token} onChange={(e) => setForm(s => ({ ...s, verify_token: e.target.value }))} />
-                            </div>
+
                             <div>
                               <Label>API URL</Label>
                               <Input value={form.api_url} onChange={(e) => setForm(s => ({ ...s, api_url: e.target.value }))} />

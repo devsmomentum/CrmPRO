@@ -11,6 +11,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { getMessages, sendMessage as sendDbMessage, subscribeToMessages, deleteMessage, deleteConversation, markMessagesAsRead, uploadChatAttachment } from '@/supabase/services/mensajes'
 import { getNotasByLead, createNota, deleteNota } from '@/supabase/services/notas'
 import { getLeadMeetings, createLeadMeeting, deleteLeadMeeting } from '@/supabase/services/reuniones'
+import { listEmpresaInstancias } from '@/supabase/services/instances'
+import type { EmpresaInstanciaDB } from '@/lib/types'
 import {
   PaperPlaneRight,
   Tag as TagIcon,
@@ -98,6 +100,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [allTags, setAllTags] = useState<Tag[]>([])
+  const [instances, setInstances] = useState<EmpresaInstanciaDB[]>([])
 
   // Estados para PDFs de presupuestos
   const [presupuestosPdf, setPresupuestosPdf] = useState<PresupuestoPdf[]>([])
@@ -243,6 +246,14 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
       isMounted = false
     }
   }, [lead.id, open])
+
+  // Cargar instancias de la empresa para mostrar cuál atiende al lead
+  useEffect(() => {
+    if (!companyId || !open) return
+    listEmpresaInstancias(companyId)
+      .then(setInstances)
+      .catch(err => console.error('[Instances] Error cargando:', err))
+  }, [companyId, open])
 
   // Cargar PDFs de presupuestos
   useEffect(() => {
@@ -839,6 +850,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
               recentMessages={leadMessages}
               canEdit={canEdit}
               maxBudget={MAX_BUDGET}
+              instances={instances}
               translations={{
                 assignedTo: t.lead.assignedTo,
                 budget: t.lead.budget,
