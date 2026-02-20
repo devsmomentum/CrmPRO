@@ -522,26 +522,39 @@ serve(async (req) => {
         console.log(`Received signature: '${receivedSignature.substring(0, 20)}...'`);
         console.log(`Calculated: '${hashHex.substring(0, 20)}...'`);
 
-        // Verificar si es mensaje de Instagram (no aplicar filtro de número WhatsApp)
+        // Verificar si es mensaje de Instagram o respuesta de IA (no aplicar filtro de número WhatsApp)
         const platform = payload.platform ?? "";
         const isInstagramMessage = platform.toLowerCase() === "instagram";
+        const isAiResponse = payload.event === "ai_response" || payload.event === "message_create";
 
         if (isInstagramMessage) {
           console.log(`📷 [INSTAGRAM] Mensaje de Instagram detectado - saltando validación de número WhatsApp`);
         }
+        if (isAiResponse) {
+          console.log(`🤖 [AI] Evento ai_response/message_create detectado - saltando validación de número WhatsApp`);
+        }
 
         // Si la firma no coincide, verificamos que el mensaje sea de/para nuestro número de producción
-        // PERO solo para WhatsApp, no para Instagram
-        if (cleanConfiguredPhone && !isInstagramMessage) {
+        // PERO solo para WhatsApp saliente normal (no para Instagram ni para respuestas de IA)
+        if (cleanConfiguredPhone && !isInstagramMessage && !isAiResponse) {
           const eventData = typeof payload.data === "string" ? JSON.parse(payload.data || "{}") : (payload.data ?? {});
-          const pTo = (eventData.to ?? payload.to ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
-          const pFrom = (eventData.from ?? payload.from ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "");
+          // Normalizar teléfonos: quitar @c.us, @s.whatsapp.net, espacios, guiones, +
+          // y también quitar prefijo de país (58) para poder comparar con formato local (0414...)
+          const normalizePhone = (p: string) => {
+            let n = (p ?? "").replace("@c.us", "").replace("@s.whatsapp.net", "").replace(/[\s\-\+\(\)]/g, "").trim();
+            // Si empieza con 58 y tiene más de 10 dígitos, quitar el 58 para comparar con formato 0XXXX
+            if (n.startsWith("58") && n.length > 10) n = "0" + n.slice(2);
+            return n;
+          };
+          const pTo = normalizePhone(eventData.to ?? payload.to ?? "");
+          const pFrom = normalizePhone(eventData.from ?? payload.from ?? "");
+          const normalizedConfiguredPhone = normalizePhone(configuredPhone);
 
-          const isFromConfiguredPhone = pFrom.includes(cleanConfiguredPhone) || cleanConfiguredPhone.includes(pFrom);
-          const isToConfiguredPhone = pTo.includes(cleanConfiguredPhone) || cleanConfiguredPhone.includes(pTo);
+          const isFromConfiguredPhone = pFrom.includes(normalizedConfiguredPhone) || normalizedConfiguredPhone.includes(pFrom);
+          const isToConfiguredPhone = pTo.includes(normalizedConfiguredPhone) || normalizedConfiguredPhone.includes(pTo);
 
           if (!isFromConfiguredPhone && !isToConfiguredPhone) {
-            console.log(`❌ Mensaje ignorado: no es de/para el número configurado (${cleanConfiguredPhone})`);
+            console.log(`❌ Mensaje ignorado: no es de/para el número configurado (${normalizedConfiguredPhone})`);
             console.log(`   From: ${pFrom}, To: ${pTo}`);
             return new Response(JSON.stringify({ success: true, message: "Ignored - wrong phone number" }), {
               headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -549,7 +562,7 @@ serve(async (req) => {
             });
           }
           console.log(`✅ Firma no coincide pero mensaje es de/para número configurado - procesando...`);
-        } else if (!isInstagramMessage) {
+        } else if (!isInstagramMessage && !isAiResponse) {
           console.log(`⚠️ WHATSAPP_PHONE_NUMBER no configurado - procesando mensaje de todos modos`);
         }
       }

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { supabase } from '@/supabase/client'
-import { login as authLogin, logout as authLogout, register as authRegister } from '@/supabase/auth'
+import { login as authLogin, logout as authLogout, register as authRegister, updateEmail as authUpdateEmail } from '@/supabase/auth'
 import { createUsuario, getUsuarioById } from '@/supabase/services/usuarios'
 import { createEmpresa, getEmpresasByUsuario, leaveCompany } from '@/supabase/services/empresa'
 import { toast } from 'sonner'
@@ -9,6 +9,7 @@ export interface User {
     id: string
     email: string
     businessName: string
+    recoveryEmail?: string | null
 }
 
 export interface Company {
@@ -34,6 +35,9 @@ interface AuthContextType {
     fetchCompanies: () => Promise<Company[]>
     leaveCompanyHandler: (companyId: string) => Promise<void>
     resetPassword: (email: string) => Promise<void>
+    resetPasswordByRecoveryEmail: (recoveryEmail: string) => Promise<void>
+    updateEmail: (newEmail: string) => Promise<void>
+    updateRecoveryEmail: (recoveryEmail: string) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -132,6 +136,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 toast.info('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.', { duration: 5000 })
             }
 
+            // Cuando el usuario confirma el cambio de email desde el link recibido
+            if (event === 'EMAIL_CHANGE' && session?.user?.email) {
+                console.log('[AUTH] Email confirmado y actualizado:', session.user.email)
+                setUser(prev => prev ? { ...prev, email: session.user!.email! } : prev)
+                toast.success('¡Correo actualizado correctamente!')
+            }
+
+            // Actualizar usuario si cambia el objeto de sesión (por meta_data etc)
+            if (event === 'USER_UPDATED' && session?.user) {
+                setUser(prev => prev ? { ...prev, email: session.user!.email! } : prev)
+            }
+
             setIsLoading(false)
         })
 
@@ -225,7 +241,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             console.log('[LOGIN] fila usuarios', row)
-            const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
+            const newUser: User = {
+                id: row.id,
+                email: row.email,
+                businessName: row.nombre,
+                recoveryEmail: row.recovery_email
+            }
             setUser(newUser)
 
             const empresas = await getEmpresasByUsuario(authUser.id)
@@ -297,7 +318,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const empresa = await createEmpresa({ nombre_empresa: businessName, usuario_id: authUser.id })
             console.log('[REGISTER] empresa creada', empresa)
 
-            const newUser: User = { id: row.id, email: row.email, businessName: row.nombre }
+            const newUser: User = {
+                id: row.id,
+                email: row.email,
+                businessName: row.nombre,
+                recoveryEmail: row.recovery_email
+            }
             setUser(newUser)
 
             const uiCompany = {
@@ -368,6 +394,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const updateEmail = async (newEmail: string) => {
+        try {
+            await authUpdateEmail(newEmail)
+            // Actualizar también en la tabla usuarios
+            if (user?.id) {
+                await supabase
+                    .from('usuarios')
+                    .update({ email: newEmail })
+                    .eq('id', user.id)
+            }
+            toast.info(
+                'Se envió un link de confirmación al nuevo correo. Haz clic en él para completar el cambio.',
+                { duration: 8000 }
+            )
+        } catch (e: any) {
+            console.error('[AUTH] Error actualizando email:', e)
+            toast.error(e.message || 'Error al cambiar el correo')
+            throw e
+        }
+    }
+
+    const updateRecoveryEmail = async (newRecoveryEmail: string) => {
+        if (!user?.id) return
+        try {
+            const trimmedEmail = newRecoveryEmail.toLowerCase().trim()
+            if (trimmedEmail === user.email.toLowerCase()) {
+                throw new Error('El correo alternativo no puede ser el mismo que el principal.')
+            }
+
+            const { data, error } = await supabase
+                .from('usuarios')
+                .update({ recovery_email: trimmedEmail || null })
+                .eq('id', user.id)
+                .select()
+                .single()
+
+            if (error) throw error
+
+            setUser(prev => prev ? { ...prev, recoveryEmail: data.recovery_email } : prev)
+            toast.success('Correo alternativo actualizado correctamente.')
+        } catch (e: any) {
+            console.error('[AUTH] Error actualizando recovery email:', e)
+            toast.error(e.message || 'Error al actualizar el correo alternativo')
+            throw e
+        }
+    }
+
     const resetPassword = async (email: string) => {
         // No activamos isLoading global
         // Obtenemos la URL actual para asegurar que la redirección vuelva a este mismo entorno (local o prod)
@@ -387,6 +460,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     }
 
+    const resetPasswordByRecoveryEmail = async (recoveryEmail: string) => {
+        try {
+            console.log('[AUTH] Solicitando recuperación por correo alternativo:', recoveryEmail)
+            const redirectUrl = `${window.location.origin}/update-password`
+
+            // Usamos fetch directo para evadir errores internos del wrapper de Supabase (invoke)
+            // que a veces fallan con errores de Logflare/BigQuery
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+            const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+            const response = await fetch(`${supabaseUrl}/functions/v1/send-recovery-email`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseAnonKey}`,
+                    'apikey': supabaseAnonKey
+                },
+                body: JSON.stringify({
+                    recovery_email: recoveryEmail,
+                    redirect_to: redirectUrl
+                })
+            })
+
+            const data = await response.json()
+
+            if (!response.ok) {
+                throw new Error(data.error || data.message || `Error del servidor: ${response.status}`)
+            }
+
+            if (data.success) {
+                toast.success(data.message || 'Enlace de recuperación enviado.')
+            } else {
+                throw new Error(data.error || 'Error al procesar la solicitud')
+            }
+        } catch (error: any) {
+            console.error('Error in resetPasswordByRecoveryEmail:', error)
+            toast.error(error.message || 'Error enviando recuperación al correo alternativo')
+            throw error
+        }
+    }
+
     const value: AuthContextType = {
         user,
         companies,
@@ -400,7 +514,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         fetchCompanies,
         leaveCompanyHandler,
-        resetPassword
+        resetPassword,
+        resetPasswordByRecoveryEmail,
+        updateEmail,
+        updateRecoveryEmail
     }
 
     return (

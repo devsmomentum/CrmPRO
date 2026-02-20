@@ -426,6 +426,7 @@ export interface UsuarioDB {
   email: string
   nombre?: string
   avatar_url?: string
+  recovery_email?: string | null
   created_at: string
 }
 

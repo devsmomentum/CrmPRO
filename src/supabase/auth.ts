@@ -109,3 +109,20 @@ export async function getSession() {
     const { data: { session } } = await supabase.auth.getSession()
     return session
 }
+
+/**
+ * Solicita el cambio de email del usuario autenticado.
+ * Supabase enviará un correo de confirmación al nuevo email.
+ * El cambio se aplica cuando el usuario hace clic en ese link.
+ */
+export async function updateEmail(newEmail: string): Promise<void> {
+    const { error } = await supabase.auth.updateUser({ email: newEmail })
+    if (error) {
+        const friendly = mapAuthError(error)
+        const e: AuthErrorExtended = new Error(friendly || error.message)
+        e.original = error
+        e.code = error.code
+        e.status = error.status
+        throw e
+    }
+}

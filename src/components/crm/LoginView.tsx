@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/lib/i18n'
 import { toast } from 'sonner'
-import { CircleNotch, CheckCircle } from '@phosphor-icons/react'
+import { CircleNotch, CheckCircle, CaretDown, CaretUp, ShieldCheck } from '@phosphor-icons/react'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
+import { useAuth } from '@/hooks/useAuth'
 
 interface LoginViewProps {
   onLogin: (email: string, password: string) => Promise<void>
@@ -23,7 +24,12 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
   const [isLoading, setIsLoading] = useState(false)
   const [isResetting, setIsResetting] = useState(false) // Toggle mode
   const [isSuccess, setIsSuccess] = useState(false) // Success mode
+  const [showMoreOptions, setShowMoreOptions] = useState(false)
+  const [recoveryEmail, setRecoveryEmail] = useState('')
+  const [isRecoveryLoading, setIsRecoveryLoading] = useState(false)
+  const [recoverySuccessMsg, setRecoverySuccessMsg] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const { resetPasswordByRecoveryEmail } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,8 +86,12 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
           </CardHeader>
           <CardContent className="text-center space-y-6">
             <p className="text-muted-foreground text-lg">
-              Hemos enviado un enlace de recuperación a <br />
-              <strong className="text-foreground">{email}</strong>
+              {recoverySuccessMsg ? recoverySuccessMsg : (
+                <>
+                  Hemos enviado un enlace de recuperación a <br />
+                  <strong className="text-foreground">{email}</strong>
+                </>
+              )}
             </p>
             <p className="text-sm text-muted-foreground">
               Revisa tu bandeja de entrada (y la carpeta de spam) para continuar con el proceso.
@@ -93,6 +103,8 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
                 setIsSuccess(false)
                 setIsResetting(false)
                 setPassword('')
+                setRecoveryEmail('')
+                setRecoverySuccessMsg(null)
               }}
             >
               Volver a Iniciar Sesión
@@ -101,6 +113,29 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
         </Card>
       </div>
     )
+  }
+
+  const handleRecoverySubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!recoveryEmail) {
+      toast.error('Ingresa tu correo alternativo')
+      return
+    }
+
+    setIsRecoveryLoading(true)
+    setErrorMessage(null)
+
+    try {
+      await resetPasswordByRecoveryEmail(recoveryEmail)
+      setRecoverySuccessMsg(`Enviamos el enlace de recuperación a tu correo alternativo: ${recoveryEmail}`)
+      setIsSuccess(true)
+      setIsResetting(true)
+    } catch (error: any) {
+      console.error('Recovery error:', error)
+      setErrorMessage(error.message || 'Error al enviar recuperación')
+    } finally {
+      setIsRecoveryLoading(false)
+    }
   }
 
   return (
@@ -162,6 +197,52 @@ function LoginView({ onLogin, onSwitchToRegister, onForgotPassword }: LoginViewP
                   isResetting ? 'Enviar enlace de recuperación' : t.auth.login
                 )}
               </Button>
+
+              {isResetting && (
+                <div className="pt-4 border-t border-border mt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowMoreOptions(!showMoreOptions)}
+                    className="flex items-center justify-center gap-1 w-full text-sm text-muted-foreground hover:text-primary transition-colors py-1"
+                  >
+                    {showMoreOptions ? <CaretUp size={14} /> : <CaretDown size={14} />}
+                    {showMoreOptions ? 'Menos opciones' : 'Ver más opciones (Correo alternativo)'}
+                  </button>
+
+                  {showMoreOptions && (
+                    <div className="mt-4 space-y-4 p-4 bg-muted/50 rounded-lg border border-border animate-in slide-in-from-top-2 duration-200">
+                      <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-1">
+                        <ShieldCheck size={18} className="text-primary" />
+                        ¿No tienes acceso al correo principal?
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Ingresa tu correo alternativo de recuperación configurado en tu cuenta.
+                      </p>
+                      <div className="space-y-2">
+                        <Input
+                          type="email"
+                          placeholder="correo@alternativo.com"
+                          value={recoveryEmail}
+                          onChange={(e) => setRecoveryEmail(e.target.value)}
+                          disabled={isRecoveryLoading}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          className="w-full"
+                          onClick={handleRecoverySubmit}
+                          disabled={isRecoveryLoading || !recoveryEmail}
+                        >
+                          {isRecoveryLoading ? (
+                            <CircleNotch size={16} className="animate-spin mr-2" />
+                          ) : null}
+                          Enviar al correo alternativo
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {errorMessage && (
                 <div className="p-3 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-md text-center font-medium">

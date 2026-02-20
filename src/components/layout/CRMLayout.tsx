@@ -207,11 +207,19 @@ export function CRMLayout({ isGuestMode: forcedGuestMode }: CRMLayoutProps) {
                 <div className="mt-auto border-t bg-muted/20 px-6 py-3 flex items-center gap-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-700">
                     <div className="flex items-center gap-4 group cursor-pointer">
                         <div className="w-10 h-10 rounded-full bg-background border-2 border-border shadow-sm flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-300">
-                            <img
-                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
-                                alt={user.businessName}
-                                className="w-full h-full object-cover"
-                            />
+                            {currentCompany?.logo ? (
+                                <img
+                                    src={currentCompany.logo}
+                                    alt={currentCompany.name}
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <img
+                                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
+                                    alt={user.businessName}
+                                    className="w-full h-full object-cover"
+                                />
+                            )}
                         </div>
                         <div className="flex flex-col">
                             <div className="flex items-center gap-2">

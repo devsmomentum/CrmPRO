@@ -49,3 +49,18 @@ export async function updateUsuario(id: string, updates: Partial<Omit<UsuarioDB,
     if (error) throw error
     return data
 }
+
+/**
+ * Actualiza el correo alternativo de un usuario
+ */
+export async function updateRecoveryEmail(id: string, recoveryEmail: string | null): Promise<UsuarioDB> {
+    const { data, error } = await supabase
+        .from('usuarios')
+        .update({ recovery_email: recoveryEmail ? recoveryEmail.toLowerCase().trim() : null })
+        .eq('id', id)
+        .select()
+        .single()
+
+    if (error) throw error
+    return data
+}

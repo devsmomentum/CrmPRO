@@ -2,11 +2,11 @@ import { useState, useEffect, Dispatch, SetStateAction } from 'react'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash, SignOut, Pencil, Check, X } from '@phosphor-icons/react'
+import { Plus, Trash, SignOut, Pencil, Check, X, Envelope, ShieldCheck } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -18,6 +18,7 @@ import { CatalogManagement } from './CatalogManagement'
 import { IDsViewer } from './IDsViewer'
 import { IntegrationsManager } from './settings/IntegrationsManager'
 import { updatePipeline, getPipelines } from '@/supabase/helpers/pipeline'
+import { useAuth } from '@/hooks/useAuth'
 import { toast } from 'sonner'
 
 interface SettingsViewProps {
@@ -33,6 +34,14 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
   const currentCompany = companies?.find(c => c.id === currentCompanyId)
   const userRole = currentCompany?.role || 'viewer'
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
+
+  const [newEmail, setNewEmail] = useState('')
+  const [confirmEmail, setConfirmEmail] = useState('')
+  const [recoveryEmailInput, setRecoveryEmailInput] = useState('')
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false)
+  const [isUpdatingRecovery, setIsUpdatingRecovery] = useState(false)
+
+  const { user, updateEmail, updateRecoveryEmail } = useAuth()
 
   const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${currentCompanyId}`, [])
   const [automations, setAutomations] = usePersistentState<AutomationRule[]>(`automations-${currentCompanyId}`, [])
@@ -118,6 +127,7 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
 
       <Tabs defaultValue="companies">
         <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar">
+          <TabsTrigger value="account">Mi Cuenta</TabsTrigger>
           <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
           <TabsTrigger value="tags">Etiquetas</TabsTrigger>
@@ -127,6 +137,124 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           {isAdminOrOwner && <TabsTrigger value="integrations">Integraciones</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="ids">IDs</TabsTrigger>}
         </TabsList>
+
+        {/* ── Mi Cuenta ─────────────────────────────────────── */}
+        <TabsContent value="account" className="space-y-4 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Envelope size={20} />
+                Cambiar correo electrónico
+              </CardTitle>
+              <CardDescription>
+                Al guardar, recibirás un link de confirmación en el nuevo correo.
+                El cambio se aplicará cuando hagas clic en ese link.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Email actual */}
+              <div className="space-y-1">
+                <Label className="text-sm text-muted-foreground">Correo actual</Label>
+                <p className="text-sm font-medium bg-muted px-3 py-2 rounded-md">{user?.email || '—'}</p>
+              </div>
+
+              {/* Nuevo email */}
+              <div className="space-y-1">
+                <Label htmlFor="new-email">Nuevo correo</Label>
+                <Input
+                  id="new-email"
+                  type="email"
+                  placeholder="nuevo@correo.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                />
+              </div>
+
+              {/* Confirmar nuevo email */}
+              <div className="space-y-1">
+                <Label htmlFor="confirm-email">Confirmar nuevo correo</Label>
+                <Input
+                  id="confirm-email"
+                  type="email"
+                  placeholder="nuevo@correo.com"
+                  value={confirmEmail}
+                  onChange={(e) => setConfirmEmail(e.target.value)}
+                />
+              </div>
+
+              <Button
+                disabled={isUpdatingEmail || !newEmail || !confirmEmail}
+                onClick={async () => {
+                  if (newEmail !== confirmEmail) {
+                    toast.error('Los correos no coinciden')
+                    return
+                  }
+                  if (newEmail === user?.email) {
+                    toast.error('El nuevo correo es igual al actual')
+                    return
+                  }
+                  setIsUpdatingEmail(true)
+                  try {
+                    await updateEmail(newEmail)
+                    setNewEmail('')
+                    setConfirmEmail('')
+                  } finally {
+                    setIsUpdatingEmail(false)
+                  }
+                }}
+              >
+                {isUpdatingEmail ? 'Enviando...' : 'Cambiar correo'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck size={20} />
+                Correo alternativo de recuperación
+              </CardTitle>
+              <CardDescription>
+                Este correo se usará para enviarte un enlace de recuperación si pierdes acceso a tu correo principal.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <Label className="text-sm text-muted-foreground">Correo alternativo actual</Label>
+                <p className="text-sm font-medium bg-muted px-3 py-2 rounded-md">
+                  {user?.recoveryEmail || 'No configurado'}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="recovery-email">Configurar nuevo correo alternativo</Label>
+                <Input
+                  id="recovery-email"
+                  type="email"
+                  placeholder="alternativo@correo.com"
+                  value={recoveryEmailInput}
+                  onChange={(e) => setRecoveryEmailInput(e.target.value)}
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                disabled={isUpdatingRecovery || !recoveryEmailInput}
+                onClick={async () => {
+                  setIsUpdatingRecovery(true)
+                  try {
+                    await updateRecoveryEmail(recoveryEmailInput)
+                    setRecoveryEmailInput('')
+                  } finally {
+                    setIsUpdatingRecovery(false)
+                  }
+                }}
+              >
+                {isUpdatingRecovery ? 'Guardando...' : 'Guardar correo alternativo'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="companies" className="space-y-4 mt-6">
           {currentUserId && onCompanyChange && companies && setCompanies ? (
