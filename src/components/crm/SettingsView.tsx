@@ -1,21 +1,24 @@
-import { useState, Dispatch, SetStateAction } from 'react'
+import { useState, useEffect, Dispatch, SetStateAction } from 'react'
 // import { useKV } from '@github/spark/hooks'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Pipeline, Stage, AutomationRule, PipelineType } from '@/lib/types'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Plus, Trash, SignOut, Pencil, Check, X } from '@phosphor-icons/react'
+import { Plus, Trash, SignOut, Pencil, Check, X, Envelope, ShieldCheck } from '@phosphor-icons/react'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AddPipelineDialog } from './AddPipelineDialog'
 import { RolesManagement } from './RolesManagement'
+import { TagsManagement } from './settings/TagsManagement'
 import { CompanyManagement, Company } from './CompanyManagement'
 import { CatalogManagement } from './CatalogManagement'
 import { IDsViewer } from './IDsViewer'
-import { updatePipeline } from '@/supabase/helpers/pipeline'
+import { IntegrationsManager } from './settings/IntegrationsManager'
+import { updatePipeline, getPipelines } from '@/supabase/helpers/pipeline'
+import { useAuth } from '@/hooks/useAuth'
 import { toast } from 'sonner'
 
 interface SettingsViewProps {
@@ -32,11 +35,48 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
   const userRole = currentCompany?.role || 'viewer'
   const isAdminOrOwner = userRole === 'admin' || userRole === 'owner'
 
+  const [newEmail, setNewEmail] = useState('')
+  const [confirmEmail, setConfirmEmail] = useState('')
+  const [recoveryEmailInput, setRecoveryEmailInput] = useState('')
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false)
+  const [isUpdatingRecovery, setIsUpdatingRecovery] = useState(false)
+
+  const { user, updateEmail, updateRecoveryEmail } = useAuth()
+
   const [pipelines, setPipelines] = usePersistentState<Pipeline[]>(`pipelines-${currentCompanyId}`, [])
   const [automations, setAutomations] = usePersistentState<AutomationRule[]>(`automations-${currentCompanyId}`, [])
   const [showPipelineDialog, setShowPipelineDialog] = useState(false)
   const [editingPipelineId, setEditingPipelineId] = useState<string | null>(null)
   const [editPipelineName, setEditPipelineName] = useState('')
+
+  /**
+   * Cargar pipelines desde la BD cuando cambia la empresa
+   * Esto soluciona el bug donde SettingsView mostraba pipelines de otra empresa
+   * porque solo leía del caché localStorage sin verificar con la BD.
+   */
+  useEffect(() => {
+    if (!currentCompanyId) return
+
+    getPipelines(currentCompanyId)
+      .then(({ data }) => {
+        if (data) {
+          const dbPipelines: Pipeline[] = data.map((p: any) => ({
+            id: p.id,
+            name: p.nombre,
+            type: p.nombre.toLowerCase().trim().replace(/\s+/g, '-'),
+            stages: (p.etapas || []).map((s: any) => ({
+              id: s.id,
+              name: s.nombre,
+              order: s.orden,
+              color: s.color,
+              pipelineType: p.nombre.toLowerCase().trim().replace(/\s+/g, '-')
+            })).sort((a: any, b: any) => a.order - b.order)
+          }))
+          setPipelines(dbPipelines)
+        }
+      })
+      .catch(err => console.error('[SettingsView] Error loading pipelines:', err))
+  }, [currentCompanyId])
 
   const toggleAutomation = (id: string) => {
     setAutomations((current) =>
@@ -87,14 +127,134 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
 
       <Tabs defaultValue="companies">
         <TabsList className="w-full justify-start overflow-x-auto h-auto p-1 no-scrollbar">
+          <TabsTrigger value="account">Mi Cuenta</TabsTrigger>
           <TabsTrigger value="companies">Empresas</TabsTrigger>
           <TabsTrigger value="catalog">Catálogo</TabsTrigger>
+          <TabsTrigger value="tags">Etiquetas</TabsTrigger>
           <TabsTrigger value="pipelines">Pipelines</TabsTrigger>
           {isAdminOrOwner && <TabsTrigger value="roles">Roles</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="automations">Automatizaciones</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="integrations">Integraciones</TabsTrigger>}
           {isAdminOrOwner && <TabsTrigger value="ids">IDs</TabsTrigger>}
         </TabsList>
+
+        {/* ── Mi Cuenta ─────────────────────────────────────── */}
+        <TabsContent value="account" className="space-y-4 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Envelope size={20} />
+                Cambiar correo electrónico
+              </CardTitle>
+              <CardDescription>
+                Al guardar, recibirás un link de confirmación en el nuevo correo.
+                El cambio se aplicará cuando hagas clic en ese link.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Email actual */}
+              <div className="space-y-1">
+                <Label className="text-sm text-muted-foreground">Correo actual</Label>
+                <p className="text-sm font-medium bg-muted px-3 py-2 rounded-md">{user?.email || '—'}</p>
+              </div>
+
+              {/* Nuevo email */}
+              <div className="space-y-1">
+                <Label htmlFor="new-email">Nuevo correo</Label>
+                <Input
+                  id="new-email"
+                  type="email"
+                  placeholder="nuevo@correo.com"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                />
+              </div>
+
+              {/* Confirmar nuevo email */}
+              <div className="space-y-1">
+                <Label htmlFor="confirm-email">Confirmar nuevo correo</Label>
+                <Input
+                  id="confirm-email"
+                  type="email"
+                  placeholder="nuevo@correo.com"
+                  value={confirmEmail}
+                  onChange={(e) => setConfirmEmail(e.target.value)}
+                />
+              </div>
+
+              <Button
+                disabled={isUpdatingEmail || !newEmail || !confirmEmail}
+                onClick={async () => {
+                  if (newEmail !== confirmEmail) {
+                    toast.error('Los correos no coinciden')
+                    return
+                  }
+                  if (newEmail === user?.email) {
+                    toast.error('El nuevo correo es igual al actual')
+                    return
+                  }
+                  setIsUpdatingEmail(true)
+                  try {
+                    await updateEmail(newEmail)
+                    setNewEmail('')
+                    setConfirmEmail('')
+                  } finally {
+                    setIsUpdatingEmail(false)
+                  }
+                }}
+              >
+                {isUpdatingEmail ? 'Enviando...' : 'Cambiar correo'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck size={20} />
+                Correo alternativo de recuperación
+              </CardTitle>
+              <CardDescription>
+                Este correo se usará para enviarte un enlace de recuperación si pierdes acceso a tu correo principal.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <Label className="text-sm text-muted-foreground">Correo alternativo actual</Label>
+                <p className="text-sm font-medium bg-muted px-3 py-2 rounded-md">
+                  {user?.recoveryEmail || 'No configurado'}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="recovery-email">Configurar nuevo correo alternativo</Label>
+                <Input
+                  id="recovery-email"
+                  type="email"
+                  placeholder="alternativo@correo.com"
+                  value={recoveryEmailInput}
+                  onChange={(e) => setRecoveryEmailInput(e.target.value)}
+                />
+              </div>
+
+              <Button
+                variant="outline"
+                disabled={isUpdatingRecovery || !recoveryEmailInput}
+                onClick={async () => {
+                  setIsUpdatingRecovery(true)
+                  try {
+                    await updateRecoveryEmail(recoveryEmailInput)
+                    setRecoveryEmailInput('')
+                  } finally {
+                    setIsUpdatingRecovery(false)
+                  }
+                }}
+              >
+                {isUpdatingRecovery ? 'Guardando...' : 'Guardar correo alternativo'}
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="companies" className="space-y-4 mt-6">
           {currentUserId && onCompanyChange && companies && setCompanies ? (
@@ -112,6 +272,17 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           )}
         </TabsContent>
 
+        <TabsContent value="integrations" className="space-y-4 mt-6">
+          {isAdminOrOwner ? (
+            <IntegrationsManager empresaId={currentCompanyId || ''} />
+          ) : (
+            <div className="text-center py-12 text-muted-foreground">
+              No tienes permisos para gestionar integraciones.
+            </div>
+          )}
+        </TabsContent>
+
+
         <TabsContent value="catalog" className="space-y-4 mt-6">
           {isAdminOrOwner ? (
             <CatalogManagement />
@@ -120,6 +291,10 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
               No tienes permisos para gestionar el catálogo.
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="tags" className="space-y-4 mt-6">
+          <TagsManagement empresaId={currentCompanyId || ''} />
         </TabsContent>
 
         <TabsContent value="pipelines" className="space-y-4 mt-6">
@@ -262,60 +437,6 @@ export function SettingsView({ currentUserId, currentCompanyId, onCompanyChange,
           )}
         </TabsContent>
 
-        <TabsContent value="integrations" className="space-y-4 mt-6">
-          <h2 className="text-xl font-semibold">Integraciones API</h2>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Servicio de Email</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>API Key</Label>
-                <Input type="password" placeholder="Ingrese la clave API" />
-              </div>
-              <div>
-                <Label>Correo del Remitente</Label>
-                <Input type="email" placeholder="noreply@company.com" />
-              </div>
-              <Button>Guardar Configuración</Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Servicio de SMS</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Account SID</Label>
-                <Input placeholder="Enter account SID" />
-              </div>
-              <div>
-                <Label>Auth Token</Label>
-                <Input type="password" placeholder="Enter auth token" />
-              </div>
-              <Button>Guardar Configuración</Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>WhatsApp Business</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>ID de Cuenta Empresarial</Label>
-                <Input placeholder="Enter business account ID" />
-              </div>
-              <div>
-                <Label>Access Token</Label>
-                <Input type="password" placeholder="Enter access token" />
-              </div>
-              <Button>Guardar Configuración</Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="ids" className="space-y-4 mt-6">
           <h2 className="text-xl font-semibold">IDs del Sistema</h2>

@@ -60,21 +60,24 @@ export async function sendMessage(
 ) {
   // Si es un mensaje del equipo, usamos la Edge Function para que también se envíe a la Super API
   if (sender === 'team') {
-    const { data, error } = await supabase.functions.invoke('send-message', {
-      body: {
-        lead_id: leadId,
-        content: content || undefined,
-        channel,
-        media
+    // Si es un mensaje del equipo, usamos la Edge Function para que también se envíe a la Super API
+    if (sender === 'team') {
+      const { data, error } = await supabase.functions.invoke('send-message', {
+        body: {
+          lead_id: leadId,
+          content: content || undefined,
+          channel,
+          media
+        }
+      })
+
+      if (error) {
+        console.error('[sendMessage] Error invoking edge function:', error)
+        throw error
       }
-    })
-    // Debug: superficie la respuesta completa de la Edge Function
-    if (error) {
-      console.error('[sendMessage] Edge error send-message:', error)
-      throw error
+
+      return data as Message
     }
-    console.log('[sendMessage] Edge response send-message:', data)
-    return data as Message
   }
 
   // Si por alguna razón insertamos un mensaje manual como 'lead' (simulación), va directo a la BD

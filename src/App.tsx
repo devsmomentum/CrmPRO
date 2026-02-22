@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { Dashboard } from '@/components/crm/Dashboard'
 import { PipelineView } from '@/components/crm/PipelineView'
 import { ChatsView } from '@/components/crm/ChatsView'
+import { ContactsView } from '@/components/crm/contacts/ContactsView'
 import { AnalyticsDashboard } from '@/components/crm/AnalyticsDashboard'
 import { CalendarView } from '@/components/crm/CalendarView'
 import { TeamView } from '@/components/crm/TeamView'
@@ -12,6 +13,7 @@ import LoginView from '@/components/crm/LoginView'
 import { RegisterView } from '@/components/crm/RegisterView'
 import { JoinTeam } from '@/components/crm/JoinTeam'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
+import { UpdatePasswordView } from '@/components/auth/UpdatePasswordView'
 import { CRMLayout } from '@/components/layout/CRMLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { LoadingScreen } from '@/components/ui/LoadingScreen'
@@ -20,11 +22,11 @@ import { toast } from 'sonner'
 import { verifyEmpresaTable, testInsertEmpresa, listEmpresasCurrentUser, testRLSViolation } from '@/supabase/diagnostics/empresaDebug'
 
 function App() {
-  const { user, isLoading, login, register, companies, currentCompanyId, setCurrentCompanyId, fetchCompanies } = useAuth()
+  const { user, isLoading, login, register, companies, currentCompanyId, setCurrentCompanyId, fetchCompanies, resetPassword } = useAuth()
 
   // Debug tools
   useEffect(() => {
-    ; (window as any).empDiag = {
+    ; window.empDiag = {
       verifyEmpresaTable,
       testInsertEmpresa,
       listEmpresasCurrentUser,
@@ -45,7 +47,7 @@ function App() {
           user ? <Navigate to="/dashboard" replace /> : (
             <LoginView
               onLogin={login}
-              onSwitchToRegister={() => { }}
+              onForgotPassword={resetPassword}
             />
           )
         } />
@@ -53,10 +55,12 @@ function App() {
           user ? <Navigate to="/dashboard" replace /> : (
             <RegisterView
               onRegister={register}
-              onSwitchToLogin={() => { }}
             />
           )
         } />
+
+        {/* Password Recovery Route */}
+        <Route path="/update-password" element={<UpdatePasswordView />} />
 
         {/* Join Team Route */}
         <Route path="/join" element={<JoinTeamWrapper />} />
@@ -65,10 +69,7 @@ function App() {
         <Route element={<ProtectedRoute><CRMLayout /></ProtectedRoute>}>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={
-            <Dashboard
-              companyId={currentCompanyId}
-              onShowNotifications={() => { }}
-            />
+            <DashboardWrapper />
           } />
           <Route path="/pipeline" element={
             <PipelineView
@@ -80,8 +81,11 @@ function App() {
           <Route path="/chats" element={
             <ChatsViewWrapper />
           } />
+          <Route path="/contacts" element={
+            <ContactsView companyId={currentCompanyId} currentUserId={user?.id} />
+          } />
           <Route path="/analytics" element={
-            <AnalyticsDashboard companyId={currentCompanyId} />
+            <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />
           } />
           <Route path="/calendar" element={
             <CalendarView companyId={currentCompanyId} />
@@ -106,10 +110,7 @@ function App() {
         <Route path="/guest" element={<ProtectedRoute><CRMLayout isGuestMode /></ProtectedRoute>}>
           <Route index element={<Navigate to="/guest/dashboard" replace />} />
           <Route path="dashboard" element={
-            <Dashboard
-              companyId={currentCompanyId}
-              onShowNotifications={() => { }}
-            />
+            <DashboardWrapper />
           } />
           <Route path="pipeline" element={
             <PipelineView
@@ -121,8 +122,11 @@ function App() {
           <Route path="chats" element={
             <ChatsViewWrapper />
           } />
+          <Route path="contacts" element={
+            <ContactsView companyId={currentCompanyId} currentUserId={user?.id} />
+          } />
           <Route path="analytics" element={
-            <AnalyticsDashboard companyId={currentCompanyId} />
+            <AnalyticsDashboard key={currentCompanyId} companyId={currentCompanyId} />
           } />
           <Route path="calendar" element={
             <CalendarView companyId={currentCompanyId} />
@@ -165,8 +169,12 @@ function ChatsViewWrapper() {
     <ChatsView
       companyId={currentCompanyId}
       canDeleteLead={canDeleteLead}
-      onNavigateToPipeline={(leadId) => {
-        sessionStorage.setItem('openLeadId', leadId)
+      onNavigateToPipeline={(lead) => {
+        sessionStorage.setItem('pendingLeadNavigation', JSON.stringify({
+          leadId: lead.id,
+          leadData: lead,
+          pipelineId: lead.pipeline
+        }))
         const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
         navigate(isGuestMode ? '/guest/pipeline' : '/pipeline')
       }}
@@ -267,3 +275,30 @@ function JoinTeamWrapper() {
 }
 
 export default App
+
+function DashboardWrapper() {
+  const { currentCompanyId, user, companies } = useAuth()
+  const navigate = useNavigate()
+
+  return (
+    <Dashboard
+      companyId={currentCompanyId}
+      companies={companies}
+      onShowNotifications={() => {
+        const currentCompany = companies.find(c => c.id === currentCompanyId)
+        const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
+        navigate(isGuestMode ? '/guest/notifications' : '/notifications')
+      }}
+      onNavigateToLead={(lead) => {
+        sessionStorage.setItem('pendingLeadNavigation', JSON.stringify({
+          leadId: lead.id,
+          leadData: lead,
+          pipelineId: lead.pipeline
+        }))
+        const currentCompany = companies.find(c => c.id === currentCompanyId)
+        const isGuestMode = currentCompany && user && currentCompany.ownerId !== user.id
+        navigate(isGuestMode ? '/guest/pipeline' : '/pipeline')
+      }}
+    />
+  )
+}

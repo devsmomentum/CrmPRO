@@ -1,30 +1,47 @@
 import { usePersistentState } from '@/hooks/usePersistentState'
-import { Task, Lead, Appointment, Notification as NotificationType } from '@/lib/types'
+import { Task, Lead, Meeting, Notification as NotificationType, EmpresaMiembro as CompanyMember } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { CheckCircle, Clock, WarningCircle, Plus, Bell, Microphone, Users, CalendarBlank, Funnel } from '@phosphor-icons/react'
-import { format } from 'date-fns'
+import { ArrowRight, CalendarBlank, CaretDown, CheckCircle, Clock, Envelope, Funnel, Phone, Plus, ListChecks, Users, Vault, WarningCircle, X, PencilSimple, Microphone, Bell, DotsThree, CalendarCheck } from '@phosphor-icons/react'
+import { format, isToday, isBefore, isAfter, startOfDay } from 'date-fns'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import { VoiceRecorder } from './VoiceRecorder'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { AddTaskDialog } from './tasks/AddTaskDialog'
+import { TaskHistoryDialog } from './tasks/TaskHistoryDialog'
+import { ExpiredTasksDialog } from './tasks/ExpiredTasksDialog'
 import { getLeads, getLeadsCount } from '@/supabase/services/leads'
+import { getCompanyMembers, Company } from '@/supabase/services/empresa'
+import { toast } from 'sonner'
 import { getPipelines } from '@/supabase/helpers/pipeline'
+import { getCompanyMeetings } from '@/supabase/services/reuniones'
+import { getTasks, updateTask, deleteTask } from '@/supabase/services/tasks'
 
 interface DashboardProps {
   companyId?: string
+  companies?: Company[]
   onShowNotifications: () => void
+  onNavigateToLead?: (lead: Lead) => void
 }
 
-export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
-  const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
-  // const [leads, setLeads] = usePersistentState<Lead[]>(`leads-${companyId}`, [])
+export function Dashboard({ companyId, companies = [], onShowNotifications, onNavigateToLead }: DashboardProps) {
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [completedTasks, setCompletedTasks] = useState<Task[]>([]) // New state for completed today
+  // const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
+  const [loading, setLoading] = useState(true)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [leads, setLeads] = useState<Lead[]>([])
   const [leadsCount, setLeadsCount] = useState(0)
-  const [appointments] = usePersistentState<Appointment[]>(`appointments-${companyId}`, [])
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [members, setMembers] = useState<CompanyMember[]>([])
   const [notifications] = usePersistentState<NotificationType[]>(`notifications-${companyId}`, [])
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false)
   const [pipelinesCount, setPipelinesCount] = useState(0)
+  const [showExpiredTasks, setShowExpiredTasks] = useState(false)
 
   useEffect(() => {
     if (companyId) {
@@ -35,52 +52,219 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
         })
         .catch(err => console.error('Error fetching leads count in Dashboard:', err))
 
+      // Cargar leads para navegación
+      getLeads(companyId)
+        .then((data) => {
+          if (data) {
+            const { mapDBToLead } = require('@/hooks/useLeadsList')
+            setLeads(data.map(mapDBToLead))
+          }
+        })
+        .catch(err => console.error('Error fetching leads in Dashboard:', err))
+
       // Cargar pipelines para contar
       getPipelines(companyId)
         .then(({ data }) => {
           if (data) setPipelinesCount(data.length)
         })
         .catch(err => console.error('Error fetching pipelines in Dashboard:', err))
+
+      // Cargar reuniones de la empresa
+      getCompanyMeetings(companyId)
+        .then(data => {
+          setMeetings(data)
+        })
+        .catch(err => console.error('Error fetching meetings in Dashboard:', err))
+
+      // Cargar tareas reales
+      getTasks(companyId)
+        .then(data => setTasks(data))
+        .catch(err => console.error('Error fetching tasks:', err))
+
+      // Cargar miembros
+      getCompanyMembers(companyId)
+        .then(data => setMembers(data || []))
+        .catch(err => console.error('Error fetching members:', err))
     }
   }, [companyId])
+
+  const refreshTasks = () => {
+    if (companyId) {
+      getTasks(companyId).then(data => setTasks(data))
+    }
+  }
+
+  const handleCompleteTask = async (task: Task) => {
+    console.log('Completing task:', task)
+    const originalTasks = [...tasks]
+
+    try {
+      // Optimistic update
+      setTasks(prev => prev.filter(t => t.id !== task.id))
+      setCompletedTasks(prev => [{ ...task, status: 'completed', completedAt: new Date() }, ...prev])
+
+      await updateTask(task.id, {
+        status: 'completed',
+        completedAt: new Date()
+      })
+
+      toast.success('Tarea completada')
+    } catch (err) {
+      console.error('Error completing task:', err)
+      toast.error('Error al completar tarea: ' + (err as any).message)
+      // Revert
+      setTasks(originalTasks)
+      setCompletedTasks(prev => prev.filter(t => t.id !== task.id))
+    }
+  }
+
+  const handleDeleteTask = async (task: Task) => {
+    const originalTasks = [...tasks]
+    try {
+      setTasks(prev => prev.filter(t => t.id !== task.id))
+      await deleteTask(task.id)
+      toast.success('Tarea eliminada')
+    } catch (err) {
+      console.error('Error deleting task:', err)
+      toast.error('Error al eliminar tarea')
+      setTasks(originalTasks)
+    }
+  }
+
+  const handleClearExpiredTasks = async () => {
+    const originalTasks = [...tasks]
+    const expiredIds = overdueTasks.map(t => t.id)
+
+    try {
+      // Optimistic update
+      setTasks(prev => prev.filter(t => !expiredIds.includes(t.id)))
+
+      // Execute deletes in parallel
+      await Promise.all(expiredIds.map(id => deleteTask(id)))
+
+      toast.success('Tareas vencidas eliminadas')
+      setShowExpiredTasks(false)
+    } catch (err) {
+      console.error('Error clearing expired tasks:', err)
+      toast.error('Error al limpiar tareas')
+      setTasks(originalTasks)
+    }
+  }
 
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  const myTasks = (tasks || []).filter(t => !t.completed)
-  const todayTasks = myTasks.filter(t => {
+  const todayTasks = tasks.filter(t => {
     const taskDate = new Date(t.dueDate)
     taskDate.setHours(0, 0, 0, 0)
-    return taskDate.getTime() === today.getTime()
+    return taskDate.getTime() === today.getTime() || (new Date(t.dueDate) < today) // Show overdue in today list too? Or separate? 
+    // Let's keep original logic: today is today. Overdue is overdue.
   })
-  const overdueTasks = myTasks.filter(t => new Date(t.dueDate) < today)
 
-  const todayAppointments = (appointments || []).filter(a => {
-    const apptDate = new Date(a.startTime)
-    apptDate.setHours(0, 0, 0, 0)
-    return apptDate.getTime() === today.getTime()
+  // Correction: filtering logic was:
+  // const myTasks = (tasks || []).filter(t => !t.completed) <--- "completed" property was boolean in mock/old type
+  // New type uses status = 'pending' | 'completed'
+  // But our getTasks service ALREADY filters for status='pending'. So 'tasks' state only has pending tasks.
+
+  // So we just filter by date from 'tasks'
+  const tasksForToday = tasks.filter(t => {
+    const d = new Date(t.dueDate)
+    d.setHours(0, 0, 0, 0)
+    return d.getTime() === today.getTime()
   })
+
+  // Overdue
+  const tasksOverdue = tasks.filter(t => {
+    const d = new Date(t.dueDate)
+    d.setHours(0, 0, 0, 0)
+    return d.getTime() < today.getTime()
+  })
+  const overdueTasks = tasksOverdue
+
+  // Filtrar reuniones
+  const todayStart = startOfDay(today)
+  const todayEnd = new Date(today)
+  todayEnd.setHours(23, 59, 59, 999)
+
+  const upcomingMeetings = meetings.filter(m => {
+    const mDate = new Date(m.date)
+    return isToday(mDate) || isAfter(mDate, todayStart)
+  })
+
+  const expiredMeetings = meetings.filter(m => {
+    const mDate = new Date(m.date)
+    return isBefore(mDate, todayStart)
+  })
+
+  // Ordenar reuniones de hoy por hora
+  upcomingMeetings.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+  // Ordenar reuniones vencidas (más recientes primero)
+  expiredMeetings.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
   const unreadNotifications = (notifications || []).filter(n => !n.read).length
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'high': return 'text-destructive'
-      case 'medium': return 'text-warning'
-      case 'low': return 'text-muted-foreground'
-      default: return 'text-foreground'
+      case 'high': return 'bg-red-500/10 text-red-600 border-red-200'
+      case 'medium': return 'bg-orange-500/10 text-orange-600 border-orange-200'
+      case 'low': return 'bg-blue-500/10 text-blue-600 border-blue-200'
+      default: return 'bg-gray-100 text-gray-600 border-gray-200'
+    }
+  }
+
+  const getTaskIcon = (type: string) => {
+    switch (type) {
+      case 'call': return <Phone size={16} weight="duotone" className="text-blue-500" />
+      case 'email': return <Envelope size={16} weight="duotone" className="text-purple-500" />
+      case 'meeting': return <Users size={16} weight="duotone" className="text-emerald-500" />
+      default: return <CheckCircle size={16} weight="duotone" className="text-gray-500" />
+    }
+  }
+
+  const getAssigneeName = (id?: string) => {
+    if (!id) return 'Sin asignar'
+    const member = members.find(m => m.usuario_id === id)
+    return member?.email || 'Desconocido'
+  }
+
+  const formatTime = (dateStr: string | Date) => {
+    try {
+      return format(new Date(dateStr), 'h:mm a')
+    } catch {
+      return ''
     }
   }
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-32 md:pb-8 space-y-8 bg-background/50">
       {/* Welcome Section */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-            ¡Bienvenido!
-          </h1>
-          <p className="text-muted-foreground font-medium">Esto es lo que está sucediendo hoy en tu negocio</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex items-center gap-5">
+          {(() => {
+            const activeCompany = (companies || []).find(c => c.id === companyId)
+            return (
+              <>
+                <Avatar className="h-16 w-16 md:h-20 md:w-20 shadow-xl ring-4 ring-background border-4 border-primary/10 animate-in zoom-in duration-500">
+                  {activeCompany?.logo ? (
+                    <AvatarImage src={activeCompany.logo} alt={activeCompany.name} className="object-cover" />
+                  ) : (
+                    <AvatarFallback className="text-2xl font-black bg-gradient-to-br from-primary to-primary/60 text-white">
+                      {activeCompany?.name?.slice(0, 2).toUpperCase() || '??'}
+                    </AvatarFallback>
+                  )}
+                </Avatar>
+                <div className="space-y-1">
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tight text-foreground transition-all">
+                    ¡Bienvenido{activeCompany ? ` a ${activeCompany.name}` : ''}!
+                  </h1>
+                  <p className="text-muted-foreground font-medium text-sm md:text-base opacity-80">
+                    {activeCompany ? `Gestionando ${activeCompany.name}` : 'Esto es lo que está sucediendo hoy en tu negocio'}
+                  </p>
+                </div>
+              </>
+            )
+          })()}
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -151,12 +335,15 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-black">{todayTasks.length}</div>
+            <div className="text-3xl font-black">{tasksForToday.length}</div>
             <p className="text-xs font-medium text-muted-foreground mt-1">Pendientes por completar</p>
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm bg-gradient-to-br from-rose-500/10 to-transparent hover:shadow-md transition-shadow rounded-2xl overflow-hidden relative group">
+        <Card
+          onClick={() => setShowExpiredTasks(true)}
+          className="cursor-pointer border-none shadow-sm bg-gradient-to-br from-rose-500/10 to-transparent hover:shadow-md transition-shadow rounded-2xl overflow-hidden relative group"
+        >
           <div className="absolute top-[-10px] right-[-10px] opacity-10 group-hover:scale-110 transition-transform">
             <WarningCircle size={80} weight="fill" className="text-rose-500" />
           </div>
@@ -174,19 +361,47 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card className="border-none shadow-sm rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div className="space-y-1">
+      <div className="grid grid-cols-1 lg:grid-cols-2 lg:grid-rows-2 gap-8 h-auto">
+        {/* Tareas de Hoy */}
+        {/* Tareas de Hoy */}
+        <Card className="relative overflow-hidden shadow-sm flex flex-col h-full min-h-[350px] max-h-[500px]">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 shrink-0">
+            <div>
               <CardTitle className="text-xl font-bold">Tareas de Hoy</CardTitle>
-              <p className="text-xs text-muted-foreground">Tus objetivos para este día</p>
+              <p className="text-sm text-muted-foreground">Tus objetivos para este día</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-primary/5 flex items-center justify-center">
-              <CheckCircle size={22} className="text-primary" weight="duotone" />
+
+            <div className="flex items-center gap-2">
+              <TaskHistoryDialog
+                companyId={companyId || ''}
+                trigger={
+                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary" data-history-trigger>
+                    <Clock size={20} weight="duotone" />
+                  </Button>
+                }
+              />
+
+              <AddTaskDialog
+                open={isEditOpen}
+                onOpenChange={setIsEditOpen}
+                companyId={companyId || ''}
+                onTaskCreated={refreshTasks}
+                taskToEdit={editingTask}
+              />
+
+              <AddTaskDialog
+                companyId={companyId || ''}
+                onTaskCreated={refreshTasks}
+                trigger={
+                  <Button size="sm" className="bg-primary/10 text-primary hover:bg-primary/20 border-none shadow-none">
+                    <Plus size={16} className="mr-1" /> Nueva Tarea
+                  </Button>
+                }
+              />
             </div>
           </CardHeader>
-          <CardContent className="space-y-4 pt-2">
-            {todayTasks.length === 0 ? (
+          <CardContent className="space-y-4 pt-2 flex-1 overflow-hidden flex flex-col">
+            {tasksForToday.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 opacity-60">
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
                   <CheckCircle size={32} className="text-muted-foreground" weight="thin" />
@@ -197,70 +412,278 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {todayTasks.slice(0, 5).map(task => (
-                  <div key={task.id} className="group flex items-center gap-4 p-4 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all hover:translate-x-1">
-                    <div className="w-2 h-10 rounded-full bg-primary/20 group-hover:bg-primary transition-colors" />
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[15px] truncate">{task.title}</p>
-                      <div className="flex items-center gap-3 mt-1.5">
-                        <Badge variant="outline" className={cn('text-[10px] h-5 px-1.5 uppercase font-bold tracking-tighter border-none bg-background/50', getPriorityColor(task.priority))}>
-                          {task.priority === 'high' ? 'Alta Prioridad' : task.priority === 'medium' ? 'Media' : 'Baja'}
-                        </Badge>
-                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5 font-medium">
-                          <Users size={12} weight="bold" /> {task.assignedTo}
-                        </span>
-                      </div>
+              <div className="space-y-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent flex-1">
+                {tasksForToday.map(task => (
+                  <div key={task.id}
+                    className="group flex items-center gap-3 p-3 rounded-xl border border-border/50 bg-background/50 hover:bg-background hover:shadow-sm transition-all hover:-translate-y-0.5"
+                  >
+
+                    {/* Checkbox visual simulation -> Real Action */}
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (confirm('¿Marcar tarea como completada?')) {
+                          handleCompleteTask(task)
+                        }
+                      }}
+                      className="h-5 w-5 rounded-full border-2 border-muted-foreground/30 hover:border-primary hover:bg-primary/10 cursor-pointer flex items-center justify-center transition-colors shrink-0">
+                      <CheckCircle size={12} weight="bold" className="text-primary opacity-0 hover:opacity-100" />
                     </div>
+
+                    {/* Icon Box */}
+                    <div className="h-9 w-9 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
+                      {getTaskIcon(task.type)}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-sm truncate text-foreground">{task.title}</p>
+                        <Badge variant="outline" className={cn('text-[9px] h-4 px-1 uppercase font-bold tracking-wider border', getPriorityColor(task.priority))}>
+                          {task.priority}
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1 truncate">
+                          {task.leadName && (
+                            <>
+                              <span className='font-medium text-foreground/90 text-[11px]'>{task.leadName}</span>
+                              {task.leadCompany && <span className="text-[10px] opacity-70 ml-1">• {task.leadCompany}</span>}
+                            </>
+                          )}
+                          {!task.leadName && <span className="italic opacity-50 text-[10px]">Sin Lead Asignado</span>}
+                        </span>
+                        {/* Assignee & Description */}
+                        {task.assignedTo && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-medium ml-2 bg-indigo-500/10 text-indigo-600 border-indigo-100/50 hover:bg-indigo-500/20 shadow-sm border">
+                            <Users size={10} className="mr-1" /> {getAssigneeName(task.assignedTo)}
+                          </Badge>
+                        )}
+                        {!task.assignedTo && (
+                          <span className="text-[10px] text-muted-foreground border-l pl-2 ml-2 flex items-center gap-1 opacity-50">
+                            <Users size={10} /> Sin asignar
+                          </span>
+                        )}
+                      </div>
+
+                      {task.description && (
+                        <p className="text-[11px] text-muted-foreground mt-1 line-clamp-1">
+                          {task.description}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Actions Hover Layer */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-primary"
+                        onClick={() => {
+                          setEditingTask(task)
+                          setIsEditOpen(true)
+                        }}
+                        title="Editar tarea"
+                      >
+                        <PencilSimple size={14} weight="bold" />
+                      </Button>
+                    </div>
+
                   </div>
                 ))}
+
+                <Button variant="ghost" className="w-full text-xs text-muted-foreground hover:text-primary h-8 mt-2" onClick={() => document.querySelector<HTMLButtonElement>('[data-history-trigger]')?.click()}>
+                  Ver historial completo <ArrowRight size={12} className="ml-1" />
+                </Button>
+              </div>
+            )}
+
+            {/* Completed Tasks Today Section - Minimized */}
+            {completedTasks.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-border/40">
+                <h4 className="text-xs font-semibold text-muted-foreground mb-2 px-1 uppercase tracking-wider flex items-center gap-2">
+                  <CheckCircle size={12} /> Completadas recientemente
+                </h4>
+                <div className="space-y-2 opacity-70 hover:opacity-100 transition-opacity">
+                  {completedTasks.slice(0, 3).map(task => (
+                    <div key={task.id} className="flex items-center gap-3 p-2 rounded-lg border border-transparent bg-muted/20">
+                      <div className="h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
+                        <CheckCircle size={10} className="text-primary" weight="fill" />
+                      </div>
+                      <span className="text-xs font-medium line-through text-muted-foreground">{task.title}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border-none shadow-sm rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between">
+        {/* Próximas Citas */}
+        <Card className="border-none shadow-sm rounded-2xl min-h-[350px] max-h-[420px] flex flex-col">
+          <CardHeader className="flex flex-row items-center justify-between flex-none">
             <div className="space-y-1">
-              <CardTitle className="text-xl font-bold">Próximas Citas</CardTitle>
-              <p className="text-xs text-muted-foreground">Tu agenda para el día actual</p>
+              <CardTitle className="text-xl font-bold flex items-center gap-2">
+                Próximas Citas
+                {upcomingMeetings.length > 0 && (
+                  <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-none font-bold">
+                    {upcomingMeetings.length}
+                  </Badge>
+                )}
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Tu agenda de próximas citas</p>
             </div>
             <div className="w-10 h-10 rounded-xl bg-primary/5 flex items-center justify-center">
               <CalendarBlank size={22} className="text-primary" weight="duotone" />
             </div>
           </CardHeader>
-          <CardContent className="space-y-4 pt-2">
-            {todayAppointments.length === 0 ? (
+          <CardContent className="pt-2 flex-1 overflow-hidden">
+            {upcomingMeetings.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 opacity-60">
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
                   <CalendarBlank size={32} className="text-muted-foreground" weight="thin" />
                 </div>
                 <div>
                   <p className="font-bold text-lg">Agenda despejada</p>
-                  <p className="text-sm text-muted-foreground">No hay citas programadas para hoy</p>
+                  <p className="text-sm text-muted-foreground">No hay citas programadas</p>
                 </div>
               </div>
             ) : (
-              <div className="space-y-3">
-                {todayAppointments.map(appt => (
-                  <div key={appt.id} className="flex items-center gap-4 p-4 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all">
-                    <div className="w-12 h-12 rounded-xl bg-background flex flex-col items-center justify-center shadow-sm border border-muted-foreground/10 shrink-0">
-                      <span className="text-[10px] font-bold text-primary uppercase leading-none">{format(new Date(appt.startTime), 'MMM')}</span>
-                      <span className="text-lg font-black leading-none mt-0.5">{format(new Date(appt.startTime), 'd')}</span>
+              <div className="space-y-2 overflow-y-auto max-h-full pr-1 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                {upcomingMeetings.slice(0, 5).map(meeting => (
+                  <div key={meeting.id} className="flex items-center gap-3 p-3 rounded-xl border border-transparent bg-muted/30 hover:bg-muted/50 transition-all">
+                    <div className="w-10 h-10 rounded-lg bg-background flex flex-col items-center justify-center shadow-sm border border-muted-foreground/10 shrink-0">
+                      <span className="text-[9px] font-bold text-primary uppercase leading-none">{format(new Date(meeting.date), 'MMM')}</span>
+                      <span className="text-sm font-black leading-none mt-0.5">{format(new Date(meeting.date), 'd')}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-[15px] truncate">{appt.title}</p>
-                      <p className="text-[11px] text-primary font-bold mt-1 flex items-center gap-1.5">
-                        <Clock size={12} weight="bold" />
-                        {format(new Date(appt.startTime), 'h:mm a')} - {format(new Date(appt.endTime), 'h:mm a')}
-                      </p>
+                      <p className="font-bold text-sm truncate">{meeting.title}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[10px] text-primary font-bold flex items-center gap-1">
+                          <Clock size={10} weight="bold" />
+                          {formatTime(meeting.date)} · {meeting.duration}min
+                        </span>
+                        {meeting.participants && meeting.participants.length > 0 && (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <Users size={10} />
+                            {meeting.participants.slice(0, 2).map(p => p.name).join(', ')}
+                            {meeting.participants.length > 2 && ` +${meeting.participants.length - 2}`}
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    {onNavigateToLead && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-[10px] text-muted-foreground hover:text-primary shrink-0"
+                        onClick={async () => {
+                          const leadData = leads.find(l => l.id === meeting.leadId)
+                          if (leadData) {
+                            onNavigateToLead(leadData)
+                          } else {
+                            try {
+                              const { getLeadById } = await import('@/supabase/services/leads')
+                              const dbLead = await getLeadById(meeting.leadId)
+                              if (dbLead) {
+                                const { mapDBToLead } = await import('@/hooks/useLeadsList')
+                                onNavigateToLead(mapDBToLead(dbLead))
+                              }
+                            } catch (err) {
+                              console.error('Error loading lead:', err)
+                            }
+                          }
+                        }}
+                      >
+                        Ver Lead
+                      </Button>
+                    )}
                   </div>
                 ))}
+                {upcomingMeetings.length > 5 && (
+                  <p className="text-center text-[11px] text-muted-foreground py-1 font-medium">
+                    +{upcomingMeetings.length - 5} citas más · Ver en Calendario
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
         </Card>
+
+        {/* Reuniones Vencidas */}
+        {expiredMeetings.length > 0 && (
+          <Card className="border-none shadow-sm rounded-2xl min-h-[300px] lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle className="text-xl font-bold text-muted-foreground">Reuniones Anteriores</CardTitle>
+                <p className="text-xs text-muted-foreground">Historial reciente de citas pasadas</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-muted/20 flex items-center justify-center">
+                <Clock size={22} className="text-muted-foreground" weight="duotone" />
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {expiredMeetings.slice(0, 6).map(meeting => (
+                  <div key={meeting.id} className="flex flex-col gap-2 p-3 rounded-xl border border-border/40 bg-background/40 opacity-70 hover:opacity-100 transition-all">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-bold text-sm truncate">{meeting.title}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">
+                          {format(new Date(meeting.date), 'MMM d, h:mm a')}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className="text-[9px] uppercase tracking-wider">
+                        Finalizada
+                      </Badge>
+                    </div>
+                    {meeting.participants && meeting.participants.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {meeting.participants.slice(0, 2).map(p => (
+                          <div key={p.id} className="text-[10px] text-muted-foreground flex items-center gap-1 bg-muted/50 px-1.5 py-0.5 rounded-md">
+                            <Users size={10} /> {p.name}
+                          </div>
+                        ))}
+                        {meeting.participants.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground">+{meeting.participants.length - 2}</span>
+                        )}
+                        {onNavigateToLead && (
+                          <div className="mt-1 flex justify-end w-full">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-5 px-2 text-[9px] text-muted-foreground hover:text-primary"
+                              onClick={async () => {
+                                const leadData = leads.find(l => l.id === meeting.leadId)
+                                if (leadData) {
+                                  onNavigateToLead(leadData)
+                                } else {
+                                  // Fetch from DB if not in current list
+                                  try {
+                                    const { getLeadById } = await import('@/supabase/services/leads')
+                                    const dbLead = await getLeadById(meeting.leadId)
+                                    if (dbLead) {
+                                      const { mapDBToLead } = await import('@/hooks/useLeadsList')
+                                      onNavigateToLead(mapDBToLead(dbLead))
+                                    }
+                                  } catch (err) {
+                                    console.error('Error loading lead:', err)
+                                  }
+                                }
+                              }}
+                            >
+                              Ir al lead
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Dialog open={showVoiceRecorder} onOpenChange={setShowVoiceRecorder}>
@@ -274,6 +697,20 @@ export function Dashboard({ companyId, onShowNotifications }: DashboardProps) {
           <VoiceRecorder onClose={() => setShowVoiceRecorder(false)} />
         </DialogContent>
       </Dialog>
+
+      <ExpiredTasksDialog
+        open={showExpiredTasks}
+        onOpenChange={setShowExpiredTasks}
+        tasks={overdueTasks}
+        onCompleteTask={handleCompleteTask}
+        onEditTask={(task) => {
+          setEditingTask(task)
+          setIsEditOpen(true)
+          setShowExpiredTasks(false) // Close list, open edit
+        }}
+        onDeleteTask={handleDeleteTask}
+        onClearAll={handleClearExpiredTasks}
+      />
     </div>
   )
 }

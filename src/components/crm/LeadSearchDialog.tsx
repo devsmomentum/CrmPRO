@@ -9,12 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Lead } from '@/lib/types'
-import { MagnifyingGlass, User, Phone, Buildings, Trash, Spinner, Tag, MapPin } from '@phosphor-icons/react'
+import { Lead, Pipeline } from '@/lib/types'
+import { MagnifyingGlass, User, Phone, Buildings, Trash, Spinner, Tag, MapPin, Funnel } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 
 interface LeadSearchDialogProps {
     leads?: Lead[]
+    pipelines?: Pipeline[]
     onSelectLead: (lead: Lead) => void
     canDelete?: boolean
     onDeleteLeads?: (ids: string[]) => Promise<void>
@@ -22,8 +23,30 @@ interface LeadSearchDialogProps {
     onNavigateToLead?: (lead: Lead) => void
 }
 
-export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDeleteLeads, onSearch, onNavigateToLead }: LeadSearchDialogProps) {
+export function LeadSearchDialog({ leads = [], pipelines = [], onSelectLead, canDelete, onDeleteLeads, onSearch, onNavigateToLead }: LeadSearchDialogProps) {
     const [open, setOpen] = useState(false)
+    // ...
+
+    // Helper to get pipeline info
+    const getPipelineInfo = (lead: Lead) => {
+        if (!pipelines.length) return null
+
+        // Find pipeline
+        const pipeline = pipelines.find(p => p.id === lead.pipeline || p.type === lead.pipeline)
+        if (!pipeline) return null
+
+        // Find stage
+        const stage = pipeline.stages.find(s => s.id === lead.stage)
+
+        return {
+            pipelineName: pipeline.name,
+            stageName: stage?.name || 'Unknown Stage',
+            stageColor: stage?.color
+        }
+    }
+
+    // ... (inside map)
+
     const [searchTerm, setSearchTerm] = useState('')
     const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set())
     const [isDeleting, setIsDeleting] = useState(false)
@@ -67,7 +90,7 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
     const displayLeads = (() => {
         if (onSearch) {
             const byId = new Map<string, Lead>()
-            ;(searchResults || []).forEach(l => byId.set(l.id, l))
+                ; (searchResults || []).forEach(l => byId.set(l.id, l))
             localTagMatches.forEach(l => byId.set(l.id, l))
             return Array.from(byId.values())
         }
@@ -288,6 +311,29 @@ export function LeadSearchDialog({ leads = [], onSelectLead, canDelete, onDelete
                                                         💰 ${lead.budget.toLocaleString()}
                                                     </div>
                                                 )}
+
+                                                {/* Pipeline Context - NEW */}
+                                                {(() => {
+                                                    const info = getPipelineInfo(lead)
+                                                    if (info) {
+                                                        return (
+                                                            <div className="flex items-center gap-1.5 mt-1">
+                                                                <Badge variant="outline" className="text-[10px] h-5 px-1.5 border-black/10 bg-muted/50 text-muted-foreground gap-1">
+                                                                    <Funnel size={10} weight="fill" />
+                                                                    {info.pipelineName}
+                                                                </Badge>
+                                                                <span className="text-[10px] text-muted-foreground">›</span>
+                                                                <Badge
+                                                                    className="text-[10px] h-5 px-1.5 border-0 text-white"
+                                                                    style={{ backgroundColor: info.stageColor || '#94a3b8' }}
+                                                                >
+                                                                    {info.stageName}
+                                                                </Badge>
+                                                            </div>
+                                                        )
+                                                    }
+                                                    return null
+                                                })()}
 
                                                 {/* Mostrar etiquetas */}
                                                 {lead.tags && lead.tags.length > 0 && (

@@ -12,6 +12,8 @@ import { Copy } from '@phosphor-icons/react'
 import { toast } from 'sonner'
 import { preloadChatsForCompany } from '@/lib/chatsCache'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+import { Building } from '@phosphor-icons/react'
 
 interface CRMLayoutProps {
     isGuestMode?: boolean
@@ -146,9 +148,15 @@ export function CRMLayout({ isGuestMode: forcedGuestMode }: CRMLayoutProps) {
                 {isGuestMode && currentCompany && (
                     <div className="mx-4 mt-4 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-full bg-amber-200/50 flex items-center justify-center shrink-0">
-                                <span className="text-amber-700 text-xl">✨</span>
-                            </div>
+                            <Avatar className="w-12 h-12 rounded-2xl border-2 border-amber-200 shadow-sm shrink-0">
+                                {currentCompany?.logo ? (
+                                    <AvatarImage src={currentCompany.logo} alt={currentCompany.name} className="object-cover" />
+                                ) : (
+                                    <AvatarFallback className="bg-amber-100 text-amber-700 font-bold">
+                                        <Building size={20} />
+                                    </AvatarFallback>
+                                )}
+                            </Avatar>
                             <div>
                                 <h4 className="text-amber-900 font-semibold text-sm flex items-center gap-2">
                                     Portal de Invitado
@@ -199,11 +207,19 @@ export function CRMLayout({ isGuestMode: forcedGuestMode }: CRMLayoutProps) {
                 <div className="mt-auto border-t bg-muted/20 px-6 py-3 flex items-center gap-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-700">
                     <div className="flex items-center gap-4 group cursor-pointer">
                         <div className="w-10 h-10 rounded-full bg-background border-2 border-border shadow-sm flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-300">
-                            <img
-                                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
-                                alt={user.businessName}
-                                className="w-full h-full object-cover"
-                            />
+                            {currentCompany?.logo ? (
+                                <img
+                                    src={currentCompany.logo}
+                                    alt={currentCompany.name}
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <img
+                                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
+                                    alt={user.businessName}
+                                    className="w-full h-full object-cover"
+                                />
+                            )}
                         </div>
                         <div className="flex flex-col">
                             <div className="flex items-center gap-2">

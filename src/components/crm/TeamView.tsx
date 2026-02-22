@@ -59,27 +59,38 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
 
   useEffect(() => {
     if (!companyId) return
+    let cancelled = false
+
     getPipelines(companyId).then(({ data }) => {
-      if (data) setDbPipelines(data)
+      if (!cancelled && data) setDbPipelines(data)
     })
+
+    return () => { cancelled = true }
   }, [companyId])
 
   useEffect(() => {
     if (!companyId) return
+    let cancelled = false
+
       ; (async () => {
         try {
           const data = await getEquipos(companyId)
-          setEquipos(data as any)
+          if (!cancelled) setEquipos(data as any)
         } catch (e: any) {
           console.error('[TeamView] error cargando equipos', e)
         }
       })()
+
+    return () => { cancelled = true }
   }, [companyId])
 
   useEffect(() => {
     if (!companyId) return
+    let cancelled = false
+
     getLeads(companyId, currentUserId, isAdminOrOwner)
       .then((data: any) => {
+        if (cancelled) return
         const mappedLeads = data.map((l: any) => ({
           id: l.id,
           name: l.nombre_completo,
@@ -98,10 +109,14 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         setLeads(mappedLeads)
       })
       .catch(err => console.error('[TeamView] Error loading leads:', err))
+
+    return () => { cancelled = true }
   }, [companyId])
 
   useEffect(() => {
     if (!companyId) return
+    let cancelled = false
+
       ; (async () => {
         try {
           // Si hay filtro de equipo, solo ese; si no, todos de la empresa
@@ -115,14 +130,21 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
             personas = allPersonas.flat()
           }
 
+          // Si ya cambió la empresa, no continuar
+          if (cancelled) return
+
           // Obtener invitaciones pendientes
           const { getPendingInvitationsByCompany } = await import('@/supabase/services/invitations')
           const pendingInvites = await getPendingInvitationsByCompany(companyId)
           console.log('[TeamView] pendingInvites raw:', pendingInvites)
 
+          if (cancelled) return
+
           // Obtener roles de miembros activos
           const { getCompanyMembers } = await import('@/supabase/services/empresa')
           const companyMembers = await getCompanyMembers(companyId)
+
+          if (cancelled) return
 
           const mappedPending = pendingInvites.map((inv: any) => {
             const resolvedPipelines = (inv.pipeline_ids || []).map((pid: string) => {
@@ -175,6 +197,10 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
               userId: p.usuario_id
             }
           }))
+
+          // Verificar cancelación antes de actualizar estado
+          if (cancelled) return
+
           const mappedMembers = mapped.map((m: any) => ({
             ...m,
             status: 'active'
@@ -185,6 +211,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
           console.error('[TeamView] error cargando miembros', e)
         }
       })()
+
+    return () => { cancelled = true }
   }, [companyId, equipos, selectedTeamFilter, dbPipelines, refreshTrigger])
 
 

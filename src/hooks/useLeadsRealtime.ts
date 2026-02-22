@@ -18,14 +18,16 @@ export function useLeadsRealtime({ companyId, onInsert, onUpdate, onDelete }: Us
     phone: dbLead.telefono,
     company: dbLead.empresa,
     location: dbLead.ubicacion,
+    evento: dbLead.evento,
+    membresia: dbLead.membresia,
     budget: dbLead.presupuesto,
     stage: dbLead.etapa_id,
     pipeline: dbLead.pipeline_id || 'sales',
     priority: dbLead.prioridad,
     assignedTo: dbLead.asignado_a,
-    tags: [], // Tags no vienen en el payload simple
+    tags: dbLead.tags || [],
     createdAt: new Date(dbLead.created_at),
-    lastContact: new Date(dbLead.created_at)
+    lastContact: dbLead.last_message_at ? new Date(dbLead.last_message_at) : new Date(dbLead.created_at)
   });
 
   useEffect(() => {
@@ -43,7 +45,7 @@ export function useLeadsRealtime({ companyId, onInsert, onUpdate, onDelete }: Us
         },
         (payload) => {
           console.log('[REALTIME] Event received:', payload);
-          
+
           if (payload.eventType === 'INSERT' && onInsert) {
             onInsert(mapDbLeadToLead(payload.new));
           }

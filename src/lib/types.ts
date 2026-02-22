@@ -23,13 +23,20 @@ export interface Message {
 export interface Task {
   id: string
   title: string
-  description: string
-  assignedTo: string
-  dueDate: Date
-  completed: boolean
-  priority: Priority
+  description?: string
+  assignedTo?: string // UUID del usuario
+  assignedToName?: string // Helper para UI (join)
   leadId?: string
-  createdBy: string
+  leadName?: string // Helper para UI
+  leadCompany?: string // Helper para UI
+  empresaId: string
+  type: 'call' | 'email' | 'meeting' | 'todo' | string
+  status: 'pending' | 'completed' | 'cancelled'
+  priority: Priority
+  dueDate: Date
+  completedAt?: Date
+  createdAt: Date
+  createdBy?: string
 }
 
 export type MeetingParticipantType = 'internal' | 'external'
@@ -93,6 +100,8 @@ export interface Lead {
   createdAt: Date
   lastContact: Date
   location?: string
+  evento?: string
+  membresia?: string
   lastMessageAt?: Date
   lastMessageSender?: 'lead' | 'team'
   lastMessage?: string
@@ -116,7 +125,7 @@ export interface Pipeline {
   stages: Stage[]
 }
 
-export type RolePermission = 
+export type RolePermission =
   | 'view_dashboard'
   | 'view_pipeline'
   | 'edit_leads'
@@ -157,6 +166,9 @@ export interface Appointment {
   startTime: Date
   endTime: Date
   status: 'scheduled' | 'completed' | 'cancelled'
+  attendees?: string[] // IDs of team members or external emails (deprecated, use participants)
+  participants?: string[] // Array de nombres de participantes
+  notes?: string // Notas adicionales de la reunión
 }
 
 export interface Notification {
@@ -189,3 +201,272 @@ export interface Note {
   createdBy: string
   createdAt: Date
 }
+
+// ==========================================
+// DTOs para operaciones CRUD (Fase 1 Refactorización)
+// ==========================================
+
+// ----- Lead DTOs -----
+export interface CreateLeadDTO {
+  nombre_completo: string
+  telefono?: string
+  correo_electronico?: string
+  empresa_id: string
+  pipeline_id?: string
+  etapa_id?: string
+  asignado_a?: string
+  presupuesto?: number
+  prioridad?: Priority
+  ubicacion?: string
+  evento?: string
+  membresia?: string
+  empresa?: string
+  preferred_instance_id?: string | null
+}
+
+export interface UpdateLeadDTO {
+  nombre_completo?: string
+  telefono?: string
+  correo_electronico?: string
+  presupuesto?: number
+  prioridad?: Priority
+  asignado_a?: string
+  etapa_id?: string
+  pipeline_id?: string
+  ubicacion?: string
+  evento?: string
+  membresia?: string
+  empresa?: string
+  archived?: boolean
+  archived_at?: string | null
+}
+
+// Lead como viene de la BD (snake_case)
+export interface LeadDB {
+  id: string
+  nombre_completo: string
+  telefono?: string
+  correo_electronico?: string
+  empresa_id: string
+  pipeline_id?: string
+  etapa_id?: string
+  asignado_a?: string
+  presupuesto?: number
+  prioridad?: string
+  ubicacion?: string
+  evento?: string
+  membresia?: string
+  empresa?: string
+  created_at: string
+  updated_at?: string
+  archived: boolean
+  archived_at?: string | null
+  last_message_at?: string
+  last_message_sender?: string
+  last_message_content?: string
+  preferred_instance_id?: string | null
+}
+
+// ============================================================
+// CONTACTS
+// ============================================================
+
+export interface Contact {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  company?: string
+  avatar?: string
+  location?: string
+  position?: string
+  birthday?: Date
+  rating?: 1 | 2 | 3 | 4 | 5
+  source?: string
+  notes?: string
+  socialNetworks?: {
+    linkedin?: string
+    instagram?: string
+    twitter?: string
+  }
+  tags?: string[]
+  assignedTo?: string
+  archived?: boolean
+  createdAt: Date
+  updatedAt?: Date
+  // Computed fields
+  leadsCount?: number
+  lastInteraction?: Date
+  totalValue?: number
+}
+
+export interface ContactDB {
+  id: string
+  nombre: string
+  email: string | null
+  telefono: string | null
+  empresa_nombre: string | null
+  avatar: string | null
+  ubicacion: string | null
+  cargo: string | null
+  cumpleanos: string | null
+  rating: number | null
+  fuente: string | null
+  notas: string | null
+  redes_sociales: any | null
+  tags: string[] | null
+  equipo_id?: string
+  empresa_id: string
+  origen_lead_id?: string
+  asignado_a: string | null
+  archivado: boolean
+  created_at: string
+  updated_at: string | null
+}
+
+// ----- Empresa Instancias -----
+export interface EmpresaInstanciaDB {
+  id: string
+  empresa_id: string
+  plataforma: 'whatsapp' | 'instagram' | 'facebook' | string
+  client_id: string
+  api_url?: string | null
+  label?: string | null
+  active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+// ----- Empresa DTOs -----
+export interface CreateEmpresaDTO {
+  nombre_empresa: string
+  usuario_id: string
+  logo_url?: string
+}
+
+export interface UpdateEmpresaDTO {
+  nombre_empresa?: string
+  logo_url?: string
+}
+
+export interface EmpresaDB {
+  id: string
+  nombre_empresa: string
+  logo_url?: string
+  created_at: string
+  created_by: string
+}
+
+// ----- Empresa Miembros -----
+export type MemberRole = 'owner' | 'admin' | 'viewer'
+
+export interface EmpresaMiembro {
+  id: string
+  empresa_id: string
+  usuario_id: string | null
+  email: string
+  role: MemberRole
+  created_at: string
+}
+
+export interface UpdateMemberRoleDTO {
+  usuario_id?: string
+  email: string
+  role: MemberRole
+}
+
+// ----- Pipeline DTOs -----
+export interface CreatePipelineDTO {
+  nombre: string
+  empresa_id: string
+  tipo?: string
+}
+
+export interface PipelineDB {
+  id: string
+  nombre: string
+  empresa_id: string
+  tipo?: string
+  created_at: string
+}
+
+// ----- Etapa/Stage DTOs -----
+export interface CreateEtapaDTO {
+  nombre: string
+  pipeline_id: string
+  orden: number
+  color?: string
+}
+
+export interface EtapaDB {
+  id: string
+  nombre: string
+  pipeline_id: string
+  orden: number
+  color?: string
+  created_at: string
+}
+
+// ----- Equipo DTOs -----
+export interface EquipoDB {
+  id: string
+  nombre_equipo: string
+  empresa_id: string
+  created_at: string
+}
+
+export interface CreateEquipoDTO {
+  nombre_equipo: string
+  empresa_id: string
+}
+
+// ----- Usuario/Persona DTOs -----
+export interface UsuarioDB {
+  id: string
+  email: string
+  nombre?: string
+  avatar_url?: string
+  recovery_email?: string | null
+  created_at: string
+}
+
+export interface PersonaDB {
+  id: string
+  usuario_id: string
+  empresa_id: string
+  nombre?: string
+  email: string
+  titulo_trabajo?: string
+  equipo_id?: string
+  permisos?: string[]
+  created_at: string
+}
+
+// ----- Respuestas paginadas -----
+export interface PaginatedResponse<T> {
+  data: T[]
+  count: number | null
+}
+
+// ----- Opciones comunes para queries -----
+export interface GetLeadsPagedOptions {
+  empresaId: string
+  currentUserId?: string
+  isAdminOrOwner?: boolean
+  limit?: number
+  offset?: number
+  pipelineId?: string
+  stageId?: string
+  order?: 'asc' | 'desc'
+  archived?: boolean
+}
+
+export interface SearchLeadsOptions {
+  pipelineId?: string
+  stageId?: string
+  archived?: boolean
+  limit?: number
+  order?: 'asc' | 'desc'
+}
+
+
