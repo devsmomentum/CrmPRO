@@ -95,11 +95,11 @@ function LeadCardComponent({
             draggable={canEditLeads}
             onDragStart={(e) => onDragStart(e, lead)}
             className={cn(
-                "w-[85vw] sm:w-80 md:w-full shrink-0 p-2 cursor-move hover:shadow-md transition-all border-l-4 active:opacity-50",
+                "w-[85vw] sm:w-80 md:w-full shrink-0 p-3 cursor-move hover:shadow-lg hover:-translate-y-1 transition-all duration-200 border border-t-[3px] border-border/50 bg-background/95 backdrop-blur-sm active:scale-[0.98] active:opacity-80 rounded-xl",
                 isHighlighted && "ring-2 ring-primary ring-offset-2 animate-pulse",
                 !canEditLeads && "cursor-default"
             )}
-            style={{ borderLeftColor: stageColor }}
+            style={{ borderTopColor: stageColor }}
             onClick={() => onClick(lead)}
         >
             <div className="flex items-start justify-between mb-1">

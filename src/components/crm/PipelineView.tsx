@@ -615,18 +615,18 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         )}
 
         {/* Header Row - Title and Actions */}
-        <div className="flex items-center justify-between mb-4 gap-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <div className="flex items-center gap-3 shrink-0">
             <div className="h-8 w-1 rounded-full bg-gradient-to-b from-primary to-primary/40" />
-            <h1 className="text-xl md:text-2xl font-bold text-foreground">{t.pipeline.title}</h1>
+            <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight">{t.pipeline.title}</h1>
           </div>
 
-          {/* Action Buttons - Modern Compact Design */}
-          <div className="flex items-center gap-1.5 md:gap-2">
+          {/* Action Buttons - Modern Compact Pill Design */}
+          <div className="flex items-center gap-2">
             {/* Search Button */}
             <LeadSearchDialog
               leads={leads}
-              pipelines={pipelines} // Pass pipelines for context
+              pipelines={pipelines}
               onSelectLead={(lead) => setSelectedLead(lead)}
               canDelete={isAdminOrOwner}
               onDeleteLeads={handleDeleteMultipleLeads}
@@ -635,7 +635,6 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 const currentPipelineId = currentPipelineObj?.id
                 try {
                   const results = await searchLeads(companyId!, term, {
-                    // pipelineId: currentPipelineId, // COMENTADO PARA BÚSQUEDA GLOBAL
                     archived: false,
                     limit: 100,
                     order: 'desc'
@@ -662,9 +661,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                 }
               }}
               onNavigateToLead={(lead) => {
-                // Iniciar máquina de estados para navegación
                 const leadPipeline = pipelines.find(p => p.id === lead.pipeline || p.type === lead.pipeline)
-
                 setPendingNavigation({
                   leadId: lead.id,
                   leadData: lead,
@@ -675,38 +672,34 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               }}
             />
 
-            {/* Export Button */}
-            <ExportLeadsDialog
-              leads={pipelineLeads}
-              stages={currentPipeline?.stages || []}
-              teamMembers={teamMembers}
-              companyName={currentCompany?.name}
-              trigger={
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 px-2.5 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
-                  title="Exportar Leads"
-                >
-                  <Download size={16} />
-                  <span className="hidden lg:inline ml-1.5 text-xs">Exportar</span>
-                </Button>
-              }
-            />
-
+            {/* Pipeline Context Actions - Circular Buttons */}
             {currentPipeline && (
-              <>
+              <div className="hidden sm:flex items-center gap-1 bg-muted/40 rounded-full p-1 border border-border/50 shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)]">
+                <ExportLeadsDialog
+                  leads={pipelineLeads}
+                  stages={currentPipeline?.stages || []}
+                  teamMembers={teamMembers}
+                  companyName={currentCompany?.name}
+                  trigger={
+                    <Button
+                      variant="ghost"
+                      className="h-8 w-8 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-background hover:shadow-sm transition-all"
+                      title="Exportar Leads"
+                    >
+                      <Download size={16} />
+                    </Button>
+                  }
+                />
+
                 {canEditLeads && isAdminOrOwner && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-8 px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
+                        className="h-8 w-8 p-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
                         title="Eliminar Pipeline"
                       >
                         <Trash size={16} />
-                        <span className="hidden lg:inline ml-1.5 text-xs">Eliminar</span>
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -735,32 +728,32 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                     trigger={
                       <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-8 px-2.5 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                        className="h-8 w-8 p-0 rounded-full flex items-center justify-center text-blue-600 hover:text-blue-700 hover:bg-blue-50 hover:shadow-sm transition-all"
                         title="Agregar Etapa"
                       >
-                        <Plus size={16} />
-                        <span className="hidden lg:inline ml-1.5 text-xs">Etapa</span>
+                        <Plus size={16} weight="bold" />
                       </Button>
                     }
                   />
                 )}
+              </div>
+            )}
 
-                {canEditLeads && (
-                  <AddLeadDialog
-                    pipelineType={activePipeline}
-                    pipelineId={currentPipeline?.id}
-                    stages={currentPipeline?.stages || []}
-                    teamMembers={teamMembers}
-                    onAdd={handleLeadAddedToState}
-                    onImport={handleImportLeads}
-                    companies={companies}
-                    currentUser={user}
-                    companyName={currentCompany?.name}
-                    companyId={companyId}
-                  />
-                )}
-              </>
+            {currentPipeline && canEditLeads && (
+              <div className="ml-1">
+                <AddLeadDialog
+                  pipelineType={activePipeline}
+                  pipelineId={currentPipeline?.id}
+                  stages={currentPipeline?.stages || []}
+                  teamMembers={teamMembers}
+                  onAdd={handleLeadAddedToState}
+                  onImport={handleImportLeads}
+                  companies={companies}
+                  currentUser={user}
+                  companyName={currentCompany?.name}
+                  companyId={companyId}
+                />
+              </div>
             )}
           </div>
         </div>
@@ -880,85 +873,87 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
       {/* Botón inferior eliminado: ahora hay botones arriba y por etapa */}
 
-      {selectedLead && (
-        <LeadDetailSheet
-          lead={selectedLead}
-          open={!!selectedLead}
-          onClose={() => setSelectedLead(null)}
-          onUpdate={async (updated) => {
-            if (!canEditLeads) {
-              toast.error('No tienes permisos para editar leads')
-              return
-            }
+      {
+        selectedLead && (
+          <LeadDetailSheet
+            lead={selectedLead}
+            open={!!selectedLead}
+            onClose={() => setSelectedLead(null)}
+            onUpdate={async (updated) => {
+              if (!canEditLeads) {
+                toast.error('No tienes permisos para editar leads')
+                return
+              }
 
-            // Optimistic update: actualizar UI inmediatamente
-            setLeads((current) =>
-              (current || []).map(l => l.id === updated.id ? updated : l)
-            )
-            const prevSelected = selectedLead
-            setSelectedLead(updated)
+              // Optimistic update: actualizar UI inmediatamente
+              setLeads((current) =>
+                (current || []).map(l => l.id === updated.id ? updated : l)
+              )
+              const prevSelected = selectedLead
+              setSelectedLead(updated)
 
-            // Guardar en BD en segundo plano
-            try {
-              const NIL_UUID = '00000000-0000-0000-0000-000000000000'
-              await updateLead(updated.id, {
-                nombre_completo: updated.name,
-                empresa: updated.company,
-                correo_electronico: updated.email,
-                telefono: updated.phone,
-                ubicacion: updated.location,
-                prioridad: updated.priority,
-                presupuesto: updated.budget,
-                asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
-              })
+              // Guardar en BD en segundo plano
+              try {
+                const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+                await updateLead(updated.id, {
+                  nombre_completo: updated.name,
+                  empresa: updated.company,
+                  correo_electronico: updated.email,
+                  telefono: updated.phone,
+                  ubicacion: updated.location,
+                  prioridad: updated.priority,
+                  presupuesto: updated.budget,
+                  asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
+                })
 
-              // Si cambió la asignación y aplica, enviar notificación
-              const assignmentChanged = prevSelected && prevSelected.assignedTo !== updated.assignedTo
-              const newAssignedId = (updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo) || NIL_UUID
-              if (assignmentChanged && isAdminOrOwner && newAssignedId && newAssignedId !== NIL_UUID) {
-                const recipient = teamMembers.find(m => m.id === newAssignedId)
-                if (recipient?.email) {
-                  try {
-                    await supabase.functions.invoke('send-lead-assigned', {
-                      body: {
-                        leadId: updated.id,
-                        leadName: updated.name,
-                        empresaId: companyId,
-                        empresaNombre: currentCompany?.name,
-                        assignedUserId: recipient?.userId || newAssignedId,
-                        assignedUserEmail: recipient?.email,
-                        assignedByEmail: user?.email,
-                        assignedByNombre: user?.businessName || currentCompany?.name || user?.email
-                      }
-                    })
-                  } catch (e) {
-                    console.error('[PipelineView] Error enviando notificación de asignación', e)
+                // Si cambió la asignación y aplica, enviar notificación
+                const assignmentChanged = prevSelected && prevSelected.assignedTo !== updated.assignedTo
+                const newAssignedId = (updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo) || NIL_UUID
+                if (assignmentChanged && isAdminOrOwner && newAssignedId && newAssignedId !== NIL_UUID) {
+                  const recipient = teamMembers.find(m => m.id === newAssignedId)
+                  if (recipient?.email) {
+                    try {
+                      await supabase.functions.invoke('send-lead-assigned', {
+                        body: {
+                          leadId: updated.id,
+                          leadName: updated.name,
+                          empresaId: companyId,
+                          empresaNombre: currentCompany?.name,
+                          assignedUserId: recipient?.userId || newAssignedId,
+                          assignedUserEmail: recipient?.email,
+                          assignedByEmail: user?.email,
+                          assignedByNombre: user?.businessName || currentCompany?.name || user?.email
+                        }
+                      })
+                    } catch (e) {
+                      console.error('[PipelineView] Error enviando notificación de asignación', e)
+                    }
                   }
                 }
+              } catch (error: any) {
+                console.error('Error updating lead:', error)
+                toast.error('Error al guardar cambios')
+                // Opcionalmente podrías revertir el optimistic update aquí
               }
-            } catch (error: any) {
-              console.error('Error updating lead:', error)
-              toast.error('Error al guardar cambios')
-              // Opcionalmente podrías revertir el optimistic update aquí
-            }
-          }}
-          onMarkAsRead={(leadId) => {
-            // Marcar mensajes como leídos y actualizar UI localmente
-            // La actualización en BD se hace dentro de LeadDetailSheet o podríamos llamarla aquí
-            setUnreadLeads(prev => {
-              const newSet = new Set(prev)
-              newSet.delete(leadId)
-              return newSet
-            })
-          }}
-          teamMembers={teamMembers}
-          canEdit={canEditLeads}
-          currentUser={user}
-          companyId={companyId}
-          canDeleteLead={isAdminOrOwner}
-          onDeleteLead={(id) => handleDeleteLead(id, () => setSelectedLead(null))}
-        />
-      )}
+            }}
+            onMarkAsRead={(leadId) => {
+              // Marcar mensajes como leídos y actualizar UI localmente
+              // La actualización en BD se hace dentro de LeadDetailSheet o podríamos llamarla aquí
+              setUnreadLeads(prev => {
+                const newSet = new Set(prev)
+                newSet.delete(leadId)
+                return newSet
+              })
+            }}
+            teamMembers={teamMembers}
+            canEdit={canEditLeads}
+            currentUser={user}
+            companyId={companyId}
+            canDeleteLead={isAdminOrOwner}
+            onDeleteLead={(id) => handleDeleteLead(id, () => setSelectedLead(null))}
+          />
+        )
+      }
 
       {/* Mobile: Move to Stage dialog */}
       <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
@@ -989,6 +984,6 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   )
 }

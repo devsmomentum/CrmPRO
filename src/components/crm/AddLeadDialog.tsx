@@ -134,7 +134,7 @@ export function AddLeadDialog({
     setIsSubmitting(true)
     try {
       // Generar email dummy si no existe (para cumplir con restricción NOT NULL de DB)
-      
+
 
       const dbLead = await createLead({
         nombre_completo: data.name,
@@ -285,10 +285,10 @@ export function AddLeadDialog({
         {trigger || (
           <Button
             size="sm"
-            className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary text-primary-foreground shadow-sm hover:shadow-md transition-all duration-200"
+            className="h-9 px-4 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm hover:shadow-md transition-all font-medium"
           >
-            <Plus size={16} className="mr-1.5" />
-            <span className="text-sm font-medium">{t.pipeline.addLead}</span>
+            <Plus size={16} className="mr-1.5" weight="bold" />
+            <span className="text-sm">{t.pipeline.addLead}</span>
           </Button>
         )}
       </DialogTrigger>
