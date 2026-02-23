@@ -203,55 +203,6 @@ export function CRMLayout({ isGuestMode: forcedGuestMode }: CRMLayoutProps) {
                     </div>
                 )}
 
-                {/* User Footer Bar */}
-                <div className="mt-auto border-t bg-muted/20 px-6 py-3 flex items-center gap-4 transition-all animate-in fade-in slide-in-from-bottom-2 duration-700">
-                    <div className="flex items-center gap-4 group cursor-pointer">
-                        <div className="w-10 h-10 rounded-full bg-background border-2 border-border shadow-sm flex items-center justify-center overflow-hidden group-hover:scale-105 transition-transform duration-300">
-                            {currentCompany?.logo ? (
-                                <img
-                                    src={currentCompany.logo}
-                                    alt={currentCompany.name}
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <img
-                                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(user.businessName || user.email)}`}
-                                    alt={user.businessName}
-                                    className="w-full h-full object-cover"
-                                />
-                            )}
-                        </div>
-                        <div className="flex flex-col">
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm font-black text-foreground tracking-tight">
-                                    {user.businessName || 'Mi Perfil'}
-                                </span>
-                                <Badge variant="outline" className={cn("text-[9px] font-black uppercase tracking-widest px-1.5 py-0 h-4 border shadow-none", badgeColor)}>
-                                    {displayRole}
-                                </Badge>
-                            </div>
-                            <span className="text-[11px] font-bold text-muted-foreground opacity-70">{user.email}</span>
-                        </div>
-                    </div>
-
-                    <div className="ml-auto flex items-center gap-3">
-                        <div className="hidden sm:flex flex-col items-end">
-                            <span className="text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground/50 leading-none">ID Personal</span>
-                            <div
-                                className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-background border border-border/50 hover:bg-muted/50 hover:border-primary/20 transition-all cursor-copy group/id"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(user.id)
-                                    toast.success('ID copiado al portapapeles')
-                                }}
-                            >
-                                <code className="text-[10px] font-black text-muted-foreground font-mono group-hover/id:text-primary transition-colors">
-                                    {user.id.slice(0, 8)}...{user.id.slice(-4)}
-                                </code>
-                                <Copy size={12} className="text-muted-foreground/40 group-hover/id:text-primary transition-colors" weight="bold" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
                 {/* Page Content (rendered by Outlet) */}
                 <Outlet />

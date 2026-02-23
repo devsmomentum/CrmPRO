@@ -40,6 +40,47 @@ Asegúrate de activar estos eventos en SuperAPI:
 
 ---
 
+## 📅 Configuración de Agendamiento de Citas (Super API → CRM)
+
+Permite que la IA de la Super API agende citas automáticamente en el calendario del CRM mediante un POST a la Edge Function `book-appointment`.
+
+### URL del Endpoint
+
+```
+https://[TU-PROYECTO].supabase.co/functions/v1/book-appointment
+```
+
+### Token de Autenticación
+
+El token se valida con el secret `BOOK_APPOINTMENT_TOKEN` en Supabase Dashboard → **Edge Functions → Secrets**.  
+Créalo si aún no existe.
+
+### Estructura del Body (POST JSON)
+
+```json
+{
+  "token": "<BOOK_APPOINTMENT_TOKEN>",
+  "phone": "584141234567",
+  "title": "Consulta de ventas",
+  "date": "2026-02-25",
+  "time": "10:00",
+  "duration_minutes": 60,
+  "notes": "Interesado en el plan premium"
+}
+```
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `token` | string | Token secreto (requerido) |
+| `phone` | string | Teléfono del cliente (requerido) |
+| `title` | string | Título de la cita (requerido) |
+| `date` | string | Fecha en formato `YYYY-MM-DD` (requerido) |
+| `time` | string | Hora en formato `HH:MM` 24h (opcional, default `09:00`) |
+| `duration_minutes` | number | Duración en minutos (opcional, default `30`) |
+| `notes` | string | Notas adicionales (opcional) |
+
+---
+
 ## 📚 Documentación Completa
 
 Para instrucciones detalladas de configuración y pruebas, consulta:

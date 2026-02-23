@@ -128,7 +128,7 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-32 space-y-8 bg-[#f8fafc] dark:bg-background">
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 pb-32 md:pb-8 space-y-8 bg-background/50">
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -152,8 +152,10 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Ingresos Totales"
           value={`$${metrics.totalRevenue.toLocaleString()}`}
           subtitle="En periodo seleccionado"
-          icon={<CurrencyDollar size={24} weight="duotone" />}
-          gradient="from-emerald-500/20 to-emerald-500/5 text-emerald-600 dark:text-emerald-400"
+          icon={<CurrencyDollar size={20} weight="bold" className="text-emerald-600" />}
+          gradient="bg-gradient-to-br from-emerald-500/20 to-transparent border-emerald-100/50"
+          themeColor="text-emerald-600"
+          bgIcon={CurrencyDollar}
           trend={`${metrics.revenueTrend > 0 ? '+' : ''}${metrics.revenueTrend}%`}
           trendUp={metrics.revenueTrend >= 0}
         />
@@ -161,8 +163,10 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Promedio Oferta"
           value={`$${Math.round(metrics.avgDealSize).toLocaleString()}`}
           subtitle="Valor medio por lead"
-          icon={<TrendUp size={24} weight="duotone" />}
-          gradient="from-blue-500/20 to-blue-500/5 text-blue-600 dark:text-blue-400"
+          icon={<TrendUp size={20} weight="bold" className="text-blue-600" />}
+          gradient="bg-gradient-to-br from-blue-500/20 to-transparent border-blue-100/50"
+          themeColor="text-blue-600"
+          bgIcon={TrendUp}
           trend={`${metrics.dealSizeTrend > 0 ? '+' : ''}${metrics.dealSizeTrend}%`}
           trendUp={metrics.dealSizeTrend >= 0}
         />
@@ -170,8 +174,10 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Leads Nuevos"
           value={metrics.activeLeads.toString()}
           subtitle="En periodo seleccionado"
-          icon={<Users size={24} weight="duotone" />}
-          gradient="from-indigo-500/20 to-indigo-500/5 text-indigo-600 dark:text-indigo-400"
+          icon={<Users size={20} weight="bold" className="text-indigo-600" />}
+          gradient="bg-gradient-to-br from-indigo-500/20 to-transparent border-indigo-100/50"
+          themeColor="text-indigo-600"
+          bgIcon={Users}
           trend={`${metrics.leadsTrend > 0 ? '+' : ''}${metrics.leadsTrend}%`}
           trendUp={metrics.leadsTrend >= 0}
         />
@@ -179,8 +185,10 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Tasa Completitud"
           value={`${metrics.completionRate}%`}
           subtitle="Tareas completadas"
-          icon={<CheckCircle size={24} weight="duotone" />}
-          gradient="from-violet-500/20 to-violet-500/5 text-violet-600 dark:text-violet-400"
+          icon={<CheckCircle size={20} weight="bold" className="text-violet-600" />}
+          gradient="bg-gradient-to-br from-violet-500/20 to-transparent border-violet-100/50"
+          themeColor="text-violet-600"
+          bgIcon={CheckCircle}
           trend="0%"
           trendUp={true}
         />
@@ -289,27 +297,33 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
   )
 }
 
-function KpiCard({ title, value, subtitle, icon, gradient, trend, trendUp }: any) {
+function KpiCard({ title, value, subtitle, icon, gradient, themeColor, trend, trendUp, bgIcon: BgIcon }: any) {
   return (
-    <Card className="border-none shadow-2xl shadow-black/5 rounded-[2rem] overflow-hidden group hover:scale-[1.02] transition-all duration-300 bg-background">
-      <CardContent className="p-6">
-        <div className="flex justify-between items-start mb-4">
-          <div className={cn("p-3 rounded-2xl bg-gradient-to-br shadow-inner ring-1 ring-black/5", gradient)}>
-            {icon}
-          </div>
+    <Card className={cn(
+      "border-none shadow-sm hover:shadow-md transition-all duration-300 rounded-2xl overflow-hidden relative group bg-background",
+      gradient
+    )}>
+      <div className={cn("absolute top-[-10px] right-[-10px] opacity-10 group-hover:scale-110 transition-transform", themeColor)}>
+        {BgIcon && <BgIcon size={80} weight="fill" />}
+      </div>
+      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0 relative z-10">
+        <CardTitle className={cn("text-xs font-bold uppercase tracking-widest opacity-80", themeColor)}>{title}</CardTitle>
+        <div className="p-2 bg-background/50 rounded-lg backdrop-blur-sm border border-border/10 shadow-sm">
+          {icon}
+        </div>
+      </CardHeader>
+      <CardContent className="relative z-10">
+        <div className="flex items-baseline gap-2">
+          <div className={cn("text-3xl font-black", themeColor)}>{value}</div>
           <div className={cn(
-            "flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase",
-            trendUp ? "bg-emerald-500/10 text-emerald-600" : "bg-rose-500/10 text-rose-600"
+            "flex items-center gap-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
+            trendUp ? "bg-emerald-500/10 text-emerald-600 border-emerald-200" : "bg-rose-500/10 text-rose-600 border-rose-200"
           )}>
-            {trendUp ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+            {trendUp ? <CaretUp size={10} weight="bold" /> : <CaretDown size={10} weight="bold" />}
             {trend}
           </div>
         </div>
-        <div>
-          <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-1 opacity-70">{title}</h3>
-          <div className="text-3xl font-black tracking-tight mb-1">{value}</div>
-          <p className="text-xs text-muted-foreground/80 font-medium">{subtitle}</p>
-        </div>
+        <p className="text-xs font-medium text-muted-foreground mt-1 opacity-70">{subtitle}</p>
       </CardContent>
     </Card>
   )
