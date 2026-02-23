@@ -31,173 +31,15 @@ import {
     CalendarBlank,
     ListBullets,
     Clock,
-    MapPin,
     User,
-    Funnel,
     VideoCamera,
     CheckCircle,
     XCircle,
-    Briefcase,
-    Robot,
-    Copy,
-    CheckCircle as CheckCircleIcon,
-    Eye,
-    EyeSlash,
-    Info
 } from '@phosphor-icons/react'
-import { toast } from 'sonner'
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip"
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
 
-// ─── Panel de configuración Super API ──────────────────────────────────────────
-function SuperApiConfigDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-    const [copiedUrl, setCopiedUrl] = useState(false)
-    const [copiedJson, setCopiedJson] = useState(false)
-    const [showToken, setShowToken] = useState(false)
-
-    // La URL base de Supabase se construye desde la variable de entorno del frontend
-    const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL ?? ''
-    const endpointUrl = supabaseUrl
-        ? `${supabaseUrl}/functions/v1/book-appointment`
-        : 'https://<TU-PROYECTO>.supabase.co/functions/v1/book-appointment'
-
-    const exampleToken = 'BOOK_APPOINTMENT_TOKEN'
-
-    const examplePayload = JSON.stringify(
-        {
-            token: "<BOOK_APPOINTMENT_TOKEN>",
-            phone: "584141234567",
-            title: "Consulta de ventas",
-            date: "2026-02-25",
-            time: "10:00",
-            duration_minutes: 60,
-            notes: "Interesado en el plan premium"
-        },
-        null,
-        2
-    )
-
-    const copyText = (text: string, setCopied: (v: boolean) => void) => {
-        navigator.clipboard.writeText(text)
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-    }
-
-    return (
-        <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-            <DialogContent className="max-w-lg">
-                <DialogHeader>
-                    <DialogTitle className="flex items-center gap-2">
-                        <Robot size={20} className="text-violet-500" weight="fill" />
-                        Configuración Super API — Agendar Citas
-                    </DialogTitle>
-                </DialogHeader>
-
-                <div className="space-y-4 text-sm">
-                    {/* Instrucciones */}
-                    <div className="rounded-lg bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 p-3 flex gap-2">
-                        <Info size={16} className="text-violet-500 shrink-0 mt-0.5" />
-                        <p className="text-violet-700 dark:text-violet-300 text-xs leading-relaxed">
-                            Copia esta URL y el token, y configúralos en el panel de la <strong>Super API</strong> como endpoint de agendamiento. Cuando el cliente acepte una cita en el chat, la Super API hará un POST automático aquí.
-                        </p>
-                    </div>
-
-                    {/* URL del Endpoint */}
-                    <div className="space-y-1.5">
-                        <label className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">URL del Endpoint</label>
-                        <div className="flex items-center gap-2">
-                            <code className="flex-1 bg-muted rounded-md px-3 py-2 text-xs font-mono truncate border">
-                                {endpointUrl}
-                            </code>
-                            <Button
-                                size="icon"
-                                variant="outline"
-                                className="shrink-0 h-9 w-9"
-                                onClick={() => copyText(endpointUrl, setCopiedUrl)}
-                            >
-                                {copiedUrl ? <CheckCircleIcon size={14} className="text-green-500" /> : <Copy size={14} />}
-                            </Button>
-                        </div>
-                    </div>
-
-                    {/* Token */}
-                    <div className="space-y-1.5">
-                        <label className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Token de Autenticación</label>
-                        <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300 flex gap-2">
-                            <Info size={14} className="shrink-0 mt-0.5" />
-                            <span>El token es el valor del secret <strong>BOOK_APPOINTMENT_TOKEN</strong> en Supabase Dashboard → Edge Functions → Secrets. Créalo si aún no existe.</span>
-                        </div>
-                    </div>
-
-                    {/* Separador */}
-                    <div className="border-t" />
-
-                    {/* JSON de ejemplo */}
-                    <div className="space-y-1.5">
-                        <div className="flex items-center justify-between">
-                            <label className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Estructura JSON (POST Body)</label>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 text-xs gap-1.5"
-                                onClick={() => copyText(examplePayload, setCopiedJson)}
-                            >
-                                {copiedJson ? <CheckCircleIcon size={12} className="text-green-500" /> : <Copy size={12} />}
-                                {copiedJson ? 'Copiado' : 'Copiar'}
-                            </Button>
-                        </div>
-                        <ScrollArea className="h-[180px] rounded-md border bg-muted">
-                            <pre className="p-3 text-xs font-mono leading-relaxed">{examplePayload}</pre>
-                        </ScrollArea>
-                    </div>
-
-                    {/* Campos */}
-                    <div className="rounded-md border overflow-hidden text-xs">
-                        <table className="w-full">
-                            <thead className="bg-muted/60">
-                                <tr>
-                                    <th className="text-left px-3 py-2 font-semibold">Campo</th>
-                                    <th className="text-left px-3 py-2 font-semibold">Tipo</th>
-                                    <th className="text-left px-3 py-2 font-semibold">Descripción</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                                {[
-                                    ['token', 'string', 'Token secreto (requerido)'],
-                                    ['phone', 'string', 'Teléfono del cliente (requerido)'],
-                                    ['title', 'string', 'Título de la cita (requerido)'],
-                                    ['date', 'string', 'Fecha: YYYY-MM-DD (requerido)'],
-                                    ['time', 'string', 'Hora: HH:MM en 24h (opcional, default 09:00)'],
-                                    ['duration_minutes', 'number', 'Duración en minutos (opcional, default 30)'],
-                                    ['notes', 'string', 'Notas adicionales (opcional)'],
-                                ].map(([field, type, desc]) => (
-                                    <tr key={field} className="hover:bg-muted/30 transition-colors">
-                                        <td className="px-3 py-1.5 font-mono text-violet-600 dark:text-violet-400">{field}</td>
-                                        <td className="px-3 py-1.5 text-muted-foreground">{type}</td>
-                                        <td className="px-3 py-1.5">{desc}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </DialogContent>
-        </Dialog>
-    )
-}
 
 export function CalendarView({ companyId, user }: { companyId?: string, user?: any }) {
-    const [showSuperApiConfig, setShowSuperApiConfig] = useState(false)
+
     // --- Estado ---
     const [currentDate, setCurrentDate] = useState(new Date()) // Fecha de navegación (mes visible)
     const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date()) // Fecha seleccionada (click)
@@ -401,15 +243,6 @@ export function CalendarView({ companyId, user }: { companyId?: string, user?: a
                         Hoy
                     </Button>
 
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-2 hidden md:flex border-violet-200 text-violet-600 hover:bg-violet-50 hover:text-violet-700 dark:border-violet-800 dark:text-violet-400"
-                        onClick={() => setShowSuperApiConfig(true)}
-                    >
-                        <Robot size={16} weight="fill" />
-                        Super API
-                    </Button>
 
                     <Button onClick={() => setShowAddDialog(true)} className="gap-2 shadow-md shadow-primary/20">
                         <Plus size={18} weight="bold" />
@@ -620,10 +453,7 @@ export function CalendarView({ companyId, user }: { companyId?: string, user?: a
                 defaultDate={selectedDate || new Date()}
             />
 
-            <SuperApiConfigDialog
-                open={showSuperApiConfig}
-                onClose={() => setShowSuperApiConfig(false)}
-            />
+
         </div>
     )
 }

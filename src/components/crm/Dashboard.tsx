@@ -1,4 +1,5 @@
 import { usePersistentState } from '@/hooks/usePersistentState'
+import { useAuth } from '@/hooks/useAuth'
 import { Task, Lead, Meeting, Notification as NotificationType, EmpresaMiembro as CompanyMember } from '@/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -28,6 +29,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ companyId, companies = [], onShowNotifications, onNavigateToLead }: DashboardProps) {
+  const { user } = useAuth()
   const [tasks, setTasks] = useState<Task[]>([])
   const [completedTasks, setCompletedTasks] = useState<Task[]>([]) // New state for completed today
   // const [tasks] = usePersistentState<Task[]>(`tasks-${companyId}`, [])
@@ -254,12 +256,28 @@ export function Dashboard({ companyId, companies = [], onShowNotifications, onNa
                     </AvatarFallback>
                   )}
                 </Avatar>
-                <div className="space-y-1">
+                <div className="space-y-3">
                   <h1 className="text-3xl md:text-5xl font-black tracking-tight text-foreground transition-all">
                     ¡Bienvenido{activeCompany ? ` a ${activeCompany.name}` : ''}!
                   </h1>
-                  <p className="text-muted-foreground font-medium text-sm md:text-base opacity-80">
-                    {activeCompany ? `Gestionando ${activeCompany.name}` : 'Esto es lo que está sucediendo hoy en tu negocio'}
+                  <p className="text-muted-foreground font-medium text-sm md:text-base opacity-80 flex items-center gap-2">
+                    {activeCompany ? (() => {
+                      const role = activeCompany.ownerId === user?.id ? 'owner' : (activeCompany as any).role
+                      const displayRole = role === 'admin' ? 'Admin' : (role === 'owner' || role === 'Owner') ? 'Propietario' : 'Lector'
+                      const isOwner = displayRole === 'Propietario'
+                      const isAdmin = displayRole === 'Admin'
+
+                      return (
+                        <Badge className={cn(
+                          "font-black uppercase tracking-widest text-[10px] px-2 py-0.5 shadow-none border",
+                          isOwner ? "bg-violet-500/10 text-violet-600 border-violet-200 dark:bg-violet-500/20 dark:text-violet-400 dark:border-violet-800" :
+                            isAdmin ? "bg-blue-500/10 text-blue-600 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-800" :
+                              "bg-muted text-muted-foreground border-border"
+                        )}>
+                          {displayRole}
+                        </Badge>
+                      )
+                    })() : 'Esto es lo que está sucediendo hoy en tu negocio'}
                   </p>
                 </div>
               </>
