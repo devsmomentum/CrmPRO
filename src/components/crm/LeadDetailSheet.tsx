@@ -36,7 +36,9 @@ import {
   Microphone,
   Stop,
   Check,
-  WarningCircle
+  WarningCircle,
+  Buildings,
+  MapPin
 } from '@phosphor-icons/react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
@@ -669,91 +671,116 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
   return (
     <Sheet open={open} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full sm:max-w-2xl p-0 flex h-full max-h-[100dvh] flex-col overflow-hidden">
-        <SheetHeader className="p-5 sm:p-6 border-b border-border">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="mb-2">
+      <SheetContent className="w-full sm:max-w-2xl p-0 flex h-full max-h-[100dvh] flex-col overflow-hidden border-l border-border/40 shadow-2xl">
+        {/* Accent bar at the very top */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-primary/80 via-primary to-primary/80" />
+
+        <SheetHeader className="p-6 sm:p-8 border-b border-border/50 bg-gradient-to-b from-muted/20 to-transparent">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex-1 min-w-0 space-y-4">
+              <div className="space-y-1">
                 <InlineEdit
                   value={lead.name}
                   onSave={(value) => updateField('name', value)}
-                  displayClassName="text-2xl font-bold"
+                  displayClassName="text-3xl font-black tracking-tighter text-foreground"
                   disabled={!canEdit}
                   placeholder="Nombre del lead"
                 />
+                <div className="flex items-center gap-2">
+                  <Buildings size={16} className="text-muted-foreground/60" />
+                  <InlineEdit
+                    value={lead.company}
+                    onSave={(value) => updateField('company', value)}
+                    displayClassName="text-sm font-semibold text-muted-foreground/80"
+                    disabled={!canEdit}
+                    placeholder="Empresa"
+                  />
+                </div>
               </div>
-              <div className="mb-2">
-                <InlineEdit
-                  value={lead.company}
-                  onSave={(value) => updateField('company', value)}
-                  displayClassName="text-sm text-muted-foreground"
-                  disabled={!canEdit}
-                  placeholder="Empresa"
-                />
-              </div>
-              <div className="flex items-start gap-2 mt-2 flex-wrap">
-                <InlineEdit
-                  value={lead.email}
-                  onSave={(value) => updateField('email', value)}
-                  type="email"
-                  displayClassName="text-xs"
-                  disabled={!canEdit}
-                  placeholder="correo@ejemplo.com"
-                />
-                <InlineEdit
-                  value={lead.phone}
-                  onSave={(value) => updateField('phone', value)}
-                  type="tel"
-                  displayClassName="text-xs"
-                  disabled={!canEdit}
-                  placeholder="+1 234 567 8900"
-                />
-                <InlineEdit
-                  value={lead.location || ''}
-                  onSave={(value) => updateField('location', value)}
-                  displayClassName="text-xs"
-                  disabled={!canEdit}
-                  placeholder="Ubicación"
-                />
+
+              <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-background border border-border/50 shadow-sm transition-colors hover:border-primary/30 group">
+                  <EnvelopeSimple size={14} className="text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                  <InlineEdit
+                    value={lead.email}
+                    onSave={(value) => updateField('email', value)}
+                    type="email"
+                    displayClassName="text-[11px] font-bold text-muted-foreground/80 group-hover:text-foreground"
+                    disabled={!canEdit}
+                    placeholder="correo@ejemplo.com"
+                  />
+                </div>
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-background border border-border/50 shadow-sm transition-colors hover:border-primary/30 group">
+                  <Phone size={14} className="text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                  <InlineEdit
+                    value={lead.phone}
+                    onSave={(value) => updateField('phone', value)}
+                    type="tel"
+                    displayClassName="text-[11px] font-bold text-muted-foreground/80 group-hover:text-foreground"
+                    disabled={!canEdit}
+                    placeholder="+1 234 567 8900"
+                  />
+                </div>
+                <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-background border border-border/50 shadow-sm transition-colors hover:border-primary/30 group">
+                  <MapPin size={14} className="text-muted-foreground/60 group-hover:text-primary transition-colors" />
+                  <InlineEdit
+                    value={lead.location || ''}
+                    onSave={(value) => updateField('location', value)}
+                    displayClassName="text-[11px] font-bold text-muted-foreground/80 group-hover:text-foreground"
+                    disabled={!canEdit}
+                    placeholder="Ubicación"
+                  />
+                </div>
               </div>
             </div>
-            <div className="flex flex-col gap-2 sm:items-end">
+
+            <div className="flex flex-row sm:flex-col gap-3 items-center sm:items-end shrink-0">
               <Select value={lead.priority} onValueChange={updatePriority} disabled={!canEdit}>
-                <SelectTrigger className="w-full sm:w-32">
+                <SelectTrigger className={cn(
+                  "w-32 h-9 rounded-full border-none font-bold text-[10px] uppercase tracking-wider transition-all shadow-sm",
+                  lead.priority === 'high' ? 'bg-destructive/10 text-destructive' :
+                    lead.priority === 'medium' ? 'bg-amber-500/10 text-amber-600' :
+                      'bg-muted text-muted-foreground'
+                )}>
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low">Low Priority</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="high">High Priority</SelectItem>
+                <SelectContent className="rounded-xl">
+                  <SelectItem value="low" className="text-xs font-bold uppercase tracking-wider">Low Priority</SelectItem>
+                  <SelectItem value="medium" className="text-xs font-bold uppercase tracking-wider">Medium</SelectItem>
+                  <SelectItem value="high" className="text-xs font-bold uppercase tracking-wider">High Priority</SelectItem>
                 </SelectContent>
               </Select>
+
               {canDeleteLead && (
-                <Button variant="destructive" size="sm" onClick={() => setConfirmDeleteOpen(true)} className="mt-2 sm:mt-0">
-                  <Trash className="w-4 h-4 mr-2" />
-                  Eliminar Lead
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  className="h-9 w-9 rounded-full text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  <Trash size={18} />
                 </Button>
               )}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 mt-4">
+          <div className="flex flex-wrap gap-2 mt-6">
             {lead.tags.map(tag => (
               <Badge
                 key={tag.id}
-                className="gap-1"
-                style={{ backgroundColor: tag.color, color: 'white' }}
+                className="gap-1.5 px-3 py-1 rounded-full text-[10px] uppercase font-black tracking-widest border-none text-white shadow-sm"
+                style={{ backgroundColor: tag.color }}
               >
                 {tag.name}
-                <button onClick={() => removeTag(tag.id)} className="hover:opacity-70">
-                  <X size={12} />
+                <button onClick={() => removeTag(tag.id)} className="hover:opacity-70 transition-opacity">
+                  <X size={10} weight="bold" />
                 </button>
               </Badge>
             ))}
             <Dialog open={showTagDialog} onOpenChange={setShowTagDialog}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Plus size={14} className="mr-1" />
+                <Button variant="outline" size="sm" className="h-7 rounded-full text-[10px] font-bold uppercase tracking-wider bg-background/50 hover:bg-background border-border/40">
+                  <Plus size={12} className="mr-1.5" weight="bold" />
                   {t.lead.addTag}
                 </Button>
               </DialogTrigger>
@@ -830,16 +857,28 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           </AlertDialog>
         )}
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <TabsList className="mx-4 sm:mx-6 mt-3 sm:mt-4 flex flex-wrap gap-2 rounded-lg bg-muted/60 p-1">
-            <TabsTrigger value="overview">{t.tabs.overview}</TabsTrigger>
-            <TabsTrigger value="chat">{t.tabs.chat}</TabsTrigger>
-            <TabsTrigger value="budget">{t.tabs.budget}</TabsTrigger>
-            <TabsTrigger value="meetings">{t.tabs.meetings}</TabsTrigger>
-            <TabsTrigger value="notes">{t.tabs.notes}</TabsTrigger>
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
+          <div className="px-6 sm:px-8 mt-4">
+            <TabsList className="w-full flex justify-start gap-1 bg-transparent p-0 border-b border-border/50 rounded-none h-auto">
+              {[
+                { value: 'overview', label: t.tabs.overview },
+                { value: 'chat', label: t.tabs.chat },
+                { value: 'budget', label: t.tabs.budget },
+                { value: 'meetings', label: t.tabs.meetings },
+                { value: 'notes', label: t.tabs.notes }
+              ].map(tab => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  className="data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none border-b-2 border-transparent px-4 py-2.5 text-xs font-black uppercase tracking-widest transition-all hover:text-foreground text-muted-foreground h-auto"
+                >
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
 
-          <TabsContent value="overview" className="flex-1 overflow-y-auto">
+          <TabsContent value="overview" className="flex-1 overflow-y-auto no-scrollbar">
             <OverviewTab
               lead={lead}
               teamMembers={teamMembers}
@@ -943,15 +982,17 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
                 {/* Lista de PDFs */}
                 {presupuestosPdf.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {presupuestosPdf.map(pdf => (
-                      <div key={pdf.id} className="flex items-center justify-between p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <FilePdf size={24} className="text-red-500 flex-shrink-0" weight="fill" />
+                      <div key={pdf.id} className="flex items-center justify-between p-4 bg-background border border-border/50 rounded-2xl hover:border-primary/30 hover:shadow-md transition-all group">
+                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                          <div className="h-10 w-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0 group-hover:bg-red-100 transition-colors">
+                            <FilePdf size={20} className="text-red-500" weight="fill" />
+                          </div>
                           <div className="min-w-0">
-                            <p className="font-medium truncate">{pdf.nombre}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatSafeDate(pdf.created_at, 'dd MMM yyyy, HH:mm')}
+                            <p className="font-bold text-sm text-foreground/80 truncate">{pdf.nombre}</p>
+                            <p className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest mt-0.5">
+                              {formatSafeDate(pdf.created_at, 'dd MMM yyyy')}
                             </p>
                           </div>
                         </div>
@@ -1032,7 +1073,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             </div>
           </TabsContent>
 
-          <TabsContent value="meetings" className="flex-1 overflow-y-auto">
+          <TabsContent value="meetings" className="flex-1 overflow-y-auto p-6 sm:p-8">
             <MeetingsTab
               meetings={leadMeetings}
               onShowMeetingDialog={() => setShowMeetingDialog(true)}

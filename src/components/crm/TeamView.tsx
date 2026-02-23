@@ -396,9 +396,12 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
     <div className="flex-1 overflow-y-auto p-6 pb-24 md:pb-6 space-y-6">
       {/* Barra de herramientas superior */}
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-bold">Equipo</h1>
-          <p className="text-muted-foreground text-sm">Gestión de equipos y asignaciones</p>
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-1.5 rounded-full bg-gradient-to-b from-primary via-primary/60 to-primary/20" />
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black tracking-tighter">Equipo</h1>
+            <p className="text-muted-foreground/70 text-sm font-medium">Gestión de equipos y asignaciones</p>
+          </div>
         </div>
 
         {/* Botones principales */}
@@ -439,15 +442,15 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
       {/* Indicador de filtro activo */}
       {selectedTeamFilter && (
         <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="gap-2">
-            <Funnel size={14} />
+          <Badge variant="secondary" className="gap-2 rounded-full px-3 bg-primary/10 text-primary border border-primary/20">
+            <Funnel size={13} />
             Filtrando por: {selectedTeamFilter === 'no-team' ? 'Sin Equipo' : equipos.find(e => e.id === selectedTeamFilter)?.nombre_equipo || 'Equipo'}
           </Badge>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setSelectedTeamFilter(null)}
-            className="h-7"
+            className="h-7 text-muted-foreground hover:text-foreground"
           >
             <XCircle size={14} className="mr-1" />
             Limpiar filtro
@@ -456,9 +459,9 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
       )}
 
       {/* Vista de equipos mejorada */}
-      <div className="rounded-lg border p-4 space-y-3">
+      <div className="rounded-xl border border-border/30 p-4 space-y-3 bg-muted/5 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Equipos</h2>
+          <h2 className="text-lg font-bold tracking-tight">Equipos</h2>
           <div className="flex gap-2">
             <Button
               variant={selectedTeamFilter === null ? "default" : "outline"}
@@ -488,9 +491,9 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
           {equipos.slice(0, 4).map(eq => (
             <div
               key={eq.id}
-              className={`flex items-center justify-between border rounded-lg p-3 transition-colors ${selectedTeamFilter === eq.id
-                ? 'bg-muted/50 border-primary'
-                : 'hover:bg-muted/30'
+              className={`flex items-center justify-between rounded-xl p-3 transition-all duration-200 border-l-[3px] ${selectedTeamFilter === eq.id
+                ? 'bg-primary/5 border-l-primary shadow-sm'
+                : 'hover:bg-muted/30 border-l-border hover:border-l-muted-foreground/40'
                 }`}
             >
               <div className="flex-1 min-w-0">
@@ -533,24 +536,24 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         {filteredMembers.map(member => {
           const roleInfo = getRoleInfo(member.roleId)
           return (
-            <Card key={member.id} className="overflow-hidden">
+            <Card key={member.id} className="overflow-hidden border border-border/30 shadow-sm hover:shadow-md transition-all duration-200 rounded-xl group">
               <CardHeader>
                 <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-start max-w-full">
                   <div className="flex items-center gap-3 min-w-0">
-                    <Avatar className="h-12 w-12 shrink-0">
+                    <Avatar className="h-14 w-14 shrink-0 ring-2 ring-primary/10 ring-offset-2">
                       <AvatarImage src={member.avatar} />
-                      <AvatarFallback>{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                      <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-primary font-bold text-lg">{member.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 min-w-0">
-                        <CardTitle className="text-base truncate">{member.name}</CardTitle>
+                        <CardTitle className="text-base font-bold truncate tracking-tight">{member.name}</CardTitle>
                         {(member as any).status === 'pending' && (
                           <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-300 shrink-0">
                             Pendiente
                           </Badge>
                         )}
                         {member.permissionRole && (
-                          <Badge variant="secondary" className="text-xs shrink-0">
+                          <Badge variant="secondary" className="text-[10px] shrink-0 rounded-full px-2 font-bold">
                             {member.permissionRole === 'admin' ? 'Admin' : 'Viewer'}
                           </Badge>
                         )}
@@ -698,8 +701,8 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                     </div>
                   </div>
                   {roleInfo && roleInfo.permissions.length > 0 && (
-                    <div className="pt-2 border-t border-border">
-                      <span className="text-xs text-muted-foreground">
+                    <div className="pt-2 border-t border-border/30">
+                      <span className="text-[11px] text-muted-foreground/70 font-medium">
                         {roleInfo.permissions.length} permisos
                       </span>
                     </div>
@@ -711,10 +714,15 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
         })}
 
         {filteredMembers.length === 0 && (
-          <div className="col-span-full text-center py-12 text-muted-foreground">
-            {selectedTeamFilter
-              ? "No hay miembros en este equipo"
-              : "No team members added yet"}
+          <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
+            <div className="p-4 rounded-full bg-muted/30 mb-4">
+              <Users size={32} className="text-muted-foreground/40" />
+            </div>
+            <p className="text-muted-foreground/70 font-medium">
+              {selectedTeamFilter
+                ? "No hay miembros en este equipo"
+                : "No team members added yet"}
+            </p>
           </div>
         )}
       </div>
