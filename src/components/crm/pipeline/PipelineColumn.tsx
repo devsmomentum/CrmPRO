@@ -106,7 +106,7 @@ export function PipelineColumn({
 
     return (
         <div
-            className="w-full md:w-80 flex flex-col shrink-0"
+            className="w-full md:w-80 flex flex-col shrink-0 bg-muted/20 rounded-2xl p-3 border border-border/50 shadow-sm"
             onDragOver={onDragOver}
             onDrop={(e) => onDrop(e, stage.id)}
         >
@@ -135,7 +135,7 @@ export function PipelineColumn({
                                 onClick={() => onDeleteStage(stage.id)}
                                 title="Eliminar etapa"
                             >
-                                <Trash size={16} />
+                                <Trash size={16} weight="bold" />
                             </Button>
                         )}
                         {canEditLeads && (
@@ -155,11 +155,11 @@ export function PipelineColumn({
                                     <Button
                                         variant="ghost"
                                         size="sm"
-                                        className="h-7 w-7 p-0 text-muted-foreground"
+                                        className="h-8 w-8 p-0 text-muted-foreground hover:bg-background hover:shadow-sm transition-all rounded-lg"
                                         type="button"
                                         title={t.pipeline.addLead}
                                     >
-                                        <Plus size={16} />
+                                        <Plus size={18} weight="bold" />
                                         <span className="sr-only">{t.pipeline.addLead}</span>
                                     </Button>
                                 }
@@ -168,25 +168,25 @@ export function PipelineColumn({
                     </div>
                 </div>
 
-                {/* Row 2: Load More Controls */}
-                <div className="flex items-center gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onLoadMore(stage.id)}
-                        disabled={!stagePages[stage.id]?.hasMore}
-                        title={remainingStageLeads > 0 ? `Cargar más leads de esta etapa (quedan ${remainingStageLeads})` : 'No hay más leads que cargar'}
-                        className="text-xs h-7 px-2"
-                    >
-                        Cargar + ({stageLeads.length})
-                    </Button>
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                        Quedan {remainingStageLeads}
-                    </span>
-                </div>
+                {/* Row 2: Load More Controls (Moved to bottom of column but kept here if desired, let's keep it here but styled better) */}
+                {remainingStageLeads > 0 && (
+                    <div className="flex items-center justify-center pt-2 pb-1 border-b border-border/50 mb-2">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onLoadMore(stage.id)}
+                            disabled={!stagePages[stage.id]?.hasMore}
+                            title={`Cargar más leads de esta etapa (quedan ${remainingStageLeads})`}
+                            className="text-[11px] h-6 px-3 text-muted-foreground hover:text-foreground w-full font-semibold bg-background/50 hover:bg-background"
+                        >
+                            Cargar más ({remainingStageLeads} restantes)
+                        </Button>
+                    </div>
+                )}
             </div>
 
-            <div className="flex flex-row md:flex-col gap-3 md:gap-2 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto min-h-[120px] md:min-h-[200px] bg-muted/30 rounded-lg p-2 md:flex-1 no-scrollbar-mobile pb-4 md:pb-2">
+            {/* Column Cards Container */}
+            <div className="flex flex-row md:flex-col gap-3 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto min-h-[120px] md:min-h-[200px] md:flex-1 no-scrollbar-mobile pb-2">
                 {stageLeads.map(lead => (
                     <LeadCard
                         key={lead.id}

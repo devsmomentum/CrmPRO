@@ -152,9 +152,9 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Ingresos Totales"
           value={`$${metrics.totalRevenue.toLocaleString()}`}
           subtitle="En periodo seleccionado"
-          icon={<CurrencyDollar size={20} weight="bold" className="text-emerald-600" />}
-          gradient="bg-gradient-to-br from-emerald-500/20 to-transparent border-emerald-100/50"
-          themeColor="text-emerald-600"
+          icon={<CurrencyDollar size={20} weight="bold" className="text-blue-600" />}
+          gradient="bg-gradient-to-br from-blue-500/20 to-transparent border-blue-100/50"
+          themeColor="text-blue-600"
           bgIcon={CurrencyDollar}
           trend={`${metrics.revenueTrend > 0 ? '+' : ''}${metrics.revenueTrend}%`}
           trendUp={metrics.revenueTrend >= 0}
@@ -163,9 +163,9 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Promedio Oferta"
           value={`$${Math.round(metrics.avgDealSize).toLocaleString()}`}
           subtitle="Valor medio por lead"
-          icon={<TrendUp size={20} weight="bold" className="text-blue-600" />}
-          gradient="bg-gradient-to-br from-blue-500/20 to-transparent border-blue-100/50"
-          themeColor="text-blue-600"
+          icon={<TrendUp size={20} weight="bold" className="text-purple-600" />}
+          gradient="bg-gradient-to-br from-purple-500/20 to-transparent border-purple-100/50"
+          themeColor="text-purple-600"
           bgIcon={TrendUp}
           trend={`${metrics.dealSizeTrend > 0 ? '+' : ''}${metrics.dealSizeTrend}%`}
           trendUp={metrics.dealSizeTrend >= 0}
@@ -174,9 +174,9 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Leads Nuevos"
           value={metrics.activeLeads.toString()}
           subtitle="En periodo seleccionado"
-          icon={<Users size={20} weight="bold" className="text-indigo-600" />}
-          gradient="bg-gradient-to-br from-indigo-500/20 to-transparent border-indigo-100/50"
-          themeColor="text-indigo-600"
+          icon={<Users size={20} weight="bold" className="text-emerald-600" />}
+          gradient="bg-gradient-to-br from-emerald-500/20 to-transparent border-emerald-100/50"
+          themeColor="text-emerald-600"
           bgIcon={Users}
           trend={`${metrics.leadsTrend > 0 ? '+' : ''}${metrics.leadsTrend}%`}
           trendUp={metrics.leadsTrend >= 0}
@@ -185,9 +185,9 @@ export function AnalyticsDashboard({ companyId }: { companyId?: string }) {
           title="Tasa Completitud"
           value={`${metrics.completionRate}%`}
           subtitle="Tareas completadas"
-          icon={<CheckCircle size={20} weight="bold" className="text-violet-600" />}
-          gradient="bg-gradient-to-br from-violet-500/20 to-transparent border-violet-100/50"
-          themeColor="text-violet-600"
+          icon={<CheckCircle size={20} weight="bold" className="text-rose-600" />}
+          gradient="bg-gradient-to-br from-rose-500/20 to-transparent border-rose-100/50"
+          themeColor="text-rose-600"
           bgIcon={CheckCircle}
           trend="0%"
           trendUp={true}

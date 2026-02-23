@@ -52,7 +52,7 @@ export function LeadSearchDialog({ leads = [], pipelines = [], onSelectLead, can
     const [isDeleting, setIsDeleting] = useState(false)
     const [searchResults, setSearchResults] = useState<Lead[]>([])
     const [isSearching, setIsSearching] = useState(false)
-    const searchTimeoutRef = useRef<NodeJS.Timeout>()
+    const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
     // Filtro local por campos principales (cuando no hay onSearch)
     const localFilteredLeads = leads.filter(lead => {
@@ -186,10 +186,10 @@ export function LeadSearchDialog({ leads = [], pipelines = [], onSelectLead, can
     return (
         <>
             <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setOpen(true)}
-                className="gap-1.5 border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 transition-all duration-200"
+                className="gap-1.5 text-muted-foreground hover:text-foreground bg-muted/50 hover:bg-muted/80 font-medium transition-all h-9 px-4 rounded-full border border-border/50"
             >
                 <MagnifyingGlass size={16} className="text-muted-foreground" />
                 <span className="hidden sm:inline text-sm">Buscar Lead</span>
