@@ -258,7 +258,7 @@ export function Dashboard({ companyId, companies = [], onShowNotifications, onNa
                 </Avatar>
                 <div className="space-y-3">
                   <h1 className="text-3xl md:text-5xl font-black tracking-tight text-foreground transition-all">
-                    ¡Bienvenido{activeCompany ? ` a ${activeCompany.name}` : ''}!
+                    ¡Bienvenido, {user?.businessName || user?.email?.split('@')[0]}!
                   </h1>
                   <p className="text-muted-foreground font-medium text-sm md:text-base opacity-80 flex items-center gap-2">
                     {activeCompany ? (() => {

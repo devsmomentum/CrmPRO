@@ -144,60 +144,57 @@ export function CRMLayout({ isGuestMode: forcedGuestMode }: CRMLayoutProps) {
             />
 
             <main className="flex-1 flex flex-col overflow-hidden relative pb-20 md:pb-0">
-                {/* Guest Mode Banner */}
+                {/* Guest Mode Banner - Ultra Slim Top Bar */}
                 {isGuestMode && currentCompany && (
-                    <div className="mx-4 mt-4 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in slide-in-from-top-2 duration-500">
-                        <div className="flex items-center gap-4">
-                            <Avatar className="w-12 h-12 rounded-2xl border-2 border-amber-200 shadow-sm shrink-0">
+                    <div className="w-full bg-amber-500/10 border-b border-amber-500/20 px-4 h-10 flex items-center justify-between shrink-0 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <Avatar className="w-6 h-6 border border-amber-200 shadow-sm shrink-0">
                                 {currentCompany?.logo ? (
                                     <AvatarImage src={currentCompany.logo} alt={currentCompany.name} className="object-cover" />
                                 ) : (
-                                    <AvatarFallback className="bg-amber-100 text-amber-700 font-bold">
-                                        <Building size={20} />
+                                    <AvatarFallback className="bg-amber-100 text-amber-700 font-bold text-[10px]">
+                                        <Building size={12} />
                                     </AvatarFallback>
                                 )}
                             </Avatar>
-                            <div>
-                                <h4 className="text-amber-900 font-semibold text-sm flex items-center gap-2">
-                                    Portal de Invitado
-                                    <span className="px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 text-[10px] uppercase tracking-wider font-bold">Limitado</span>
-                                </h4>
-                                <p className="text-amber-800/80 text-xs md:text-sm leading-tight">
-                                    Viendo <strong className="text-amber-900">{currentCompany.name}</strong> • Acceso controlado según tu rol.
-                                </p>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="text-xs font-semibold text-amber-800 truncate">{currentCompany.name}</span>
+                                <span className="text-amber-600/50 hidden sm:inline">•</span>
+                                <Badge variant="outline" className="h-5 px-1.5 text-[9px] uppercase tracking-wider bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                                    Modo Invitado
+                                </Badge>
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 w-full md:w-auto">
+                        <div className="flex items-center gap-2 shrink-0">
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="flex-1 md:flex-none h-9 bg-white/60 hover:bg-red-50 text-red-700 border border-red-100 rounded-xl text-xs font-medium px-4 transition-all"
                                 onClick={() => {
                                     if (confirm('¿Estás seguro de que quieres abandonar esta empresa? Perderás el acceso inmediatamente.')) {
                                         leaveCompanyHandler(currentCompany.id)
                                         navigate('/dashboard')
                                     }
                                 }}
+                                className="h-6 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded font-medium"
                             >
                                 Abandonar
                             </Button>
                             <Button
-                                variant="default"
+                                variant="ghost"
                                 size="sm"
-                                className="flex-1 md:flex-none h-9 bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-200 rounded-xl text-xs font-medium px-4 border-none transition-all"
                                 onClick={() => {
-                                    const myCompany = companies.find(c => c.ownerId === user.id)
+                                    const myCompany = companies.find(c => c.ownerId === user?.id)
                                     if (myCompany) {
-                                        setCurrentCompanyId(myCompany.id)
-                                        navigate('/dashboard')
-                                        toast.info('Has vuelto a tu empresa personal')
+                                        handleCompanyChange(myCompany.id)
+                                        toast.info('Has vuelto a tu empresa principal')
                                     } else {
-                                        toast.error('No se encontró tu empresa personal')
+                                        toast.error('No se encontró tu empresa principal')
                                     }
                                 }}
+                                className="h-6 px-2 text-xs text-amber-700 hover:text-amber-900 hover:bg-amber-500/20 rounded font-medium"
                             >
-                                Salir del Modo
+                                Salir
                             </Button>
                         </div>
                     </div>

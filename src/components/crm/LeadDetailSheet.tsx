@@ -84,6 +84,7 @@ interface LeadDetailSheetProps {
   companyId?: string
   canDeleteLead?: boolean
   onDeleteLead?: (leadId: string) => void | Promise<void>
+  onCountsChange?: (leadId: string, type: 'notes' | 'meetings', delta: number) => void
 }
 
 // NOTA: formatSafeDate ahora viene de useDateFormat hook como safeFormatDate
@@ -93,7 +94,7 @@ const formatSafeDate = (date: any, fmt: string) => safeFormatDate(date, fmt, { f
 // Límite máximo de presupuesto: 10 millones de dólares
 const MAX_BUDGET = 10_000_000
 
-export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead, companyId, canDeleteLead = false, onDeleteLead }: LeadDetailSheetProps) {
+export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [], canEdit = true, currentUser, onMarkAsRead, companyId, canDeleteLead = false, onDeleteLead, onCountsChange }: LeadDetailSheetProps) {
   const t = useTranslation('es')
   const [messages, setMessages] = useState<Message[]>([])
   // Estados locales para evitar errores de autenticación del KV.
@@ -413,6 +414,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
 
       setNotes((current) => [newNote, ...(current || [])])
       setNoteInput('')
+      if (onCountsChange) onCountsChange(lead.id, 'notes', 1)
       toast.success(t.messages.noteAdded)
     } catch (err) {
       console.error('[Notas] Error creando nota:', err)
@@ -578,6 +580,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     try {
       await deleteNota(noteId)
       setNotes((current) => (current || []).filter(n => n.id !== noteId))
+      if (onCountsChange) onCountsChange(lead.id, 'notes', -1)
       toast.success('Nota eliminada')
     } catch (err) {
       console.error('[Notas] Error eliminando nota:', err)
@@ -606,6 +609,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
         const next = [...(current || []), created]
         return next.sort((a, b) => a.date.getTime() - b.date.getTime())
       })
+      if (onCountsChange) onCountsChange(lead.id, 'meetings', 1)
     } catch (error) {
       console.error('[Meetings] Error creando reunión:', error)
       throw error
@@ -617,6 +621,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     try {
       await deleteLeadMeeting(meetingId)
       setMeetings((current) => (current || []).filter(m => m.id !== meetingId))
+      if (onCountsChange) onCountsChange(lead.id, 'meetings', -1)
       toast.success('Reunión eliminada')
     } catch (error) {
       console.error('[Meetings] Error eliminando reunión:', error)
@@ -899,7 +904,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             />
           </TabsContent>
 
-          <TabsContent value="chat" className="flex-1 flex flex-col overflow-hidden">
+          <TabsContent value="chat" className="data-[state=active]:flex flex-1 flex-col overflow-hidden">
             <ChatTab
               leadId={lead.id}
               messages={leadMessages}

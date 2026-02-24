@@ -90,7 +90,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     setStageCounts,
     setPipelines,
     setUnreadLeads,
-    setNotasCounts
+    setNotasCounts,
+    setMeetingsCounts
   } = usePipelineData({
     companyId,
     userId: user?.id,
@@ -170,6 +171,19 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           if (alreadyThere) return current
           return [...current, leadData]
         })
+
+        // NUEVO: Verificar si la etapa del lead existe siquiera en este pipeline
+        const currentPipelineData = pipelines.find(p => p.type === activePipeline)
+        const stageExists = currentPipelineData?.stages.some(s => s.id === leadData.stage)
+
+        if (!stageExists) {
+          console.warn('[PipelineView] La etapa del lead no existe en el pipeline activo. Abriendo detalles sin scroll.', leadData.stage)
+          setPendingNavigation(null)
+          setSelectedLead(leadData)
+          toast.warning('El lead no pertenece a ninguna etapa visible de este pipeline, pero se abrieron sus detalles.')
+          return
+        }
+
         // Dar tiempo al render
         const timer = setTimeout(() => {
           setPendingNavigation(prev => prev ? { ...prev, stage: 'scrolling' } : null)
@@ -194,13 +208,16 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         // IMPORTANTE: Quitar el overlay DE INMEDIATO para que el usuario vea el lead resaltado
         setPendingNavigation(null)
 
+        // NUEVO: Abrir detalles automáticamente cuando navega desde el global
+        setSelectedLead(leadData)
+
         // Mantener el highlight visible por 4 segundos para llamar la atención
         setTimeout(() => {
           setHighlightedLeadId(null)
         }, 4000)
       } else {
         // Reintentos cortos por si el DOM aun no pinta
-        if (attempt < 20) {
+        if (attempt < 10) {
           const timer = setTimeout(() => {
             setPendingNavigation(prev => prev ? { ...prev, attempt: prev.attempt + 1 } : null)
           }, 200)
@@ -208,12 +225,14 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         } else {
           console.error('[PipelineView] Falló scroll visual al lead:', leadId)
           setPendingNavigation(null)
-          toast.error('No se pudo ubicar el lead visualmente')
+          // NUEVO: Forzar apertura aunque falló el UI de la tarjeta
+          setSelectedLead(leadData)
+          toast.warning('No se pudo ubicar visualmente, pero se abrieron los detalles del lead')
         }
       }
     }
 
-  }, [pendingNavigation, leads, activePipeline])
+  }, [pendingNavigation, leads, activePipeline, pipelines])
 
   // EFECTO: Leer navegación pendiente desde sessionStorage (Chats/Dashboard)
   useEffect(() => {
@@ -879,6 +898,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             lead={selectedLead}
             open={!!selectedLead}
             onClose={() => setSelectedLead(null)}
+            onCountsChange={(leadId, type, delta) => {
+              if (type === 'notes') {
+                setNotasCounts(prev => ({ ...prev, [leadId]: Math.max(0, (prev[leadId] || 0) + delta) }))
+              } else if (type === 'meetings') {
+                setMeetingsCounts(prev => ({ ...prev, [leadId]: Math.max(0, (prev[leadId] || 0) + delta) }))
+              }
+            }}
             onUpdate={async (updated) => {
               if (!canEditLeads) {
                 toast.error('No tienes permisos para editar leads')
