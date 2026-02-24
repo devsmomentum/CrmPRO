@@ -73,6 +73,7 @@ export interface UsePipelineDataReturn {
     setPipelines: Dispatch<SetStateAction<Pipeline[]>>
     setUnreadLeads: Dispatch<SetStateAction<Set<string>>>
     setNotasCounts: Dispatch<SetStateAction<Record<string, number>>>
+    setMeetingsCounts: Dispatch<SetStateAction<Record<string, number>>>
 }
 
 // ============================================
@@ -461,6 +462,7 @@ export function usePipelineData(options: UsePipelineDataOptions): UsePipelineDat
         setStageCounts,
         setPipelines: setPipelinesState,
         setUnreadLeads,
-        setNotasCounts
+        setNotasCounts,
+        setMeetingsCounts
     }
 }

@@ -90,7 +90,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     setStageCounts,
     setPipelines,
     setUnreadLeads,
-    setNotasCounts
+    setNotasCounts,
+    setMeetingsCounts
   } = usePipelineData({
     companyId,
     userId: user?.id,
@@ -170,6 +171,19 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           if (alreadyThere) return current
           return [...current, leadData]
         })
+
+        // NUEVO: Verificar si la etapa del lead existe siquiera en este pipeline
+        const currentPipelineData = pipelines.find(p => p.type === activePipeline)
+        const stageExists = currentPipelineData?.stages.some(s => s.id === leadData.stage)
+
+        if (!stageExists) {
+          console.warn('[PipelineView] La etapa del lead no existe en el pipeline activo. Abriendo detalles sin scroll.', leadData.stage)
+          setPendingNavigation(null)
+          setSelectedLead(leadData)
+          toast.warning('El lead no pertenece a ninguna etapa visible de este pipeline, pero se abrieron sus detalles.')
+          return
+        }
+
         // Dar tiempo al render
         const timer = setTimeout(() => {
           setPendingNavigation(prev => prev ? { ...prev, stage: 'scrolling' } : null)
@@ -194,13 +208,16 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         // IMPORTANTE: Quitar el overlay DE INMEDIATO para que el usuario vea el lead resaltado
         setPendingNavigation(null)
 
+        // NUEVO: Abrir detalles automáticamente cuando navega desde el global
+        setSelectedLead(leadData)
+
         // Mantener el highlight visible por 4 segundos para llamar la atención
         setTimeout(() => {
           setHighlightedLeadId(null)
         }, 4000)
       } else {
         // Reintentos cortos por si el DOM aun no pinta
-        if (attempt < 20) {
+        if (attempt < 10) {
           const timer = setTimeout(() => {
             setPendingNavigation(prev => prev ? { ...prev, attempt: prev.attempt + 1 } : null)
           }, 200)
@@ -208,12 +225,14 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         } else {
           console.error('[PipelineView] Falló scroll visual al lead:', leadId)
           setPendingNavigation(null)
-          toast.error('No se pudo ubicar el lead visualmente')
+          // NUEVO: Forzar apertura aunque falló el UI de la tarjeta
+          setSelectedLead(leadData)
+          toast.warning('No se pudo ubicar visualmente, pero se abrieron los detalles del lead')
         }
       }
     }
 
-  }, [pendingNavigation, leads, activePipeline])
+  }, [pendingNavigation, leads, activePipeline, pipelines])
 
   // EFECTO: Leer navegación pendiente desde sessionStorage (Chats/Dashboard)
   useEffect(() => {
@@ -599,7 +618,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="p-4 md:p-6 border-b border-border bg-gradient-to-r from-background via-background to-muted/20">
+      <div className="p-4 md:p-6 border-b border-border/50 bg-gradient-to-r from-background via-background to-muted/10">
 
         {/* Loading Overlay for Global Navigation */}
         {pendingNavigation && (
@@ -617,8 +636,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         {/* Header Row - Title and Actions */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <div className="flex items-center gap-3 shrink-0">
-            <div className="h-8 w-1 rounded-full bg-gradient-to-b from-primary to-primary/40" />
-            <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tight">{t.pipeline.title}</h1>
+            <div className="h-8 w-1.5 rounded-full bg-gradient-to-b from-primary via-primary/60 to-primary/20" />
+            <h1 className="text-2xl md:text-3xl font-black text-foreground tracking-tighter">{t.pipeline.title}</h1>
           </div>
 
           {/* Action Buttons - Modern Compact Pill Design */}
@@ -765,12 +784,12 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               ref={tabsScrollRef}
               className="overflow-x-auto pb-2 -mx-1 pl-1 pr-20 md:pr-24 scrollbar-none hover:scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent transition-all"
             >
-              <TabsList className="inline-flex flex-nowrap h-11 items-center justify-start gap-2 bg-muted/30 p-1.5 rounded-xl w-max min-w-full">
+              <TabsList className="inline-flex flex-nowrap h-11 items-center justify-start gap-1.5 bg-muted/20 p-1 rounded-xl w-max min-w-full border border-border/30">
                 {(pipelines || []).map(p => (
                   <TabsTrigger
                     key={p.id}
                     value={p.type}
-                    className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-md hover:bg-background/40 hover:text-foreground"
+                    className="inline-flex items-center justify-center whitespace-nowrap rounded-lg px-5 py-2 text-sm font-semibold ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-primary hover:bg-background/60 hover:text-foreground"
                   >
                     {p.name}
                   </TabsTrigger>
@@ -802,11 +821,11 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         </Tabs>
 
         {/* Filter Section */}
-        <div className="flex items-center gap-3 mt-2">
+        <div className="flex items-center gap-3 mt-3">
           <Select value={filterByMember} onValueChange={setFilterByMember}>
-            <SelectTrigger className="w-auto min-w-[200px] h-9 px-3 bg-muted/50 border-0 rounded-lg text-sm hover:bg-muted transition-colors">
+            <SelectTrigger className="w-auto min-w-[200px] h-9 px-3 bg-muted/30 border border-border/30 rounded-xl text-sm hover:bg-muted/50 transition-colors shadow-sm">
               <div className="flex items-center gap-2">
-                <Funnel size={16} className="text-muted-foreground shrink-0" />
+                <Funnel size={15} className="text-muted-foreground/70 shrink-0" />
                 <SelectValue placeholder="Filtrar por miembro" />
               </div>
             </SelectTrigger>
@@ -821,7 +840,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             </SelectContent>
           </Select>
           {filterByMember !== 'all' && (
-            <Badge variant="secondary" className="bg-primary/10 text-primary border-0 text-xs">
+            <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold rounded-full px-3">
               {pipelineLeads.length} de {allPipelineLeads.length} leads
             </Badge>
           )}
@@ -879,6 +898,13 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             lead={selectedLead}
             open={!!selectedLead}
             onClose={() => setSelectedLead(null)}
+            onCountsChange={(leadId, type, delta) => {
+              if (type === 'notes') {
+                setNotasCounts(prev => ({ ...prev, [leadId]: Math.max(0, (prev[leadId] || 0) + delta) }))
+              } else if (type === 'meetings') {
+                setMeetingsCounts(prev => ({ ...prev, [leadId]: Math.max(0, (prev[leadId] || 0) + delta) }))
+              }
+            }}
             onUpdate={async (updated) => {
               if (!canEditLeads) {
                 toast.error('No tienes permisos para editar leads')

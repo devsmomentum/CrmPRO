@@ -95,143 +95,160 @@ function LeadCardComponent({
             draggable={canEditLeads}
             onDragStart={(e) => onDragStart(e, lead)}
             className={cn(
-                "w-[85vw] sm:w-80 md:w-full shrink-0 p-3 cursor-move hover:shadow-lg hover:-translate-y-1 transition-all duration-200 border border-t-[3px] border-border/50 bg-background/95 backdrop-blur-sm active:scale-[0.98] active:opacity-80 rounded-xl",
+                "w-[85vw] sm:w-80 md:w-full shrink-0 p-0 cursor-move hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 border border-border/40 bg-background overflow-hidden active:scale-[0.98] active:opacity-80 rounded-xl group/card",
                 isHighlighted && "ring-2 ring-primary ring-offset-2 animate-pulse",
                 !canEditLeads && "cursor-default"
             )}
-            style={{ borderTopColor: stageColor }}
             onClick={() => onClick(lead)}
         >
-            <div className="flex items-start justify-between mb-1">
-                <div className="flex-1 min-w-0 flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-sm truncate">{lead.name}</h4>
-                        <p className="text-xs text-muted-foreground truncate">{lead.company}</p>
+            {/* Color accent bar */}
+            <div className="h-1 w-full" style={{ backgroundColor: stageColor }} />
+
+            <div className="p-3">
+                <div className="flex items-start justify-between mb-1.5">
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-sm truncate tracking-tight">{lead.name}</h4>
+                            <p className="text-[11px] text-muted-foreground/70 truncate font-medium">{lead.company}</p>
+                        </div>
+                        {hasUnreadMessages && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-destructive shrink-0 animate-pulse shadow-sm shadow-destructive/30" title="Mensajes no leídos" />
+                        )}
                     </div>
-                    {hasUnreadMessages && (
-                        <div className="w-2 h-2 rounded-full bg-destructive shrink-0 animate-pulse" title="Mensajes no leídos" />
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                <DotsThree size={14} />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
+                            {isMobile ? (
+                                <DropdownMenuItem
+                                    onClick={(e) => {
+                                        e.stopPropagation()
+                                        onOpenMoveDialog(lead)
+                                    }}
+                                >
+                                    Mover a Etapa
+                                </DropdownMenuItem>
+                            ) : (
+                                <DropdownMenuSub>
+                                    <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
+                                    <DropdownMenuSubContent>
+                                        {(currentPipeline?.stages || []).map(s => (
+                                            <DropdownMenuItem
+                                                key={s.id}
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    onMoveToStage(lead, s.id)
+                                                }}
+                                                disabled={s.id === lead.stage}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                                                    {s.name}
+                                                </div>
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                            )}
+                            {isAdminOrOwner && (
+                                <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        onDelete(lead.id)
+                                    }}
+                                >
+                                    {t.buttons.delete}
+                                </DropdownMenuItem>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+
+                <div className="flex items-center gap-1.5 mb-1.5">
+                    <Badge variant="outline" className={cn(
+                        'h-4 px-1.5 text-[9px] font-bold uppercase tracking-wider border rounded-full',
+                        lead.priority === 'high' ? 'bg-destructive/10 text-destructive border-destructive/30' :
+                            lead.priority === 'medium' ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' :
+                                'bg-muted text-muted-foreground border-border'
+                    )}>
+                        {lead.priority}
+                    </Badge>
+                    {notesCount > 0 && (
+                        <TooltipProvider delayDuration={300}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-0.5 text-amber-600">
+                                        <Note size={12} weight="fill" />
+                                        <span className="text-[10px] font-semibold">{notesCount}</span>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                    {notesCount} nota{notesCount > 1 ? 's' : ''}
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
+                    )}
+                    {meetingsCount > 0 && (
+                        <TooltipProvider delayDuration={300}>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <div className="flex items-center gap-0.5 text-purple-600">
+                                        <CalendarBlank size={12} weight="fill" />
+                                        <span className="text-[10px] font-semibold">{meetingsCount}</span>
+                                    </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" className="text-xs">
+                                    {meetingsCount} reunión{meetingsCount > 1 ? 'es' : ''}
+                                </TooltipContent>
+                            </Tooltip>
+                        </TooltipProvider>
                     )}
                 </div>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 shrink-0">
-                            <DotsThree size={14} />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem disabled={!isAdminOrOwner}>{t.buttons.edit}</DropdownMenuItem>
-                        {isMobile ? (
-                            <DropdownMenuItem
-                                onClick={(e) => {
-                                    e.stopPropagation()
-                                    onOpenMoveDialog(lead)
-                                }}
-                            >
-                                Mover a Etapa
-                            </DropdownMenuItem>
-                        ) : (
-                            <DropdownMenuSub>
-                                <DropdownMenuSubTrigger disabled={!isAdminOrOwner}>Mover a Etapa</DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                    {(currentPipeline?.stages || []).map(s => (
-                                        <DropdownMenuItem
-                                            key={s.id}
-                                            onClick={(e) => {
-                                                e.stopPropagation()
-                                                onMoveToStage(lead, s.id)
-                                            }}
-                                            disabled={s.id === lead.stage}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
-                                                {s.name}
-                                            </div>
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuSubContent>
-                            </DropdownMenuSub>
-                        )}
-                        {isAdminOrOwner && (
-                            <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={(event) => {
-                                    event.stopPropagation()
-                                    onDelete(lead.id)
-                                }}
-                            >
-                                {t.buttons.delete}
-                            </DropdownMenuItem>
-                        )}
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
 
-            <div className="flex items-center gap-1 mb-1">
-                <div className={cn('w-2 h-2 rounded-full', getPriorityColor(lead.priority))} />
-                <span className="text-xs text-muted-foreground capitalize">{lead.priority}</span>
-                {notesCount > 0 && (
-                    <TooltipProvider delayDuration={300}>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-0.5 ml-1 text-amber-600">
-                                    <Note size={12} weight="fill" />
-                                    <span className="text-[10px] font-medium">{notesCount}</span>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="text-xs">
-                                {notesCount} nota{notesCount > 1 ? 's' : ''}
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
+                {lead.budget > 0 && (
+                    <div className="flex items-center gap-1 text-sm font-bold text-emerald-600 dark:text-emerald-500 mb-1.5">
+                        <CurrencyDollar size={14} weight="bold" />
+                        <span>${lead.budget.toLocaleString()}</span>
+                    </div>
                 )}
-                {meetingsCount > 0 && (
-                    <TooltipProvider delayDuration={300}>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <div className="flex items-center gap-0.5 ml-1 text-purple-600">
-                                    <CalendarBlank size={12} weight="fill" />
-                                    <span className="text-[10px] font-medium">{meetingsCount}</span>
-                                </div>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="text-xs">
-                                {meetingsCount} reunión{meetingsCount > 1 ? 'es' : ''}
-                            </TooltipContent>
-                        </Tooltip>
-                    </TooltipProvider>
-                )}
-            </div>
 
-            {lead.budget > 0 && (
-                <div className="flex items-center gap-1 text-sm font-medium text-emerald-600 dark:text-emerald-500 mb-1">
-                    <CurrencyDollar size={14} weight="bold" />
-                    <span>${lead.budget.toLocaleString()}</span>
+                {lead.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                        {lead.tags.slice(0, 3).map(tag => (
+                            <span
+                                key={tag.id}
+                                className="text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider border opacity-90 truncate max-w-[100px]"
+                                style={{
+                                    backgroundColor: tag.color + '15',
+                                    color: tag.color,
+                                    borderColor: tag.color + '30'
+                                }}
+                                title={tag.name}
+                            >
+                                {tag.name}
+                            </span>
+                        ))}
+                        {lead.tags.length > 3 && (
+                            <span className="text-[9px] text-muted-foreground font-bold px-1 py-0.5">
+                                +{lead.tags.length - 3}
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                <div className="pt-1.5 border-t border-border/40 flex items-center gap-2">
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center text-[9px] font-bold text-primary shrink-0">
+                        {getAssignedName().charAt(0).toUpperCase()}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground font-medium truncate">
+                        {getAssignedName()}
+                    </span>
                 </div>
-            )}
-
-            <div className="flex flex-wrap gap-1 mb-1">
-                {lead.tags.slice(0, 3).map(tag => (
-                    <span
-                        key={tag.id}
-                        className="text-[9px] px-1.5 py-0.5 rounded-sm font-bold uppercase tracking-wider border opacity-90 truncate max-w-[100px]"
-                        style={{
-                            backgroundColor: tag.color + '15',
-                            color: tag.color,
-                            borderColor: tag.color + '30'
-                        }}
-                        title={tag.name}
-                    >
-                        {tag.name}
-                    </span>
-                ))}
-                {lead.tags.length > 3 && (
-                    <span className="text-[9px] text-muted-foreground font-bold px-1 py-0.5">
-                        +{lead.tags.length - 3}
-                    </span>
-                )}
-            </div>
-
-            <div className="pt-1 border-t border-border text-xs text-muted-foreground truncate">
-                {t.lead.assignedTo}: {getAssignedName()}
             </div>
         </Card>
     )

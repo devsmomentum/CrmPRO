@@ -80,11 +80,11 @@ export function Sidebar({ currentView, onViewChange, onLogout, user, currentComp
                     </AvatarFallback>
                   )}
                 </Avatar>
-                <div className="flex flex-col min-w-0">
-                  <h1 className="text-xl font-black text-foreground truncate leading-tight">
+                <div className="flex flex-col min-w-0 flex-1">
+                  <h1 className="text-lg font-bold text-foreground truncate leading-tight tracking-tight">
                     {activeCompany?.name || t.app.title}
                   </h1>
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/60 leading-tight">
+                  <p className="text-[9px] uppercase tracking-[0.2em] font-bold text-muted-foreground/50 leading-tight mt-0.5">
                     {activeCompany ? 'Panel de Control' : t.app.subtitle}
                   </p>
                 </div>
