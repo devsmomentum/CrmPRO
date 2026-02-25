@@ -62,7 +62,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         </div>
         <h2 className="text-2xl font-bold mb-2">No hay empresa seleccionada</h2>
         <p className="text-muted-foreground max-w-md mb-6">
-          Debes crear o seleccionar una empresa para gestionar pipelines y leads.
+          Debes crear o seleccionar una empresa para gestionar pipelines y oportunidades.
         </p>
       </div>
     )
@@ -318,7 +318,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
   } = useDragDrop({
     setLeads,
     setStageCounts,
-    canEditLeads
+    canEditLeads,
+    currentUserId: user?.id
   })
 
   // Drag & Drop de Etapas (reordenar columnas)
@@ -350,7 +351,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         ...prev,
         [lead.stage]: (prev[lead.stage] || 0) + 1
       }))
-      toast.success(`Nuevo lead agregado: ${lead.name}`)
+      toast.success(`Nueva oportunidad agregada: ${lead.name}`)
     },
     onUpdate: (lead) => {
       const oldLead = leadsRef.current.find(l => l.id === lead.id)
@@ -362,7 +363,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         }))
       }
       setLeads((current) => current.map(l => l.id === lead.id ? lead : l));
-      toast.info(`Lead actualizado: ${lead.name}`);
+      toast.info(`Oportunidad actualizada: ${lead.name}`);
     },
     onDelete: (leadId) => {
       const leadToDelete = leadsRef.current.find(l => l.id === leadId)
@@ -373,7 +374,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
         }))
       }
       setLeads((current) => current.filter(l => l.id !== leadId));
-      toast.error(`Lead eliminado`);
+      toast.error(`Oportunidad eliminada`);
     }
   });
 
@@ -626,7 +627,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
             <div className="flex flex-col items-center gap-4 p-8 bg-card rounded-xl shadow-2xl border border-border">
               <div className="h-8 w-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               <div className="flex flex-col items-center gap-1">
-                <p className="text-base font-semibold">Navegando al lead...</p>
+                <p className="text-base font-semibold">Navegando a la oportunidad...</p>
                 <p className="text-xs text-muted-foreground">Cargando pipeline {pendingNavigation.pipelineType}...</p>
               </div>
             </div>
@@ -841,7 +842,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
           </Select>
           {filterByMember !== 'all' && (
             <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 text-xs font-semibold rounded-full px-3">
-              {pipelineLeads.length} de {allPipelineLeads.length} leads
+              {pipelineLeads.length} de {allPipelineLeads.length} oportunidades
             </Badge>
           )}
         </div>

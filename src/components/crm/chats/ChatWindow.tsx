@@ -284,7 +284,7 @@ export function ChatWindow({
                                     )}
                                     <div className={cn("flex w-full group/msg", isTeam ? "justify-end" : "justify-start")}>
                                         <div className={cn(
-                                            "max-w-[85%] sm:max-w-[70%] px-3.5 py-2.5 rounded-2xl shadow-sm text-[15px] relative animate-in fade-in slide-in-from-bottom-2 duration-300",
+                                            "max-w-[85%] sm:max-w-[70%] min-w-0 px-3.5 py-2.5 rounded-2xl shadow-sm text-[15px] relative animate-in fade-in slide-in-from-bottom-2 duration-300 break-words overflow-hidden",
                                             isTeam
                                                 ? "bg-primary text-primary-foreground rounded-tr-none shadow-primary/10"
                                                 : "bg-white text-black rounded-tl-none border border-border/10 shadow-black/5"
@@ -297,11 +297,11 @@ export function ChatWindow({
                                                     const urlRegex = /https?:\/\/[^\s]+/gi;
                                                     const cleanedContent = msg.content.replace(urlRegex, '').trim();
                                                     if (cleanedContent && cleanedContent.length > 0) {
-                                                        return <div className="whitespace-pre-wrap leading-relaxed mb-2 font-medium">{cleanedContent}</div>;
+                                                        return <div className="whitespace-pre-wrap break-words leading-relaxed mb-2 font-medium">{cleanedContent}</div>;
                                                     }
                                                     return null;
                                                 }
-                                                return <div className="whitespace-pre-wrap leading-relaxed font-medium">{msg.content}</div>;
+                                                return <div className="whitespace-pre-wrap break-words leading-relaxed font-medium">{msg.content}</div>;
                                             })()}
 
                                             {(() => {

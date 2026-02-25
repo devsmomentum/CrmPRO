@@ -14,8 +14,8 @@ import { toast } from 'sonner'
 const ALL_PERMISSIONS: { id: RolePermission; label: string; description: string }[] = [
   { id: 'view_dashboard', label: 'Ver Dashboard', description: 'Acceso al panel principal' },
   { id: 'view_pipeline', label: 'Ver Pipeline', description: 'Visualizar el pipeline de ventas' },
-  { id: 'edit_leads', label: 'Editar Leads', description: 'Crear y modificar leads' },
-  { id: 'delete_leads', label: 'Eliminar Leads', description: 'Borrar leads del sistema' },
+  { id: 'edit_leads', label: 'Editar Oportunidades', description: 'Crear y modificar oportunidades' },
+  { id: 'delete_leads', label: 'Eliminar Oportunidades', description: 'Borrar oportunidades del sistema' },
   { id: 'view_analytics', label: 'Ver Analíticas', description: 'Acceso a reportes y métricas' },
   { id: 'view_calendar', label: 'Ver Calendario', description: 'Visualizar calendario y citas' },
   { id: 'manage_team', label: 'Gestionar Equipo', description: 'Administrar miembros del equipo' },
@@ -39,7 +39,7 @@ export function RolesManagement() {
       color: '#3b82f6'
     }
   ])
-  
+
   const [showDialog, setShowDialog] = useState(false)
   const [editingRole, setEditingRole] = useState<Role | null>(null)
   const [roleName, setRoleName] = useState('')

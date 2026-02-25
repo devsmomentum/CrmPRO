@@ -640,7 +640,7 @@ export function TeamView({ companyId, companies = [], currentUserId, currentUser
                           })}
                           onLeadClick={(leadId) => {
                             // Navegar al detalle del lead
-                            console.log('Navegando al lead:', leadId)
+                            console.log('Navegando a la oportunidad:', leadId)
                             // Aquí puedes agregar lógica de navegación
                           }}
                           trigger={

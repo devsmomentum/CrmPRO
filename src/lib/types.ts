@@ -475,3 +475,22 @@ export interface SearchLeadsOptions {
 }
 
 
+// ----- Lead History -----
+export interface LeadHistory {
+  id: string
+  lead_id: string
+  usuario_id: string
+  usuario_nombre?: string // Join helper
+  accion: 'creacion' | 'asignacion' | 'reasignacion' | 'etapa_cambio' | 'prioridad_cambio' | string
+  detalle: string
+  metadata?: any
+  created_at: string
+}
+
+export interface CreateLeadHistoryDTO {
+  lead_id: string
+  usuario_id: string
+  accion: string
+  detalle: string
+  metadata?: any
+}

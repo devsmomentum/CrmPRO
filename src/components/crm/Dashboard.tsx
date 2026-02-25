@@ -331,14 +331,14 @@ export function Dashboard({ companyId, companies = [], onShowNotifications, onNa
             <Users size={80} weight="fill" className="text-purple-500" />
           </div>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-xs font-bold uppercase tracking-widest text-purple-600/80">Total Leads</CardTitle>
+            <CardTitle className="text-xs font-bold uppercase tracking-widest text-purple-600/80">Total Oportunidades</CardTitle>
             <div className="p-2 bg-purple-500/10 rounded-lg">
               <Users size={18} className="text-purple-600" weight="bold" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-black">{leadsCount}</div>
-            <p className="text-xs font-medium text-muted-foreground mt-1">Leads en seguimiento</p>
+            <p className="text-xs font-medium text-muted-foreground mt-1">Oportunidades en seguimiento</p>
           </CardContent>
         </Card>
 
@@ -469,7 +469,7 @@ export function Dashboard({ companyId, companies = [], onShowNotifications, onNa
                               {task.leadCompany && <span className="text-[10px] opacity-70 ml-1">• {task.leadCompany}</span>}
                             </>
                           )}
-                          {!task.leadName && <span className="italic opacity-50 text-[10px]">Sin Lead Asignado</span>}
+                          {!task.leadName && <span className="italic opacity-50 text-[10px]">Sin Oportunidad Asignada</span>}
                         </span>
                         {/* Assignee & Description */}
                         {task.assignedTo && (
@@ -613,7 +613,7 @@ export function Dashboard({ companyId, companies = [], onShowNotifications, onNa
                           }
                         }}
                       >
-                        Ver Lead
+                        Ver Oportunidad
                       </Button>
                     )}
                   </div>
@@ -690,7 +690,7 @@ export function Dashboard({ companyId, companies = [], onShowNotifications, onNa
                                 }
                               }}
                             >
-                              Ir al lead
+                              Ir a la oportunidad
                             </Button>
                           </div>
                         )}

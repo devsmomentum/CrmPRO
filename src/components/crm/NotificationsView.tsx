@@ -169,7 +169,7 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                 console.warn('Realtime notifications subscribe failed', e)
             }
         }
-        
+
         subscribeRealtime()
 
         return () => {
@@ -184,7 +184,7 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
         try {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user?.email) return
-            
+
             let query = supabase
                 .from('notificaciones')
                 .update({ read: true })
@@ -200,15 +200,15 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
             } else {
                 query = query.in('type', ['lead_assigned', 'invitation_response'])
             }
-            
+
             await query
-            
+
             // Actualizar estado local
             if (forceAll || activeTab === 'leads') {
-                 setLeadAssignedNotifications(prev => prev.map(n => ({ ...n, read: true })))
+                setLeadAssignedNotifications(prev => prev.map(n => ({ ...n, read: true })))
             }
             if (forceAll || activeTab === 'team') {
-                 setResponseNotifications(prev => prev.map(n => ({ ...n, read: true })))
+                setResponseNotifications(prev => prev.map(n => ({ ...n, read: true })))
             }
 
             if (forceAll) {
@@ -277,7 +277,7 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
 
                 {/* Controles de pestañas simples */}
                 <div className="flex items-center gap-2 mt-4">
-                    <Button variant={activeTab === 'leads' ? 'default' : 'outline'} size="sm" onClick={() => setActiveTab('leads')}>Leads Asignados</Button>
+                    <Button variant={activeTab === 'leads' ? 'default' : 'outline'} size="sm" onClick={() => setActiveTab('leads')}>Oportunidades Asignadas</Button>
                     <Button variant={activeTab === 'team' ? 'default' : 'outline'} size="sm" onClick={() => setActiveTab('team')}>Equipo</Button>
                 </div>
 
@@ -321,7 +321,7 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
                                                 <div className="space-y-1">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         <h3 className="font-semibold text-lg">
-                                                            {notification.title || 'Te asignaron un lead'}
+                                                            {notification.title || 'Te asignaron una oportunidad'}
                                                         </h3>
                                                         <Badge variant="secondary" className="text-xs font-normal">Asignación</Badge>
                                                     </div>
@@ -360,85 +360,85 @@ export function NotificationsView({ onInvitationAccepted }: NotificationsViewPro
 
                 {/* Contenido de Equipo */}
                 {activeTab === 'team' && (
-                <div className="space-y-6 mt-4">
-                    <h2 className="text-xl font-semibold flex items-center gap-2">
-                        Invitaciones de Equipo
-                        {pendingInvitations.length > 0 && (
-                            <Badge variant="secondary" className="ml-2">
-                                {pendingInvitations.length} pendientes
-                            </Badge>
-                        )}
-                    </h2>
+                    <div className="space-y-6 mt-4">
+                        <h2 className="text-xl font-semibold flex items-center gap-2">
+                            Invitaciones de Equipo
+                            {pendingInvitations.length > 0 && (
+                                <Badge variant="secondary" className="ml-2">
+                                    {pendingInvitations.length} pendientes
+                                </Badge>
+                            )}
+                        </h2>
 
-                    {pendingInvitations.length === 0 ? (
-                        <Card className="bg-muted/30 border-dashed">
-                            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-                                <div className="p-4 bg-muted rounded-full mb-4">
-                                    <Buildings size={32} className="text-muted-foreground" />
-                                </div>
-                                <h3 className="text-lg font-medium">No tienes invitaciones pendientes</h3>
-                                <p className="text-sm text-muted-foreground max-w-sm mt-2">
-                                    Cuando alguien te invite a unirse a su equipo o empresa, aparecerá aquí.
-                                </p>
-                            </CardContent>
-                        </Card>
-                    ) : (
-                        <div className="grid gap-4">
-                            {pendingInvitations.map((invitation) => (
-                                <Card key={invitation.id} className="overflow-hidden transition-all hover:shadow-md border-l-4 border-l-primary">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
-                                        <div className="flex items-start gap-4">
-                                            <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
-                                                <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                                                    {invitation.empresa?.nombre_empresa?.substring(0, 2).toUpperCase() || 'EM'}
-                                                </AvatarFallback>
-                                            </Avatar>
+                        {pendingInvitations.length === 0 ? (
+                            <Card className="bg-muted/30 border-dashed">
+                                <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                                    <div className="p-4 bg-muted rounded-full mb-4">
+                                        <Buildings size={32} className="text-muted-foreground" />
+                                    </div>
+                                    <h3 className="text-lg font-medium">No tienes invitaciones pendientes</h3>
+                                    <p className="text-sm text-muted-foreground max-w-sm mt-2">
+                                        Cuando alguien te invite a unirse a su equipo o empresa, aparecerá aquí.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="grid gap-4">
+                                {pendingInvitations.map((invitation) => (
+                                    <Card key={invitation.id} className="overflow-hidden transition-all hover:shadow-md border-l-4 border-l-primary">
+                                        <div className="flex flex-col md:flex-row md:items-center justify-between p-6 gap-4">
+                                            <div className="flex items-start gap-4">
+                                                <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
+                                                    <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                                                        {invitation.empresa?.nombre_empresa?.substring(0, 2).toUpperCase() || 'EM'}
+                                                    </AvatarFallback>
+                                                </Avatar>
 
-                                            <div className="space-y-1">
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="font-semibold text-lg">{invitation.empresa?.nombre_empresa || 'Empresa'}</h3>
-                                                    <Badge variant="outline" className="text-xs font-normal">
-                                                        {invitation.invited_titulo_trabajo || 'Miembro'}
-                                                    </Badge>
-                                                </div>
-
-                                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-sm text-muted-foreground">
-                                                    <div className="flex items-center gap-1">
-                                                        <User size={14} />
-                                                        <span>Equipo: <span className="font-medium text-foreground">{invitation.equipo?.nombre_equipo || 'General'}</span></span>
+                                                <div className="space-y-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <h3 className="font-semibold text-lg">{invitation.empresa?.nombre_empresa || 'Empresa'}</h3>
+                                                        <Badge variant="outline" className="text-xs font-normal">
+                                                            {invitation.invited_titulo_trabajo || 'Miembro'}
+                                                        </Badge>
                                                     </div>
-                                                    <span className="hidden sm:inline">•</span>
-                                                    <div className="flex items-center gap-1">
-                                                        <Clock size={14} />
-                                                        <span>{format(new Date(invitation.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
+
+                                                    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-sm text-muted-foreground">
+                                                        <div className="flex items-center gap-1">
+                                                            <User size={14} />
+                                                            <span>Equipo: <span className="font-medium text-foreground">{invitation.equipo?.nombre_equipo || 'General'}</span></span>
+                                                        </div>
+                                                        <span className="hidden sm:inline">•</span>
+                                                        <div className="flex items-center gap-1">
+                                                            <Clock size={14} />
+                                                            <span>{format(new Date(invitation.created_at), "d 'de' MMMM, HH:mm", { locale: es })}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        <div className="flex items-center gap-3 pt-2 md:pt-0 pl-16 md:pl-0">
-                                            <Button
-                                                variant="outline"
-                                                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                                onClick={() => handleReject(invitation.id)}
-                                            >
-                                                <X className="mr-2" size={16} />
-                                                Rechazar
-                                            </Button>
-                                            <Button
-                                                onClick={() => handleAccept(invitation.id, (invitation as any).token)}
-                                                className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-                                            >
-                                                <Check className="mr-2" size={16} />
-                                                Aceptar Invitación
-                                            </Button>
+                                            <div className="flex items-center gap-3 pt-2 md:pt-0 pl-16 md:pl-0">
+                                                <Button
+                                                    variant="outline"
+                                                    className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={() => handleReject(invitation.id)}
+                                                >
+                                                    <X className="mr-2" size={16} />
+                                                    Rechazar
+                                                </Button>
+                                                <Button
+                                                    onClick={() => handleAccept(invitation.id, (invitation as any).token)}
+                                                    className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
+                                                >
+                                                    <Check className="mr-2" size={16} />
+                                                    Aceptar Invitación
+                                                </Button>
+                                            </div>
                                         </div>
-                                    </div>
-                                </Card>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {/* Respuestas a tus Invitaciones */}

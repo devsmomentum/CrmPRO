@@ -1061,9 +1061,42 @@ serve(async (req) => {
           const targetPhone = inboundCandidate.phone;
           const cleanPhone = targetPhone.replace("@c.us", "").replace("@s.whatsapp.net", "").replace("+", "").trim();
 
-          // Buscar configuración de pipeline/etapa para esta empresa
-          const targetConfig = empresasConfig.find(c => c.empresa_id === targetEmpresaId) || { empresa_id: targetEmpresaId, pipeline_id: null, etapa_id: null };
-          const { empresa_id, pipeline_id, etapa_id } = targetConfig;
+          // Resolver config de instancia correcta para crear el lead
+          // Si targetEmpresaId viene de instanceResolved (client_id) Y es una instancia diferente al webhook_secret,
+          // re-fetchar su configuración para obtener el pipeline/etapa real configurado.
+          let resolvedInstanceConfig = instanceConfig; // default: config del webhook_secret
+
+          if (instanceResolved && instanceResolved.id && instanceResolved.id !== instanciaIdFromSecret) {
+            console.log(`🔄 [INSTANCE-CONFIG] instanceResolved (${instanceResolved.id}) difiere del secret (${instanciaIdFromSecret}), re-leyendo config...`);
+            try {
+              const { data: instConfigData } = await supabase
+                .from('empresa_instancias')
+                .select('auto_create_lead, default_pipeline_id, default_stage_id, default_lead_name, include_first_message')
+                .eq('id', instanceResolved.id)
+                .maybeSingle();
+
+              if (instConfigData) {
+                resolvedInstanceConfig = {
+                  auto_create_lead: instConfigData.auto_create_lead !== false,
+                  default_pipeline_id: instConfigData.default_pipeline_id || null,
+                  default_stage_id: instConfigData.default_stage_id || null,
+                  default_lead_name: instConfigData.default_lead_name || 'Nuevo lead',
+                  include_first_message: instConfigData.include_first_message !== false,
+                };
+                console.log(`✅ [INSTANCE-CONFIG] Config re-leída para instancia ${instanceResolved.id}: pipeline=${resolvedInstanceConfig.default_pipeline_id}, stage=${resolvedInstanceConfig.default_stage_id}`);
+              }
+            } catch (e) {
+              console.warn('[INSTANCE-CONFIG] Error re-leyendo config de instancia:', e);
+            }
+          }
+
+          // Construir pipeline/etapa combinando params de URL (mayor prioridad) + config de instancia
+          const targetConfigFromUrl = empresasConfig.find(c => c.empresa_id === targetEmpresaId);
+          const empresa_id = targetEmpresaId;
+          const pipeline_id = targetConfigFromUrl?.pipeline_id || resolvedInstanceConfig?.default_pipeline_id || null;
+          const etapa_id = targetConfigFromUrl?.etapa_id || resolvedInstanceConfig?.default_stage_id || null;
+
+          console.log(`🔍 [LEAD-CONFIG] empresa=${empresa_id}, pipeline=${pipeline_id}, etapa=${etapa_id} (fromUrl=${!!targetConfigFromUrl?.pipeline_id}, fromInstance=${!!resolvedInstanceConfig?.default_pipeline_id})`);
 
           console.log(`🔍 [Empresa ${empresa_id}] Verificando si existe lead con teléfono ${cleanPhone}...`);
 
@@ -1137,7 +1170,7 @@ serve(async (req) => {
 
           if (!existingLead) {
             // VERIFICAR SI SE DEBE CREAR AUTOMÁTICAMENTE (lee de la instancia)
-            const autoCreate = instanceConfig ? instanceConfig.auto_create_lead : true;
+            const autoCreate = resolvedInstanceConfig ? resolvedInstanceConfig.auto_create_lead : true;
 
             console.log(`🔍 [DEBUG] instanceConfig.auto_create_lead:`, instanceConfig?.auto_create_lead);
             console.log(`🔍 [DEBUG] Calculated autoCreate boolean:`, autoCreate);
@@ -1155,14 +1188,14 @@ serve(async (req) => {
             // ==========================================================
 
             // Determinar Pipeline (prioridad: URL param > instancia > fallback)
-            let targetPipelineId = pipeline_id || instanceConfig?.default_pipeline_id || null;
+            let targetPipelineId = pipeline_id || resolvedInstanceConfig?.default_pipeline_id || null;
             if (!targetPipelineId) {
               const { data: pipeline } = await supabase.from('pipeline').select('id').eq('empresa_id', empresa_id).order('created_at', { ascending: true }).limit(1).maybeSingle();
               if (pipeline) targetPipelineId = pipeline.id;
             }
 
             // Determinar Etapa (prioridad: URL param > instancia > fallback)
-            let targetEtapaId = etapa_id || instanceConfig?.default_stage_id || null;
+            let targetEtapaId = etapa_id || resolvedInstanceConfig?.default_stage_id || null;
             if (targetPipelineId && !targetEtapaId) {
               const { data: etapa } = await supabase.from('etapas').select('id, nombre').eq('pipeline_id', targetPipelineId).or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%').order('orden', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
               if (etapa) targetEtapaId = etapa.id;
@@ -1172,8 +1205,8 @@ serve(async (req) => {
               }
             }
 
-            // Nombre por defecto si no se obtuvo uno real (lee de la instancia)
-            const defaultName = instanceConfig?.default_lead_name || "Nuevo Lead";
+            // Nombre por defecto si no se obtuvo uno real (lee de la instancia correcta)
+            const defaultName = resolvedInstanceConfig?.default_lead_name || "Nuevo Lead";
             if (finalName.startsWith("Nuevo Lead") && defaultName !== "Nuevo Lead") {
               finalName = `${defaultName} ${sourceType} ${cleanPhone}`;
             }
@@ -1238,7 +1271,7 @@ serve(async (req) => {
             // SOLO INSERTAR SI NO SE PROCESÓ EN LA FASE 1
             if (!leadsProcessedInPhase1.has(newLeadInstance.id)) {
               // Verificar si se debe incluir el primer mensaje (lee de la instancia)
-              const includeFirst = existingLead || (instanceConfig ? instanceConfig.include_first_message : true);
+              const includeFirst = existingLead || (resolvedInstanceConfig ? resolvedInstanceConfig.include_first_message : true);
 
               if (includeFirst) {
                 await supabase.from("mensajes").insert({

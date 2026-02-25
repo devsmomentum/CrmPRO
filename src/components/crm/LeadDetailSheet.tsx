@@ -64,7 +64,7 @@ import { useTranslation } from '@/lib/i18n'
 import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { safeFormatDate } from '@/hooks/useDateFormat'
-import { NotesTab, MeetingsTab, OverviewTab, ChatTab } from './lead-detail'
+import { NotesTab, MeetingsTab, OverviewTab, ChatTab, HistoryTab } from './lead-detail'
 
 interface User {
   id: string
@@ -285,6 +285,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     // Mapear 'todos' a UUID nulo; miembros específicos pasan su id
     const newAssigned = value === 'todos' ? NIL_UUID : value
     setAssignedTo(newAssigned)
+    updateField('assignedTo' as any, newAssigned)
     onUpdate({ ...lead, assignedTo: newAssigned })
   }
   const [noteInput, setNoteInput] = useState('')
@@ -563,7 +564,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     // Persistir en la BD
     try {
       const { updateLead } = await import('@/supabase/services/leads')
-      await updateLead(lead.id, { [dbField]: value })
+      await updateLead(lead.id, { [dbField]: value }, currentUser?.id)
       // toast.success('Campo guardado') // Opcional, ya mostramos success local
     } catch (e) {
       console.error('Error updating lead field:', e)
@@ -689,7 +690,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                   onSave={(value) => updateField('name', value)}
                   displayClassName="text-3xl font-black tracking-tighter text-foreground"
                   disabled={!canEdit}
-                  placeholder="Nombre del lead"
+                  placeholder="Nombre de la oportunidad"
                 />
                 <div className="flex items-center gap-2">
                   <Buildings size={16} className="text-muted-foreground/60" />
@@ -847,9 +848,9 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
           <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Eliminar lead</AlertDialogTitle>
+                <AlertDialogTitle>Eliminar oportunidad</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Esta acción eliminará el lead y su conversación. No se puede deshacer.
+                  Esta acción eliminará la oportunidad y su conversación. No se puede deshacer.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -870,7 +871,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 { value: 'chat', label: t.tabs.chat },
                 { value: 'budget', label: t.tabs.budget },
                 { value: 'meetings', label: t.tabs.meetings },
-                { value: 'notes', label: t.tabs.notes }
+                { value: 'notes', label: t.tabs.notes },
+                { value: 'history', label: 'Historial' }
               ].map(tab => (
                 <TabsTrigger
                   key={tab.value}
@@ -1108,6 +1110,10 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 noNotes: t.notes.noNotes
               }}
             />
+          </TabsContent>
+
+          <TabsContent value="history" className="flex-1 overflow-y-auto p-6 sm:p-8">
+            <HistoryTab leadId={lead.id} />
           </TabsContent>
         </Tabs >
       </SheetContent >

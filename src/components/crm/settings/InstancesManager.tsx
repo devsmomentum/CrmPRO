@@ -69,7 +69,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
     auto_create_lead: true,
     default_pipeline_id: '',
     default_stage_id: '',
-    default_lead_name: 'Nuevo lead',
+    default_lead_name: 'Nueva oportunidad',
     include_first_message: true
   }
 
@@ -156,7 +156,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
         auto_create_lead: form.auto_create_lead,
         default_pipeline_id: form.default_pipeline_id || null,
         default_stage_id: form.default_stage_id || null,
-        default_lead_name: form.default_lead_name || 'Nuevo lead',
+        default_lead_name: form.default_lead_name || 'Nueva oportunidad',
         include_first_message: form.include_first_message
       } as any)
       setInstances((arr) => [created, ...arr])
@@ -183,7 +183,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
       auto_create_lead: inst.auto_create_lead !== false,
       default_pipeline_id: inst.default_pipeline_id || '',
       default_stage_id: inst.default_stage_id || '',
-      default_lead_name: inst.default_lead_name || 'Nuevo lead',
+      default_lead_name: inst.default_lead_name || 'Nueva oportunidad',
       include_first_message: inst.include_first_message !== false
     })
   }
@@ -201,7 +201,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
         auto_create_lead: form.auto_create_lead,
         default_pipeline_id: form.default_pipeline_id || null,
         default_stage_id: form.default_stage_id || null,
-        default_lead_name: form.default_lead_name || 'Nuevo lead',
+        default_lead_name: form.default_lead_name || 'Nueva oportunidad',
         include_first_message: form.include_first_message
       } as any)
       setInstances((arr) => arr.map(i => i.id === editingId ? updated : i))
@@ -265,7 +265,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
 
       <div className="flex items-center justify-between gap-4 p-3 rounded-xl bg-muted/30 border border-border/30">
         <div>
-          <Label className="text-sm font-semibold">Crear lead automáticamente</Label>
+          <Label className="text-sm font-semibold">Crear oportunidad automáticamente</Label>
           <p className="text-[11px] text-muted-foreground mt-0.5">
             Cuando llega un mensaje de un número que no existe en el CRM.
           </p>
@@ -316,11 +316,11 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-sm font-semibold">Nombre por defecto del lead</Label>
+            <Label className="text-sm font-semibold">Nombre por defecto de la oportunidad</Label>
             <Input
               value={form.default_lead_name}
               onChange={(e) => setForm(s => ({ ...s, default_lead_name: e.target.value }))}
-              placeholder="Nuevo lead"
+              placeholder="Nueva oportunidad"
               className="rounded-xl"
             />
           </div>
@@ -332,7 +332,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                 Guardar mensaje inicial
               </Label>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                Incluye el primer mensaje como nota al crear el lead.
+                Incluye el primer mensaje como nota al crear la oportunidad.
               </p>
             </div>
             <Switch checked={form.include_first_message} onCheckedChange={(v) => setForm(s => ({ ...s, include_first_message: v }))} />
@@ -520,8 +520,8 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                             )}
                             <Badge
                               className={`text-[9px] uppercase tracking-wider font-bold rounded-md border-none ${inst.active
-                                  ? 'bg-emerald-500/10 text-emerald-600'
-                                  : 'bg-red-500/10 text-red-600'
+                                ? 'bg-emerald-500/10 text-emerald-600'
+                                : 'bg-red-500/10 text-red-600'
                                 }`}
                             >
                               {inst.active ? 'Activa' : 'Inactiva'}
@@ -638,7 +638,7 @@ export function InstancesManager({ empresaId }: InstancesManagerProps) {
                       {inst.auto_create_lead === false && (
                         <Badge className="text-[10px] font-bold rounded-md border-none bg-gray-500/10 text-gray-600 dark:text-gray-400 gap-1">
                           <Prohibit size={10} weight="bold" />
-                          No crea leads automáticamente
+                          No crea oportunidades automáticamente
                         </Badge>
                       )}
                     </div>

@@ -37,6 +37,8 @@ export interface UseDragDropOptions {
     setStageCounts: Dispatch<SetStateAction<Record<string, number>>>
     /** ¿El usuario puede editar leads? */
     canEditLeads: boolean
+    /** ID del usuario actual para auditoría */
+    currentUserId?: string
 }
 
 export interface UseDragDropReturn {
@@ -56,7 +58,7 @@ export interface UseDragDropReturn {
 // HOOK PRINCIPAL
 // ============================================
 export function useDragDrop(options: UseDragDropOptions): UseDragDropReturn {
-    const { setLeads, setStageCounts, canEditLeads } = options
+    const { setLeads, setStageCounts, canEditLeads, currentUserId } = options
 
     // Ref para el lead siendo arrastrado (evita re-renders durante drag)
     const draggedLeadRef = useRef<Lead | null>(null)
@@ -96,7 +98,7 @@ export function useDragDrop(options: UseDragDropOptions): UseDragDropReturn {
         const isValidUUID = lead.id.length > 20
         if (isValidUUID) {
             try {
-                await updateLead(lead.id, { etapa_id: targetStageId })
+                await updateLead(lead.id, { etapa_id: targetStageId }, currentUserId)
                 toast.success('Lead movido a nueva etapa')
             } catch (err: any) {
                 console.error('[useDragDrop] Error updating lead stage:', err)
