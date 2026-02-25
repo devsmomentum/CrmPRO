@@ -157,14 +157,14 @@ async function resolveBySecret(
   supabase: ReturnType<typeof createClient>,
   secret: string,
   provider: string
-): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string; instanciaId: string } | null> {
+): Promise<{ empresa_id: string; integracion_id: string; metadata?: any; apiToken?: string; instanciaId: string; instanceConfig: { auto_create_lead: boolean; default_pipeline_id: string | null; default_stage_id: string | null; default_lead_name: string; include_first_message: boolean } } | null> {
   if (!secret) return null;
 
   console.log(`🔍 [resolveBySecret] Buscando webhook_secret en empresa_instancias...`);
 
   const { data: instancia, error } = await supabase
     .from('empresa_instancias')
-    .select('id, empresa_id, plataforma, api_token')
+    .select('id, empresa_id, plataforma, api_token, auto_create_lead, default_pipeline_id, default_stage_id, default_lead_name, include_first_message')
     .eq('webhook_secret', secret)
     .eq('active', true)
     .order('created_at', { ascending: false })
@@ -181,7 +181,7 @@ async function resolveBySecret(
     return null;
   }
 
-  // Obtener metadata de la integración de esta empresa (pipeline, etapa, auto_create, etc.)
+  // Obtener metadata de la integración de esta empresa (se mantiene para allowed_phone y otros)
   const { data: integracion } = await supabase
     .from('integraciones')
     .select('id, metadata')
@@ -190,6 +190,7 @@ async function resolveBySecret(
     .maybeSingle();
 
   console.log(`✅ [resolveBySecret] Resolución exitosa - Empresa: ${instancia.empresa_id}, Instancia: ${instancia.id}`);
+  console.log(`✅ [resolveBySecret] Instance config: auto_create=${instancia.auto_create_lead}, pipeline=${instancia.default_pipeline_id}, stage=${instancia.default_stage_id}`);
 
   return {
     empresa_id: instancia.empresa_id,
@@ -197,6 +198,13 @@ async function resolveBySecret(
     metadata: integracion?.metadata || {},
     apiToken: instancia.api_token || undefined,
     instanciaId: instancia.id,
+    instanceConfig: {
+      auto_create_lead: instancia.auto_create_lead !== false,
+      default_pipeline_id: instancia.default_pipeline_id || null,
+      default_stage_id: instancia.default_stage_id || null,
+      default_lead_name: instancia.default_lead_name || 'Nuevo lead',
+      include_first_message: instancia.include_first_message !== false,
+    },
   };
 }
 
@@ -356,6 +364,7 @@ serve(async (req) => {
   const integrationMetadata = resolved?.metadata || {};
   const apiTokenResolved = resolved?.apiToken;
   const instanciaIdFromSecret = resolved?.instanciaId || null;
+  const instanceConfig = resolved?.instanceConfig || null;
 
   console.log("🔍 [DEBUG] integrationMetadata resolviendo:", JSON.stringify(integrationMetadata, null, 2));
 
@@ -836,8 +845,8 @@ serve(async (req) => {
       } else if (empresaFromSecret) {
         empresasConfig = [{
           empresa_id: empresaFromSecret,
-          pipeline_id: integrationMetadata?.unregistered_pipeline_id || undefined,
-          etapa_id: integrationMetadata?.unregistered_stage_id || undefined
+          pipeline_id: instanceConfig?.default_pipeline_id || undefined,
+          etapa_id: instanceConfig?.default_stage_id || undefined
         }];
         console.log(`✅ [EMPRESA] Usando empresa resuelta por secreto: ${empresaFromSecret}`);
       }
@@ -1127,14 +1136,14 @@ serve(async (req) => {
           let lastMinuteCheck = false;
 
           if (!existingLead) {
-            // VERIFICAR SI SE DEBE CREAR AUTOMÁTICAMENTE
-            const autoCreate = integrationMetadata?.unregistered_auto_create !== false; // por defecto true para mantener retrocompatibilidad if no existe el campo
+            // VERIFICAR SI SE DEBE CREAR AUTOMÁTICAMENTE (lee de la instancia)
+            const autoCreate = instanceConfig ? instanceConfig.auto_create_lead : true;
 
-            console.log(`🔍 [DEBUG] unregistered_auto_create value:`, integrationMetadata?.unregistered_auto_create);
+            console.log(`🔍 [DEBUG] instanceConfig.auto_create_lead:`, instanceConfig?.auto_create_lead);
             console.log(`🔍 [DEBUG] Calculated autoCreate boolean:`, autoCreate);
 
             if (!autoCreate) {
-              console.log(`[Empresa ${empresa_id}] Auto-creación desactivada para números desconocidos. Saltando.`);
+              console.log(`[Empresa ${empresa_id}] Auto-creación desactivada para esta instancia. Saltando.`);
               return new Response(JSON.stringify({ success: true, message: "Auto-create disabled" }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
                 status: 200,
@@ -1145,15 +1154,15 @@ serve(async (req) => {
             // 5. CREACIÓN DE NUEVO LEAD (Si llegamos aquí, es nuevo)
             // ==========================================================
 
-            // Determinar Pipeline
-            let targetPipelineId = pipeline_id || integrationMetadata?.unregistered_pipeline_id || null;
+            // Determinar Pipeline (prioridad: URL param > instancia > fallback)
+            let targetPipelineId = pipeline_id || instanceConfig?.default_pipeline_id || null;
             if (!targetPipelineId) {
               const { data: pipeline } = await supabase.from('pipeline').select('id').eq('empresa_id', empresa_id).order('created_at', { ascending: true }).limit(1).maybeSingle();
               if (pipeline) targetPipelineId = pipeline.id;
             }
 
-            // Determinar Etapa
-            let targetEtapaId = etapa_id || integrationMetadata?.unregistered_stage_id || null;
+            // Determinar Etapa (prioridad: URL param > instancia > fallback)
+            let targetEtapaId = etapa_id || instanceConfig?.default_stage_id || null;
             if (targetPipelineId && !targetEtapaId) {
               const { data: etapa } = await supabase.from('etapas').select('id, nombre').eq('pipeline_id', targetPipelineId).or('nombre.ilike.%inicial%,nombre.ilike.%nuevo%,nombre.ilike.%new%').order('orden', { ascending: true, nullsFirst: false }).limit(1).maybeSingle();
               if (etapa) targetEtapaId = etapa.id;
@@ -1163,8 +1172,8 @@ serve(async (req) => {
               }
             }
 
-            // Nombre por defecto si no se obtuvo uno real
-            const defaultName = integrationMetadata?.unregistered_default_name || "Nuevo Lead";
+            // Nombre por defecto si no se obtuvo uno real (lee de la instancia)
+            const defaultName = instanceConfig?.default_lead_name || "Nuevo Lead";
             if (finalName.startsWith("Nuevo Lead") && defaultName !== "Nuevo Lead") {
               finalName = `${defaultName} ${sourceType} ${cleanPhone}`;
             }
@@ -1228,8 +1237,8 @@ serve(async (req) => {
 
             // SOLO INSERTAR SI NO SE PROCESÓ EN LA FASE 1
             if (!leadsProcessedInPhase1.has(newLeadInstance.id)) {
-              // Verificar si se debe incluir el primer mensaje (si el lead es nuevo)
-              const includeFirst = existingLead || integrationMetadata?.unregistered_include_first_message !== false;
+              // Verificar si se debe incluir el primer mensaje (lee de la instancia)
+              const includeFirst = existingLead || (instanceConfig ? instanceConfig.include_first_message : true);
 
               if (includeFirst) {
                 await supabase.from("mensajes").insert({

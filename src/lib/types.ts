@@ -333,6 +333,11 @@ export interface EmpresaInstanciaDB {
   api_url?: string | null
   label?: string | null
   active: boolean
+  auto_create_lead?: boolean
+  default_pipeline_id?: string | null
+  default_stage_id?: string | null
+  default_lead_name?: string | null
+  include_first_message?: boolean
   created_at?: string
   updated_at?: string
 }
