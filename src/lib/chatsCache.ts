@@ -6,7 +6,7 @@ import { getLeadsPaged } from '@/supabase/services/leads'
 
 interface CachedLeadsData {
     leads: any[]
-    lastChannelByLead: Record<string, 'whatsapp' | 'instagram'>
+    lastChannelByLead: Record<string, 'whatsapp' | 'instagram' | 'facebook'>
     unreadCounts: Record<string, number>
     hasMore: boolean
     offset: number
@@ -99,7 +99,7 @@ export async function preloadChatsForCompany(companyId: string): Promise<void> {
             archivedAt: d.archived_at ? new Date(d.archived_at) : undefined,
         }))
 
-        const channelMap: Record<string, 'whatsapp' | 'instagram'> = {}
+        const channelMap: Record<string, 'whatsapp' | 'instagram' | 'facebook'> = {}
         for (const l of mapped) channelMap[l.id] = 'whatsapp'
 
         setCachedLeads(companyId, {
