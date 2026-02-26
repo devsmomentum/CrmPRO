@@ -64,7 +64,7 @@ import { useTranslation } from '@/lib/i18n'
 import { getPresupuestosByLead, uploadPresupuestoPdf, deletePresupuestoPdf, PresupuestoPdf } from '@/supabase/services/presupuestosPdf'
 import { useAudioRecorder } from '@/hooks/useAudioRecorder'
 import { safeFormatDate } from '@/hooks/useDateFormat'
-import { NotesTab, MeetingsTab, OverviewTab, ChatTab, HistoryTab } from './lead-detail'
+import { NotesTab, MeetingsTab, OverviewTab, ChatTab } from './lead-detail'
 
 interface User {
   id: string
@@ -872,7 +872,6 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
                 { value: 'budget', label: t.tabs.budget },
                 { value: 'meetings', label: t.tabs.meetings },
                 { value: 'notes', label: t.tabs.notes },
-                { value: 'history', label: 'Historial' }
               ].map(tab => (
                 <TabsTrigger
                   key={tab.value}
@@ -1112,9 +1111,7 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
             />
           </TabsContent>
 
-          <TabsContent value="history" className="flex-1 overflow-y-auto p-6 sm:p-8">
-            <HistoryTab leadId={lead.id} />
-          </TabsContent>
+
         </Tabs >
       </SheetContent >
 

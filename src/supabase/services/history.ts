@@ -42,3 +42,32 @@ export async function getLeadHistory(leadId: string): Promise<LeadHistory[]> {
         usuario_nombre: item.usuarios?.nombre || 'Sistema'
     }))
 }
+
+/**
+ * Obtiene el historial global de todas las oportunidades de una empresa
+ */
+export async function getCompanyHistory(empresaId: string): Promise<(LeadHistory & { lead_nombre?: string })[]> {
+    const { data, error } = await supabase
+        .from('lead_historial')
+        .select(`
+            *,
+            usuarios:usuario_id (nombre),
+            leads:lead_id (nombre_completo, empresa_id)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(300)
+
+    if (error) {
+        console.error('[getCompanyHistory] Error:', error)
+        throw error
+    }
+
+    // Filtrar solo los leads de esta empresa y mapear
+    return (data || [])
+        .filter((item: any) => item.leads?.empresa_id === empresaId)
+        .map((item: any) => ({
+            ...item,
+            usuario_nombre: item.usuarios?.nombre || 'Sistema',
+            lead_nombre: item.leads?.nombre_completo || 'Oportunidad eliminada'
+        }))
+}

@@ -9,6 +9,7 @@ import { CalendarView } from '@/components/crm/CalendarView'
 import { TeamView } from '@/components/crm/TeamView'
 import { SettingsView } from '@/components/crm/SettingsView'
 import { NotificationsView } from '@/components/crm/NotificationsView'
+import { HistorialView } from '@/components/crm/HistorialView'
 import LoginView from '@/components/crm/LoginView'
 import { RegisterView } from '@/components/crm/RegisterView'
 import { JoinTeam } from '@/components/crm/JoinTeam'
@@ -104,6 +105,9 @@ function App() {
           <Route path="/notifications" element={
             <NotificationsViewWrapper />
           } />
+          <Route path="/historial" element={
+            <HistorialView companyId={currentCompanyId} />
+          } />
         </Route>
 
         {/* Guest Mode Routes */}
@@ -144,6 +148,9 @@ function App() {
           } />
           <Route path="notifications" element={
             <NotificationsViewWrapper />
+          } />
+          <Route path="historial" element={
+            <HistorialView companyId={currentCompanyId} />
           } />
         </Route>
 
