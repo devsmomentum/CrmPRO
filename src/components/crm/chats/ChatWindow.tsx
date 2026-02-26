@@ -19,6 +19,8 @@ import type { Message as DbMessage } from '@/supabase/services/mensajes'
 import { MessageInput } from './MessageInput'
 import { LeadTags } from './LeadTags'
 import { LeadDetailSheet } from '../LeadDetailSheet'
+import { listWhatsappInstancias } from '@/supabase/services/instances'
+import type { EmpresaInstanciaDB } from '@/lib/types'
 
 interface ChatWindowProps {
     lead: Lead | null
@@ -53,6 +55,7 @@ export function ChatWindow({
     const [detailSheetOpen, setDetailSheetOpen] = useState(false)
     const [archivingLeadId, setArchivingLeadId] = useState<string | null>(null)
     const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+    const [activeInstance, setActiveInstance] = useState<EmpresaInstanciaDB | null>(null)
 
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -84,6 +87,39 @@ export function ChatWindow({
             } catch { }
         }
         markRead()
+
+        // Detectar instancia activa desde el último mensaje del lead
+        const detectInstance = async () => {
+            try {
+                const allMsgs = await getMessages(lead.id)
+                // Buscar el último mensaje ENTRANTE del lead que tenga instanceId en metadata
+                const lastLeadMsg = [...allMsgs].reverse().find(
+                    m => m.sender === 'lead' && (m.metadata?.instanceId || m.metadata?.instance_id)
+                )
+                const instanceId = lastLeadMsg?.metadata?.instanceId || lastLeadMsg?.metadata?.instance_id
+                if (instanceId) {
+                    const instances = await listWhatsappInstancias(companyId)
+                    const found = instances.find(i => i.id === instanceId) || null
+                    setActiveInstance(found)
+                } else {
+                    // Si no hay mensajes entrantes, intentar con el primer mensaje saliente
+                    const lastTeamMsg = [...allMsgs].reverse().find(
+                        m => m.sender === 'team' && (m.metadata?.instanceId || m.metadata?.instance_id)
+                    )
+                    const teamInstanceId = lastTeamMsg?.metadata?.instanceId || lastTeamMsg?.metadata?.instance_id
+                    if (teamInstanceId) {
+                        const instances = await listWhatsappInstancias(companyId)
+                        const found = instances.find(i => i.id === teamInstanceId) || null
+                        setActiveInstance(found)
+                    } else {
+                        setActiveInstance(null)
+                    }
+                }
+            } catch (e) {
+                console.error('[ChatWindow] Error detectando instancia:', e)
+            }
+        }
+        void detectInstance()
 
         // Suscribirse a nuevos mensajes del lead
         const sub = subscribeToMessages(lead.id, (newMsg) => {
@@ -221,12 +257,21 @@ export function ChatWindow({
                             <h3 className="font-bold truncate text-sm sm:text-base leading-tight tracking-tight">
                                 {lead.name}
                             </h3>
-                            <div className="flex items-center text-[11px] font-medium text-muted-foreground min-w-0">
+                            <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground min-w-0 flex-wrap">
                                 <span className="whitespace-nowrap flex-shrink-0">{lead.phone}</span>
                                 {lead.company && (
                                     <>
                                         <span className="mx-1.5 flex-shrink-0 opacity-50">•</span>
                                         <span className="truncate min-w-0">{lead.company}</span>
+                                    </>
+                                )}
+                                {activeInstance && (
+                                    <>
+                                        <span className="flex-shrink-0 opacity-50">•</span>
+                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold flex-shrink-0">
+                                            <WhatsappLogo size={10} weight="fill" />
+                                            {activeInstance.label || activeInstance.client_id || 'WhatsApp'}
+                                        </span>
                                     </>
                                 )}
                             </div>
@@ -388,6 +433,7 @@ export function ChatWindow({
                     leadId={lead.id}
                     channel={detectChannel(lead)}
                     disabled={isLoadingMessages}
+                    instanceLabel={activeInstance ? (activeInstance.label || activeInstance.client_id || 'WhatsApp') : null}
                     onMessageSent={() => {
                         const newMsg = {
                             created_at: new Date().toISOString(),

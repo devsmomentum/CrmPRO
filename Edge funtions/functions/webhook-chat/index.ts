@@ -527,7 +527,7 @@ serve(async (req) => {
       const cleanConfiguredPhone = configuredPhone.replace(/[\s\-\+\(\)]/g, "").trim();
 
       if (hashHex !== receivedSignature) {
-        console.log(`⚠️ Signature Mismatch - verificando por número de teléfono...`);
+        console.log(`⚠️ Signature Mismatch - verificando autenticación...`);
         console.log(`Received signature: '${receivedSignature.substring(0, 20)}...'`);
         console.log(`Calculated: '${hashHex.substring(0, 20)}...'`);
 
@@ -543,9 +543,13 @@ serve(async (req) => {
           console.log(`🤖 [AI] Evento ai_response/message_create detectado - saltando validación de número WhatsApp`);
         }
 
-        // Si la firma no coincide, verificamos que el mensaje sea de/para nuestro número de producción
-        // PERO solo para WhatsApp saliente normal (no para Instagram ni para respuestas de IA)
-        if (cleanConfiguredPhone && !isInstagramMessage && !isAiResponse) {
+        // ✅ FIX MULTI-INSTANCIA: Si la empresa ya fue resuelta por webhook_secret, el mensaje
+        // está autenticado — no hace falta filtrar por allowed_phone.
+        // Esto evita que mensajes de instancias secundarias sean descartados erróneamente.
+        if (empresaFromSecret) {
+          console.log(`✅ [MULTI-INSTANCE] Empresa resuelta por webhook_secret (${empresaFromSecret}) — saltando filtro de teléfono.`);
+        } else if (cleanConfiguredPhone && !isInstagramMessage && !isAiResponse) {
+          // Solo aplicar filtro de teléfono si NO se validó por webhook_secret (modo legado / single-instancia)
           const eventData = typeof payload.data === "string" ? JSON.parse(payload.data || "{}") : (payload.data ?? {});
           // Normalizar teléfonos: quitar @c.us, @s.whatsapp.net, espacios, guiones, +
           // y también quitar prefijo de país (58) para poder comparar con formato local (0414...)
