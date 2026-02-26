@@ -72,7 +72,7 @@ interface UseLeadsListReturn {
     /** Agregar un nuevo lead al inicio de la lista */
     addLead: (lead: Lead) => void
     /** Archivar/Desarchivar un lead */
-    toggleArchive: (lead: Lead, archive: boolean) => Promise<void>
+    toggleArchive: (lead: Lead, archive: boolean, actorId?: string, actorNombre?: string) => Promise<void>
     /** Eliminar un lead */
     removeLead: (leadId: string) => Promise<void>
     /** Actualizar orden de un lead (cuando llega mensaje) */
@@ -438,9 +438,9 @@ export function useLeadsList(options: UseLeadsListOptions): UseLeadsListReturn {
     /**
      * Archivar/Desarchivar lead
      */
-    const toggleArchive = useCallback(async (lead: Lead, archive: boolean) => {
+    const toggleArchive = useCallback(async (lead: Lead, archive: boolean, actorId?: string, actorNombre?: string) => {
         try {
-            await setLeadArchived(lead.id, archive)
+            await setLeadArchived(lead.id, archive, actorId, actorNombre)
             invalidateLeadsCache(companyId)
             toast.success(archive ? 'Chat archivado' : 'Chat restaurado')
 

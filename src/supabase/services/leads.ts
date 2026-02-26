@@ -168,7 +168,7 @@ import { createHistoryEntry } from './history'
 /**
  * Crea un nuevo lead
  */
-export async function createLead(lead: CreateLeadDTO, actorId?: string): Promise<LeadDB> {
+export async function createLead(lead: CreateLeadDTO, actorId?: string, actorNombre?: string): Promise<LeadDB> {
     const { data, error } = await supabase
         .from('lead')
         .insert(lead)
@@ -184,7 +184,8 @@ export async function createLead(lead: CreateLeadDTO, actorId?: string): Promise
                 lead_id: data.id,
                 usuario_id: actorId,
                 accion: 'creacion',
-                detalle: `Creó la oportunidad "${data.nombre_completo}"`
+                detalle: `Creó la oportunidad "${data.nombre_completo}"`,
+                metadata: actorNombre ? { actor_nombre: actorNombre } : undefined
             })
         } catch (e) {
             console.error('[createLead] Error logging history:', e)
@@ -197,7 +198,7 @@ export async function createLead(lead: CreateLeadDTO, actorId?: string): Promise
 /**
  * Crea múltiples leads en una sola operación
  */
-export async function createLeadsBulk(leads: CreateLeadDTO[], actorId?: string): Promise<LeadDB[]> {
+export async function createLeadsBulk(leads: CreateLeadDTO[], actorId?: string, actorNombre?: string): Promise<LeadDB[]> {
     const { data, error } = await supabase
         .from('lead')
         .insert(leads)
@@ -212,11 +213,10 @@ export async function createLeadsBulk(leads: CreateLeadDTO[], actorId?: string):
                 lead_id: lead.id,
                 usuario_id: actorId,
                 accion: 'creacion' as const,
-                detalle: `Importó la oportunidad "${lead.nombre_completo}"`
+                detalle: `Importó la oportunidad "${lead.nombre_completo}"`,
+                metadata: actorNombre ? { actor_nombre: actorNombre } : undefined
             }))
 
-            // Performed in parallel but could be many, so we'll use a single insert if history service supported it.
-            // For now, let's just use a promise all or loop.
             await Promise.all(historyEntries.map(entry => createHistoryEntry(entry)))
         } catch (e) {
             console.error('[createLeadsBulk] Error logging history:', e)
@@ -229,7 +229,7 @@ export async function createLeadsBulk(leads: CreateLeadDTO[], actorId?: string):
 /**
  * Actualiza un lead
  */
-export async function updateLead(id: string, updates: UpdateLeadDTO, actorId?: string): Promise<LeadDB> {
+export async function updateLead(id: string, updates: UpdateLeadDTO, actorId?: string, actorNombre?: string): Promise<LeadDB> {
     // Get current state to compare if it's an assignment change
     const { data: currentLead } = await supabase.from('lead').select('asignado_a, nombre_completo').eq('id', id).single()
 
@@ -245,9 +245,6 @@ export async function updateLead(id: string, updates: UpdateLeadDTO, actorId?: s
     // Log assignment change if applicable
     if (actorId && data && updates.asignado_a !== undefined && updates.asignado_a !== currentLead?.asignado_a) {
         try {
-            // We'll need to fetch user names for the detail if we want it rich, 
-            // but for now the DB stores the IDs. 
-            // The history service will handle the join for display.
             const isFirstAssignment = !currentLead?.asignado_a || currentLead?.asignado_a === '00000000-0000-0000-0000-000000000000'
             const accion = isFirstAssignment ? 'asignacion' : 'reasignacion'
 
@@ -258,7 +255,8 @@ export async function updateLead(id: string, updates: UpdateLeadDTO, actorId?: s
                 detalle: isFirstAssignment ? 'Asignó la oportunidad' : 'Reasignó la oportunidad',
                 metadata: {
                     prev_assigned_to: currentLead?.asignado_a,
-                    new_assigned_to: updates.asignado_a
+                    new_assigned_to: updates.asignado_a,
+                    ...(actorNombre ? { actor_nombre: actorNombre } : {})
                 }
             })
         } catch (e) {
@@ -272,12 +270,12 @@ export async function updateLead(id: string, updates: UpdateLeadDTO, actorId?: s
 /**
  * Archiva o desarchiva un lead
  */
-export async function setLeadArchived(id: string, archived: boolean): Promise<LeadDB> {
+export async function setLeadArchived(id: string, archived: boolean, actorId?: string, actorNombre?: string): Promise<LeadDB> {
     const updates: UpdateLeadDTO = {
         archived,
         archived_at: archived ? new Date().toISOString() : null
     }
-    return updateLead(id, updates)
+    return updateLead(id, updates, actorId, actorNombre)
 }
 
 /**

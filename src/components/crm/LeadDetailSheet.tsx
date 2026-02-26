@@ -564,7 +564,8 @@ export function LeadDetailSheet({ lead, open, onClose, onUpdate, teamMembers = [
     // Persistir en la BD
     try {
       const { updateLead } = await import('@/supabase/services/leads')
-      await updateLead(lead.id, { [dbField]: value }, currentUser?.id)
+      const actorNombre = currentUser?.businessName || (currentUser as any)?.nombre || currentUser?.email
+      await updateLead(lead.id, { [dbField]: value }, currentUser?.id, actorNombre)
       // toast.success('Campo guardado') // Opcional, ya mostramos success local
     } catch (e) {
       console.error('Error updating lead field:', e)

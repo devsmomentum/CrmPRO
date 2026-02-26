@@ -164,6 +164,7 @@ export function AddLeadDialog({
       // Generar email dummy si no existe (para cumplir con restricción NOT NULL de DB)
 
 
+      const actorNombre = effectiveUser?.businessName || (effectiveUser as any)?.nombre || effectiveUser?.email
       const dbLead = await createLead({
         nombre_completo: data.name,
         correo_electronico: data.email?.trim() || undefined,
@@ -179,7 +180,7 @@ export function AddLeadDialog({
         asignado_a: data.assignedTo === 'todos' ? '00000000-0000-0000-0000-000000000000' : data.assignedTo,
         prioridad: data.priority,
         preferred_instance_id: data.preferredInstanceId || null
-      }, effectiveUser?.id)
+      }, effectiveUser?.id, actorNombre)
 
       if (dbLead) {
         const newLead: Lead = {
@@ -234,7 +235,8 @@ export function AddLeadDialog({
       prioridad: 'medium' as const
     }))
 
-    const result = await createLeadsBulk(batchLeads, effectiveUser?.id)
+    const actorNombre = effectiveUser?.businessName || (effectiveUser as any)?.nombre || effectiveUser?.email
+    const result = await createLeadsBulk(batchLeads, effectiveUser?.id, actorNombre)
 
     if (result && Array.isArray(result)) {
       const importedLeads: Lead[] = result.map(r => ({

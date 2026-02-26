@@ -319,7 +319,8 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
     setLeads,
     setStageCounts,
     canEditLeads,
-    currentUserId: user?.id
+    currentUserId: user?.id,
+    actorNombre: user?.businessName || (user as any)?.nombre || user?.email
   })
 
   // Drag & Drop de Etapas (reordenar columnas)
@@ -922,6 +923,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
               // Guardar en BD en segundo plano
               try {
                 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+                const actorNombre = user?.businessName || (user as any)?.nombre || user?.email
                 await updateLead(updated.id, {
                   nombre_completo: updated.name,
                   empresa: updated.company,
@@ -931,7 +933,7 @@ export function PipelineView({ companyId, companies = [], user }: { companyId?: 
                   prioridad: updated.priority,
                   presupuesto: updated.budget,
                   asignado_a: updated.assignedTo === 'todos' ? NIL_UUID : updated.assignedTo || NIL_UUID
-                })
+                }, user?.id, actorNombre)
 
                 // Si cambió la asignación y aplica, enviar notificación
                 const assignmentChanged = prevSelected && prevSelected.assignedTo !== updated.assignedTo
